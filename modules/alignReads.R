@@ -117,6 +117,11 @@ runModule <- function(){
   o$anchorReads$seqNum <- NULL
   o$adriftReads$seqNum <- NULL
   
+  o$anchorReads$trial     <- as.character(o$anchorReads$trial);    o$adriftReads$trial     <- as.character(o$adriftReads$trial)
+  o$anchorReads$subject   <- as.character(o$anchorReads$subject);  o$adriftReads$subject   <- as.character(o$adriftReads$subject)
+  o$anchorReads$sample    <- as.character(o$anchorReads$sample);   o$adriftReads$sample    <- as.character(o$adriftReads$sample)
+  o$anchorReads$replicate <- as.integer(o$anchorReads$replicate);  o$adriftReads$replicate <- as.integer(o$adriftReads$replicate)
+  
   saveRDS(o, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('alignReads module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))

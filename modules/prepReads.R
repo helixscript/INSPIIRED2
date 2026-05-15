@@ -241,6 +241,12 @@ runModule <- function(){
   write_tsv(d[d$vectorHit == TRUE], file.path(args$outputDir, paste0(args$fileTag, '.vht')))
   d <- d[d$vectorHit == FALSE]
   d$vectorHit <- NULL
+  
+  d$trial     <- as.character(d$trial)
+  d$subject   <- as.character(d$subject)
+  d$sample    <- as.character(d$sample)
+  d$replicate <- as.integer(d$replicate)
+  
   saveRDS(d, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('prepReads module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))

@@ -82,12 +82,12 @@ parseBLAToutput <- function(f){
   names(b) <- c('matches', 'misMatches', 'repMatches', 'nCount', 'qNumInsert', 'qBaseInsert', 'tNumInsert', 'tBaseInsert', 'strand',
                 'qName', 'qSize', 'qStart', 'qEnd', 'tName', 'tSize', 'tStart', 'tEnd', 'blockCount', 'blockSizes', 'qStarts', 'tStarts')
   
-  b$queryPercentID <- x$percentIdentity
-  b$pslScore <- x$pslScore
-  b$tStart   <- x$tStart + 1
-  b$tEnd     <- x$tEnd
-  b$qWidth   <- b$qEnd - b$qStart + 1
-  b$tWidth   <- b$tEnd - b$tStart + 1
+  b$queryPercentID <- as.numeric(x$percentIdentity)
+  b$pslScore <- as.numeric(x$pslScore)
+  b$tStart   <- as.integer(x$tStart + 1)
+  b$tEnd     <- as.integer(x$tEnd)
+  b$qWidth   <- as.integer(b$qEnd - b$qStart + 1)
+  b$tWidth   <- as.integer(b$tEnd - b$tStart + 1)
   
   dplyr::select(b, qName, matches, strand, qSize, qStart, qEnd, tName, tNumInsert, qNumInsert, tBaseInsert, qBaseInsert, tStart, tEnd, queryPercentID, pslScore, qWidth, tWidth)
 }

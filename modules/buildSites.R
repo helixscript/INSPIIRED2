@@ -215,7 +215,7 @@ runModule <- function(){
            select(-sampleAbund)
   
   saveRDS(sites, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
-  updateLog('buildFragments module completed.')
+  updateLog('buildSites module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
 

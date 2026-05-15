@@ -57,10 +57,14 @@ runModule <- function(){
     r[fragWidth >= args$minFrgamentLength & fragWidth <= args$maxFrgamentLength]
   }))
   
-  frags$fragStrand  <- factor(frags$fragStrand)
-  frags$fragChromosome  <- factor(frags$fragChromosome)
-  
   setnames(frags, "seq", "anchor_seq")
+  
+  frags$trial     <- as.character(frags$trial)
+  frags$subject   <- as.character(frags$subject)
+  frags$sample    <- as.character(frags$sample)
+  frags$replicate <- as.integer(frags$replicate)
+  frags$fragStart <- as.integer(frags$fragStart)
+  frags$fragEnd   <- as.integer(frags$fragEnd)
   
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('buildFragments module completed.')

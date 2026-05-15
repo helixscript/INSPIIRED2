@@ -34,34 +34,43 @@ runModule <- function(){
   updateLog('Starting buildStdFragment module.')
   
   frags <- setDT(readRDS(args$inputData))
-  fac_cols <- names(frags)[sapply(frags, is.factor)]
-  frags[, (fac_cols) := lapply(.SD, as.character), .SDcols = fac_cols]
+  
+  # fac_cols <- names(frags)[sapply(frags, is.factor)]
+  # frags[, (fac_cols) := lapply(.SD, as.character), .SDcols = fac_cols]
  
   
   # leaderSeq clustering (optional)
   #-----------------------------------------------------------------------------
   if(args$clusterLeaderSeqs){
-    frags$uSeq <- paste0('s', as.integer(as.factor(frags$leaderSeq)))
-    tab <- unique(frags[, .(uSeq, leaderSeq)])
-    tab <- tab[, count := .N, by = leaderSeq][order(-count)][, count := NULL]
+    orgFragRowCount <- nrow(frags)
+    o <- dplyr::arrange(data.frame(table(frags$leaderSeq)), desc(Freq))
+    o$n <- 1:nrow(o)
+    o$readID <- paste0('s',  o$n)
+    
+    # Cluster unique leader sequences.
     ts <- tmpString()
-    write(paste0('>', tab$uSeq, '\n', tab$leaderSeq), file = file.path(args$ramDisk, paste0(ts, '.fasta')))
+    write(paste0('>', o$readID, '\n', o$Var1), file = file.path(args$ramDisk, paste0(ts, '.fasta')))
     out_prefix <- file.path(args$ramDisk, paste0(ts, "_cdhit"))
     cmd <- paste0("cd-hit-est ", args$leaderSeqClusteringParams, " -T ", args$threads, " -i ", file.path(args$ramDisk, paste0(ts, '.fasta')), " -o ", out_prefix)
     system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
-    
     clstr_path <- paste0(out_prefix, ".clstr")
     if(!file.exists(clstr_path)) stop(paste0('Error - cd-hit-est failed to return a clstr file.'))
     
+    # Rename the clusters using table `o` so that the clusters with the highest number of reads are numbered the lowest.
     r <- parse_cdhit_clstr(clstr_path)
-    frags <- left_join(frags, dplyr::select(r, readID, cluster_id), by = c('uSeq' = 'readID'))
-    frags$leaderSeqGroupNum <-  as.integer(str_extract(frags$cluster_id, '\\d+'))
-    frags$cluster_id <- NULL
-    frags$uSeq <- NULL
+    r <- left_join(r, o[, c('n', 'readID')], by = 'readID')
+    k <- group_by(r, cluster_id) %>% summarise(newClusterID = paste('Cluster', min(n))) %>% ungroup()
+    r <- left_join(r, k, by = 'cluster_id')
+    o <- left_join(o, r[, c('readID', 'newClusterID')], by = 'readID')
+    frags <- left_join(frags, o[, c('Var1', 'newClusterID')], by = c('leaderSeq' = 'Var1'))
+
+    # Use re-named cluster ids to determine leader sequencing group numbers.
+    frags$leaderSeqGroupNum <-  as.integer(str_extract(frags$newClusterID, '\\d+'))
+    frags$newClusterID <- NULL
+    if(nrow(frags) != orgFragRowCount) stop('Error sorting and rennanming leader sequence clusters.')
   } else {
     frags$leaderSeqGroupNum <- 1
   }
-  
   
   # Build fragment ids and separate reads for position standardization.
   #-----------------------------------------------------------------------------
@@ -79,6 +88,7 @@ runModule <- function(){
   if(nrow(posFrags) > 0) posSubjectFrags <- split(posFrags, by = c('trial', 'subject', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   if(nrow(negFrags) > 0) negSubjectFrags <- split(negFrags, by = c('trial', 'subject', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
 
+  
   # Standardize intSite positions.
   #-----------------------------------------------------------------------------
   if(! args$disableIntSitePosStd){
@@ -143,6 +153,7 @@ runModule <- function(){
   
   if(nrow(posFrags) > 0) posRepFrags <- split(posSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   if(nrow(negFrags) > 0) negRepFrags <- split(negSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+  
   
   # Standardize break point positions.
   #-----------------------------------------------------------------------------
@@ -574,7 +585,7 @@ runModule <- function(){
   frags$fragStart <- as.integer(frags$fragStart)
   frags$fragEnd   <- as.integer(frags$fragEnd)
   
-  frags <- frags[, .(mode, refGenome, trial, subject, sample, replicate, UMI, posid, reads, repLeaderSeq, fragChromosome, fragStrand, fragStart, fragEnd, anchorReadCluster, readIDs, UMIs)]
+  frags <- frags[, .(mode, refGenome, trial, subject, sample, replicate, UMI, posid, reads, repLeaderSeq, fragChromosome, fragStrand, fragStart, fragEnd, anchorReadCluster, readIDs, UMIs, leaderSeqGroupNum)]
   
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('buildFragments module completed.')
