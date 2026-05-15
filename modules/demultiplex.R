@@ -321,30 +321,53 @@ runModule <- function(){
   }), use.names = TRUE, fill = TRUE)
   
   
-  if(! args$disableSequenceCollapse){
+  # if(! args$disableSequenceCollapse){
+  #   updateLog('Collapsing duplicate reads.')
+  #   o <- o[, .(
+  #     nReads    = .N, 
+  #     readID    = readID[1],
+  #     linker1   = linker1[1],
+  #     linker2   = linker2[1],
+  #     mode      = mode[1],
+  #     refGenome = refGenome[1],
+  #     vectorFastaFile = vectorFastaFile[1],
+  #     leaderSeqHMM    = leaderSeqHMM[1]
+  #   ), by = .(trial, subject, sample, replicate, UMI, anchorReadSeq, adriftReadSeq)]
+  # } else {
+  #   o <- o[, .(
+  #     nReads    = .N, 
+  #     readID    = readID[1],
+  #     linker1   = linker1[1],
+  #     linker2   = linker2[1],
+  #     mode      = mode[1],
+  #     refGenome = refGenome[1],
+  #     vectorFastaFile = vectorFastaFile[1],
+  #     leaderSeqHMM    = leaderSeqHMM[1]
+  #   ), by = .(trial, subject, sample, replicate, readID)]
+  # }
+  
+  
+  group_vars <- c("trial", "subject", "sample", "replicate")
+
+  if (! args$disableSequenceCollapse) {
     updateLog('Collapsing duplicate reads.')
-    o <- o[, .(
-      nReads    = .N, 
-      readID    = readID[1],
-      linker1   = linker1[1],
-      linker2   = linker2[1],
-      mode      = mode[1],
-      refGenome = refGenome[1],
-      vectorFastaFile = vectorFastaFile[1],
-      leaderSeqHMM    = leaderSeqHMM[1]
-    ), by = .(trial, subject, sample, replicate, UMI, anchorReadSeq, adriftReadSeq)]
+    group_vars <- c(group_vars, "UMI", "anchorReadSeq", "adriftReadSeq")
   } else {
-    o <- o[, .(
-      nReads    = .N, 
-      readID    = readID[1],
-      linker1   = linker1[1],
-      linker2   = linker2[1],
-      mode      = mode[1],
-      refGenome = refGenome[1],
-      vectorFastaFile = vectorFastaFile[1],
-      leaderSeqHMM    = leaderSeqHMM[1]
-    ), by = .(trial, subject, sample, replicate, readID)]
+    updateLog('Reads will not be collapsed - each demultiplexed read will be included in output.')
+    group_vars <- c(group_vars, "readID")
   }
+
+  o <- o[, .(
+    nReads          = .N, 
+    readID          = readID[1],
+    linker1         = linker1[1],
+    linker2         = linker2[1],
+    mode            = mode[1],
+    refGenome       = refGenome[1],
+    vectorFastaFile = vectorFastaFile[1],
+    leaderSeqHMM    = leaderSeqHMM[1]
+  ), by = group_vars]
+  
   
   demux_summary <- o[, .(
     demultiplexedReads = sum(as.numeric(nReads), na.rm = TRUE)

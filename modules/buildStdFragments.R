@@ -33,7 +33,10 @@ runModule <- function(){
   
   updateLog('Starting buildStdFragment module.')
   
-  frags <- readRDS(args$inputData)
+  frags <- setDT(readRDS(args$inputData))
+  fac_cols <- names(frags)[sapply(frags, is.factor)]
+  frags[, (fac_cols) := lapply(.SD, as.character), .SDcols = fac_cols]
+ 
   
   # leaderSeq clustering (optional)
   #-----------------------------------------------------------------------------
@@ -45,7 +48,7 @@ runModule <- function(){
     write(paste0('>', tab$uSeq, '\n', tab$leaderSeq), file = file.path(args$ramDisk, paste0(ts, '.fasta')))
     out_prefix <- file.path(args$ramDisk, paste0(ts, "_cdhit"))
     cmd <- paste0("cd-hit-est ", args$leaderSeqClusteringParams, " -T ", args$threads, " -i ", file.path(args$ramDisk, paste0(ts, '.fasta')), " -o ", out_prefix)
-    system(cmd)
+    system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
     
     clstr_path <- paste0(out_prefix, ".clstr")
     if(!file.exists(clstr_path)) stop(paste0('Error - cd-hit-est failed to return a clstr file.'))
@@ -73,10 +76,9 @@ runModule <- function(){
   posSubjectFrags <- list()
   negSubjectFrags <- list()
   
-  if(nrow(posFrags) > 0) posSubjectFrags <- split(posFrags, paste(posFrags$trial, posFrags$subject, posFrags$fragChromosome, posFrags$leaderSeqGroupNum))
-  if(nrow(negFrags) > 0) negSubjectFrags <- split(negFrags, paste(negFrags$trial, negFrags$subject, negFrags$fragChromosome, negFrags$leaderSeqGroupNum))
-  
-  
+  if(nrow(posFrags) > 0) posSubjectFrags <- split(posFrags, by = c('trial', 'subject', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+  if(nrow(negFrags) > 0) negSubjectFrags <- split(negFrags, by = c('trial', 'subject', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+
   # Standardize intSite positions.
   #-----------------------------------------------------------------------------
   if(! args$disableIntSitePosStd){
@@ -85,11 +87,16 @@ runModule <- function(){
                tab <- group_by(x, seqnames = fragChromosome, 
                                   strand = fragStrand, 
                                   start = fragStart, 
-                                  end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(start)
-               
+                                  end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(start, end, reads)
+
                tab2 <- standardize_positions(tab, side = 'left', window = 10)
                update <- unique(data.table(fragStart = tab$start, newFragStart = tab2$start))
-               left_join(x, update, by = 'fragStart')
+               
+               preJoinRows <- nrow(x)
+               x <- left_join(x, update, by = 'fragStart')
+               if(nrow(x) != preJoinRows) stop('intSite posRepFrags join Error')
+               if(any(is.na(x$newFragStart))) stop('intSite posRepFrags NA Error')
+               x
       })
     }
     
@@ -98,11 +105,16 @@ runModule <- function(){
         tab <- group_by(x, seqnames = fragChromosome, 
                            strand = fragStrand, 
                            start = fragStart, 
-                           end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end)
+                           end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end, start, reads)
         tab2 <- standardize_positions(tab, side = 'right', window = 10)
 
         update <- unique(data.table(fragEnd = tab$end, newFragEnd = tab2$end))
-        left_join(x, update, by = 'fragEnd')
+        
+        preJoinRows <- nrow(x)
+        x <- left_join(x, update, by = 'fragEnd')
+        if(nrow(x) != preJoinRows) stop('intSite negRepFrags join Error')
+        if(any(is.na(x$newFragEnd))) stop('intSite posRepFrags NA Error')
+        x
       })
     }
   }
@@ -128,10 +140,9 @@ runModule <- function(){
   
   posSubjectFrags$newFragStart <- NULL
   negSubjectFrags$newFragEnd   <- NULL
-
-  if(nrow(posFrags) > 0) posRepFrags <- split(posSubjectFrags, paste(posSubjectFrags$trial, posSubjectFrags$subject, posSubjectFrags$sample, posSubjectFrags$replicate, posSubjectFrags$fragChromosome, posSubjectFrags$leaderSeqGroupNum))
-  if(nrow(negFrags) > 0) negRepFrags <- split(negSubjectFrags, paste(negSubjectFrags$trial, negSubjectFrags$subject, negSubjectFrags$sample, negSubjectFrags$replicate, negSubjectFrags$fragChromosome, negSubjectFrags$leaderSeqGroupNum))
   
+  if(nrow(posFrags) > 0) posRepFrags <- split(posSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+  if(nrow(negFrags) > 0) negRepFrags <- split(negSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   
   # Standardize break point positions.
   #-----------------------------------------------------------------------------
@@ -141,10 +152,14 @@ runModule <- function(){
         tab <- group_by(x, seqnames = fragChromosome, 
                         strand = fragStrand, 
                         start = fragStart, 
-                        end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end)
+                        end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end, start, reads)
         tab2 <- standardize_positions(tab, side = 'right', window = 5)
         update <- unique(data.table(fragEnd = tab$end, newFragEnd = tab2$end))
-        left_join(x, update, by = 'fragEnd')
+        preJoinRows <- nrow(x)
+        x <- left_join(x, update, by = 'fragEnd')
+        if(nrow(x) != preJoinRows)   stop('breakPoint posRepFrags join Error')
+        if(any(is.na(x$newFragEnd))) stop('breakPoint posRepFrags NA Error')
+        x
       })
     }
     
@@ -153,10 +168,14 @@ runModule <- function(){
         tab <- group_by(x, seqnames = fragChromosome, 
                         strand = fragStrand, 
                         start = fragStart, 
-                        end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(start)
+                        end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(start, end, reads)
         tab2 <- standardize_positions(tab, side = 'left', window = 5)
         update <- unique(data.table(fragStart = tab$start, newFragStart = tab2$start))
-        left_join(x, update, by = 'fragStart')
+        preJoinRows <- nrow(x)
+        x <- left_join(x, update, by = 'fragStart')
+        if(nrow(x) != preJoinRows) stop('negRepFrags join Error')
+        if(any(is.na(x$newFragStart))) stop('breakPoint negRepFrags NA Error')
+        x
       })
     }
   }
@@ -368,8 +387,8 @@ runModule <- function(){
   updateLog('Cluster the beginnings of anchor read sequences.')
   anchorReadClusterDecisionTable <- tibble()
   
-  frags_uniqPosIDs <- bind_rows(lapply(split(frags_uniqPosIDs, paste0(frags_uniqPosIDs$trial, frags_uniqPosIDs$subject, frags_uniqPosIDs$sample)), function(s){
-    
+
+  frags_uniqPosIDs <- bind_rows(lapply(split(frags_uniqPosIDs, by = c('trial', 'subject', 'sample'), flatten = TRUE, sorted = TRUE), function(s){ 
     # Sort fragment records so that fragments likely to contribute to high abund / high read count fragments apart first.
     s <- group_by(s, posid) %>%
          mutate(potentialAbund = n_distinct(abs(fragEnd - fragStart))) %>%
@@ -387,7 +406,7 @@ runModule <- function(){
     write(paste0('>', s$readID, '\n', s$testSeq), file = file.path(args$ramDisk, paste0(ts, '.fasta')))
     out_prefix <- file.path(args$ramDisk, paste0(ts, "_cdhit"))
     cmd <- paste0("cd-hit-est ", args$anchorReadClusterParams, " -T ", args$threads, " -i ", file.path(args$ramDisk, paste0(ts, '.fasta')), " -o ", out_prefix)
-    system(cmd)
+    system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
     
     clstr_path <- paste0(out_prefix, ".clstr")
     if(! file.exists(clstr_path)) stop(paste0('Error - cd-hit-est failed to return a clstr file: ', file.exists(clstr_path)))
@@ -450,7 +469,7 @@ runModule <- function(){
   saveRDS(anchorReadClusterDecisionTable, file.path(args$outputDir, paste0(args$fileTag, '_arc.rds')))
   updateLog(paste0('Removing ', n_distinct(subset(frags_uniqPosIDs, remove == TRUE)$readID), ' reads due to not being the clear choice.'))
   frags_uniqPosIDs <- subset(frags_uniqPosIDs, remove == FALSE)
-  frags_uniqPosIDs <- dplyr::select(frags_uniqPosIDs, -testSeq, -cluster_id, -remove)
+  frags_uniqPosIDs <- setDT(dplyr::select(frags_uniqPosIDs, -testSeq, -cluster_id, -remove))
   
   
   # UMI filter
@@ -459,7 +478,7 @@ runModule <- function(){
   UMIclusterDecisionTable <- tibble()
   updateLog('Ensuring that each fragment record is associated with a single UMI sequence.')
 
-  frags_uniqPosIDs <- rbindlist(lapply(split(frags_uniqPosIDs, paste(frags_uniqPosIDs$trial, frags_uniqPosIDs$sample, frags_uniqPosIDs$UMI)), function(x){
+  frags_uniqPosIDs <- rbindlist(lapply(split(frags_uniqPosIDs, by = c('trial', 'subject', 'sample', 'UMI'), flatten = TRUE, sorted = TRUE), function(x){
     if(n_distinct(x$posid) > 1){
       
       z  <- group_by(x, trial, subject, sample, UMI, posid) %>% 
