@@ -28,6 +28,9 @@ runModule <- function(){
   
   updateLog('Starting prepReads module.')
   
+  if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', file.exists(args$inputData), ') does not exist.'))
+  if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', file.exists(args$inputData), ') is empty.'))
+  
   d <- readRDS(args$inputData)
   
   hmm_worker <- function(chunk, ...) {
@@ -116,13 +119,17 @@ runModule <- function(){
     
     if(! grepl('none', params$prepReads_HMMmatchTerminalSeq, ignore.case = TRUE)){
        updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tSearching for requested terminal sequence match for "', params$prepReads_HMMmatchTerminalSeq, '"'), logFile = logFile)
+       chunk$data$anchorReadSeq <- toupper(chunk$data$anchorReadSeq)
+       params$prepReads_HMMmatchTerminalSeq <- toupper(params$prepReads_HMMmatchTerminalSeq)
       
        terminal_matchSeq <- substr(chunk$data$anchorReadSeq,  (chunk$data$targetEnd - (nchar(params$prepReads_HMMmatchTerminalSeq) - 1) - params$prepReads_HMMmatchEndRadius), (chunk$data$targetEnd + params$prepReads_HMMmatchEndRadius))
-       z <- stringr::str_locate_all( terminal_matchSeq, params$prepReads_HMMmatchTerminalSeq)
-       ends <- unlist(lapply(z, '[', 2))
+       ends <- stringr::str_locate(terminal_matchSeq, params$prepReads_HMMmatchTerminalSeq)[, 2]
+       
+       i <- ! is.na(ends)
+       chunk$data <- chunk$data[i]
+       ends <- ends[i]
        
        chunk$data$targetEnd <- chunk$data$targetEnd - (nchar(params$prepReads_HMMmatchTerminalSeq) + params$prepReads_HMMmatchEndRadius) + ends
-       chunk$data <- chunk$data[! is.na(chunk$data$targetEnd)]
        updateLog(paste0('<data chunk #', chunk$chunk_num, '>\t', ppNum(nrow(chunk$data)), ' data rows remain after requiring a terminal sequence match.'), logFile = logFile)
     }
     
@@ -139,7 +146,7 @@ runModule <- function(){
     
          my_iter <- make_dt_iterator(x, chunk_size = ceiling(nrow(x)/args$threads), chunk_num_start = chunk_start_num)
     
-        # param <- SerialParam(stop.on.error = TRUE)
+        #param <- SerialParam(stop.on.error = TRUE) # Use SerialParam() for browser() statements.
         param <- MulticoreParam(workers = args$threads)
     
         results <- bpiterate(ITER = my_iter, FUN = hmm_worker, BPPARAM = param)
@@ -199,7 +206,7 @@ runModule <- function(){
   
   d <- d[keep_idx]
   
-  # Vector test
+  # Vector alignments test
   
   d <- rbindlist(lapply(split(d, d$vectorFastaFile), function(x){
     ts <- tmpString()
@@ -238,7 +245,7 @@ runModule <- function(){
   updateLog(paste0(sprintf("%.1f%%", (sum(d$vectorHit) / nrow(d))*100), ' anchorRead ends matched the vector sequences.'))
   updateLog('Writing output.')
   
-  write_tsv(d[d$vectorHit == TRUE], file.path(args$outputDir, paste0(args$fileTag, '.vht')))
+  write_tsv(d[d$vectorHit == TRUE], file.path(args$outputDir, paste0(args$fileTag, '_vectorHitReads.tsv.gz')))
   d <- d[d$vectorHit == FALSE]
   d$vectorHit <- NULL
   

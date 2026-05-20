@@ -1,5 +1,5 @@
 #!/usr/bin/env -S Rscript --vanilla
-for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'BiocParallel', 'stringi', 'fst')) suppressPackageStartupMessages(library(p, character.only = TRUE))
+for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'BiocParallel', 'stringi')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")
@@ -17,7 +17,7 @@ parser$add_argument("--blatMaxtNumInsert",       type = "integer",       default
 parser$add_argument("--blatMaxqNumInsert",       type = "integer",       default = 2,              help = "BLAT max number of query inserts.")
 parser$add_argument("--blatMaxtBaseInsert",      type = "integer",       default = 3,              help = "BLAT max number of target insert NTs.")
 parser$add_argument("--blatMaxqBaseInsert",      type = "integer",       default = 3,              help = "BLAT max number of target insert NTs.")
-parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 5000,           help = "Numbers of data rows to process per alignment worker.")
+parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 1000,           help = "Numbers of data rows to process per alignment worker.")
 
 runModule <- function(){
   startModule()
@@ -31,6 +31,9 @@ runModule <- function(){
   }, add = TRUE)
   
   updateLog('Starting alignReads module.')
+  
+  if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))
+  if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
   
   anchorReads <- readRDS(args$inputData) %>% dplyr::select(-adriftReadSeq) %>% dplyr::rename(seq = anchorReadSeq)
   adriftReads <- readRDS(args$inputData) %>% dplyr::select(-anchorReadSeq, -leaderSeq) %>% dplyr::rename(seq = adriftReadSeq)
@@ -47,32 +50,43 @@ runModule <- function(){
     
     write(paste0('>', chunk$data$seqNum, '\n', chunk$data$seq), file = file.path(args$ramDisk, paste0(ts, '.fasta')))
     
-    system(paste0('blat ', file.path(args$softwareRoot, 'data', 'referenceGenomes', paste0(as.character(chunk$data$refGenome[1]), '.2bit')), ' ', 
+    cmd <- paste0('blat ', file.path(args$softwareRoot, 'data', 'referenceGenomes', paste0(as.character(chunk$data$refGenome[1]), '.2bit')), ' ', 
                   file.path(args$ramDisk, paste0(ts, '.fasta')), ' ', 
                   file.path(args$ramDisk, paste0(ts, '.psl')), 
                   ' -tileSize=', args$blatTileSize, 
                   ' -stepSize=', args$blatStepSize, 
                   ' -repMatch=', args$blatRepMatch, 
-                  ' -out=psl -t=dna -q=dna -minScore=0 -minIdentity=0 -noHead -noTrimA'), ignore.stdout = TRUE, ignore.stderr = TRUE)
+                  ' -out=psl -t=dna -q=dna -minScore=0 -minIdentity=0 -noHead -noTrimA')
+    
+    updateLog(paste0('<data chunk #', chunk$chunk_num, '>\t', cmd), logFile = logFile)
+    
+    system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
+    
+    updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tParsing BLAT output.'), logFile = logFile)
     
     b <- parseBLAToutput(file.path(args$ramDisk, paste0(ts, '.psl')))
+    
+    updateLog(paste0('<data chunk #', chunk$chunk_num, '>\t', ppNum(nrow(b)), ' data rows returned.'), logFile = logFile)
     
     invisible(file.remove(list.files(args$ramDisk, pattern = ts, full.names = TRUE)))
 
     if(nrow(b) > 0){
       b$qPercentCoverage <- ((b$qEnd - b$qStart) / b$qSize)*100
-      return(dplyr::filter(b, queryPercentID >= args$minPercentID, 
+      b <- dplyr::filter(b, queryPercentID >= args$minPercentID, 
                               qPercentCoverage >= args$minAlignmentCoverage,
                               tNumInsert <= args$blatMaxtNumInsert,
                               qNumInsert <= args$blatMaxqNumInsert,
                               tBaseInsert <= args$blatMaxtBaseInsert,
-                              qBaseInsert <= args$blatMaxqBaseInsert))
+                              qBaseInsert <= args$blatMaxqBaseInsert)
+      
+      updateLog(paste0('<data chunk #', chunk$chunk_num, '>\t', ppNum(nrow(b)), ' data rows remain after filtering.'), logFile = logFile)
+      return(b)
     } else {
       return(data.table())
     }
   }
   
-  updateLog(paste0('Starting asynchronous HMM calculations. Data chunk logs can be found in ', args$logDir, '/'))
+  updateLog(paste0('Starting asynchronous BLAT runs. Data chunk logs can be found in ', args$logDir, '/'))
   updateLog('Collated data chunk logs will appear below when done.')
 
   chunk_start_num <- 0
@@ -82,31 +96,54 @@ runModule <- function(){
   
   o <- list()
   
-  # Align unique anchor read sequences.
+  updateLog('Starting anchor read alignments.')
+
   my_iter <- make_dt_iterator(anchorReads[! duplicated(anchorReads$seqNum)], chunk_size = args$dataRowChunkSize, chunk_num_start = chunk_start_num)
+  
   #param <- SerialParam(stop.on.error = TRUE)
   param <- MulticoreParam(workers = args$threads)
+  
   anchorReadsAlignments <- rbindlist(bpiterate(ITER = my_iter, FUN = alignment_worker, BPPARAM = param)) %>% dplyr::select(qName, tName, strand, tStart, tEnd)
   bpstop(param)
   closeAllConnections()
   
+  updateLog('Anchor read alignments completed.')
+  updateLog(paste0(ppNum(n_distinct(anchorReadsAlignments$qName)), ' anchor reads returned one or more alignments.'))
+  
   o$anchorReads <- left_join(anchorReads, anchorReadsAlignments, by = c('seqNum' = 'qName'), relationship = "many-to-many")
+  
   o$anchorReads <- o$anchorReads[! is.na(o$anchorReads$tName)]
+  
+  if(nrow(o$anchorReads) == 0) stop('Error - no anchor reads aligned to the reference.')
+  
   rm(param, anchorReads, anchorReadsAlignments)
   gc()
+  
+  updateLog('Limiting adrift reads to those with anchor read alignments.')
   
   # Limit adrift reads to those with anchor read alignments.
   adriftReads <- adriftReads[adriftReads$readID %in% o$anchorReads$readID]
   
+  if(nrow(adriftReads) == 0) stop('Error -- no adrift reads remain after limiting reads to those with anchor read mates that aligned to the reference.')
+  
   # Align unique adrift read sequences.
+  
+  updateLog('Starting adrift read alignments.')
+  
   my_iter <- make_dt_iterator(adriftReads[! duplicated(adriftReads$seqNum)], chunk_size = args$dataRowChunkSize, chunk_num_start = chunk_start_num)
   param <- MulticoreParam(workers = args$threads)
   adriftReadsAlignments <- rbindlist(bpiterate(ITER = my_iter, FUN = alignment_worker, BPPARAM = param)) %>% dplyr::select(qName, tName, strand, tStart, tEnd)
   bpstop(param)
   closeAllConnections()
+  
+  updateLog('Adrift read alignments completed.')
+  updateLog(paste0(ppNum(n_distinct(adriftReadsAlignments$qName)), ' adrift reads returned one or more alignments.'))
  
   o$adriftReads <- left_join(adriftReads, adriftReadsAlignments, by = c('seqNum' = 'qName'), relationship = "many-to-many")
   o$adriftReads <- o$adriftReads[! is.na(o$adriftReads$tName)]
+  
+  if(nrow(o$adriftReads) == 0) stop('Error - no adrift reads aligned to the reference.')
+  
   rm(param, adriftReads, adriftReadsAlignments)
   gc()
   

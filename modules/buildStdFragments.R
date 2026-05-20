@@ -1,24 +1,25 @@
 #!/usr/bin/env -S Rscript --vanilla
-for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'BiocParallel', 'stringi', 'fst')) suppressPackageStartupMessages(library(p, character.only = TRUE))
+for (p in c('argparse', 'tidyverse', 'parallel', 'data.table', 'BiocParallel', 'stringi', 'igraph')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
-parser$add_argument("--outputDir",                     type = "character",  required = TRUE,               help = "Directory for output files")
-parser$add_argument("--inputData",                     type = "character",  required = TRUE,               help = "Path to demultiplex module's rds output file.")
-parser$add_argument("--softwareRoot",                  type = "character",  required = TRUE,               help = "Path to AAVengeR installation.")
-parser$add_argument("--threads",                       type = "integer",    default = 50,                  help = "Number of threads to use.")
-parser$add_argument("--fileTag",                       type = "character",  default = "buildStdFragments", help = "String appended to output files in the outpt directory.")
-parser$add_argument("--ramDiskPath",                   type = "character",  default = "/dev/shm",          help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-parser$add_argument("--clusterLeaderSeqs",           action = "store_true", default = FALSE, help = 'Cluster leader sequences and consider when building fragments.')
-parser$add_argument("--disableBreakPointPosStd",     action = "store_true", default = FALSE, help = 'Disable break point standardization.')
-parser$add_argument("--disableIntSitePosStd",        action = "store_true", default = FALSE, help = 'Disable intSite position standardization.')
-parser$add_argument("--leaderSeqClusteringParams",     type = "character",  default =  "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = 'Clustering params for clustering leader sequences.')
-parser$add_argument("--UMIclusteringParams",           type = "character",  default =  "-c 0.80 -d 0 -M 0", help = 'Clustering params for clustering UMIs.')
-parser$add_argument("--anchorReadClusterParams",       type = "character",  default =  "-c 0.87 -d 0 -M 0 -g 1 -r 0 -ap 1 -G 0 -n 5 -gap -10 -gap-ext -5 -aS 0.95 -aL 0.95", help = 'Clustering params for clustering the start of anchor read sequences.')
-parser$add_argument("--anchorReadClusterLen",          type = "integer",    default = 30, help = 'Length of anchor read sequences to test for rearrangments.')
-parser$add_argument("--anchorReadClusterMinAbundDiff", type = "integer",    default = 5,  help = 'When clustering anchor read sequences, min. difference between 1st and 2nd most abundant sequence clusters to pick a winner.')
-parser$add_argument("--anchorReadClusterMinReadMult",  type = "integer",    default = 10, help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
-parser$add_argument("--UMIclusterMinReadMult",         type = "integer",    default = 5,  help = 'When clustering UMI sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winning target.')
-parser$add_argument("--minReadsPerFrag",               type = "integer",    default = 1,  help = 'Min. number of reads to accept a fragment.')
+parser$add_argument("--outputDir",                     type = "character",   required = TRUE,                help = "Directory for output files")
+parser$add_argument("--inputData",                     type = "character",   required = TRUE,                help = "Path to demultiplex module's rds output file.")
+parser$add_argument("--softwareRoot",                  type = "character",   required = TRUE,                help = "Path to INSPIIRED2 installation.")
+parser$add_argument("--threads",                       type = "integer",     default  = 30,                  help = "Number of threads to use.")
+parser$add_argument("--fileTag",                       type = "character",   default  = "buildStdFragments", help = "String appended to output files in the outpt directory.")
+parser$add_argument("--ramDiskPath",                   type = "character",   default  = "/dev/shm",          help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--clusterLeaderSeqs",           action = "store_true",  default  = FALSE,               help = 'Cluster leader sequences and consider when building fragments.')
+parser$add_argument("--disableBreakPointPosStd",     action = "store_true",  default  = FALSE,               help = 'Disable break point standardization.')
+parser$add_argument("--disableIntSitePosStd",        action = "store_true",  default  = FALSE,               help = 'Disable intSite position standardization.')
+parser$add_argument("--anchorReadClusterLen",          type = "integer",     default  = 30,                  help = 'Length of anchor read sequences to test for rearrangments.')
+parser$add_argument("--anchorReadClusterMinAbundDiff", type = "integer",     default  = 5,                   help = 'When clustering anchor read sequences, min. difference between 1st and 2nd most abundant sequence clusters to pick a winner.')
+parser$add_argument("--anchorReadClusterMinReadMult",  type = "integer",     default  = 10,                  help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
+parser$add_argument("--UMIclusterMinReadMult",         type = "integer",     default  = 5,                   help = 'When clustering UMI sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winning target.')
+parser$add_argument("--minReadsPerFrag",               type = "integer",     default  = 1,                   help = 'Min. number of reads to accept a fragment.')
+parser$add_argument("--UMIclusteringParams",           type = "character",   default  =  "-c 0.80 -d 0 -M 0 -g 1 -r 0 -n 4 -G 1",                                       help = 'Clustering params for clustering UMIs.')
+parser$add_argument("--leaderSeqClusteringParams",     type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -aS 0.80",                              help = 'Clustering params for clustering leader sequences.')
+parser$add_argument("--multiHitclusteringParams",      type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
+parser$add_argument("--anchorReadClusterParams",       type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
 
 runModule <- function(){
   startModule()
@@ -33,10 +34,10 @@ runModule <- function(){
   
   updateLog('Starting buildStdFragment module.')
   
-  frags <- setDT(readRDS(args$inputData))
+  if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', file.exists(args$inputData), ') does not exist.'))
+  if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', file.exists(args$inputData), ') is empty.'))
   
-  # fac_cols <- names(frags)[sapply(frags, is.factor)]
-  # frags[, (fac_cols) := lapply(.SD, as.character), .SDcols = fac_cols]
+  frags <- setDT(readRDS(args$inputData))
  
   
   # leaderSeq clustering (optional)
@@ -58,6 +59,9 @@ runModule <- function(){
     
     # Rename the clusters using table `o` so that the clusters with the highest number of reads are numbered the lowest.
     r <- parse_cdhit_clstr(clstr_path)
+    
+    browser()
+    
     r <- left_join(r, o[, c('n', 'readID')], by = 'readID')
     k <- group_by(r, cluster_id) %>% summarise(newClusterID = paste('Cluster', min(n))) %>% ungroup()
     r <- left_join(r, k, by = 'cluster_id')
@@ -71,6 +75,7 @@ runModule <- function(){
   } else {
     frags$leaderSeqGroupNum <- 1
   }
+  
   
   # Build fragment ids and separate reads for position standardization.
   #-----------------------------------------------------------------------------
@@ -389,9 +394,20 @@ runModule <- function(){
       r <- frags_multPosIDs[frags_multPosIDs$rescue == TRUE]
       updateLog(paste0(ppNum(nrow(r)), ' reads rescued from multihit read table.'))
       frags_uniqPosIDs <- rbindlist(list(frags_uniqPosIDs, r[, 'rescue' := NULL]))
+      frags_multPosIDs <- frags_multPosIDs[! frags_multPosIDs$readID %in% frags_uniqPosIDs$readID]
     }
   }
   
+  saveRDS(frags_multPosIDs, file = file.path(args$outputDir, paste0(args$fileTag, '_multHitFrags.rds')))
+  
+  
+  # Build multihit clusters
+  #-----------------------------------------------------------------------------
+  updateLog('Building multi-hit clusters.')
+  multiHit_clusters <- rbindlist(lapply(split(frags_multPosIDs, by = c('trial', 'subject'), flatten = TRUE, sorted = TRUE), build_multiHit_clusters))
+  saveRDS(multiHit_clusters, file = file.path(args$outputDir, paste0(args$fileTag, '_multHitClusters.rds')))
+
+
   
   # Anchor read cluster filter
   #-----------------------------------------------------------------------------
@@ -477,7 +493,7 @@ runModule <- function(){
     s
   }))
 
-  saveRDS(anchorReadClusterDecisionTable, file.path(args$outputDir, paste0(args$fileTag, '_arc.rds')))
+  saveRDS(anchorReadClusterDecisionTable, file.path(args$outputDir, paste0(args$fileTag, '_anchorReadClusters.rds')))
   updateLog(paste0('Removing ', n_distinct(subset(frags_uniqPosIDs, remove == TRUE)$readID), ' reads due to not being the clear choice.'))
   frags_uniqPosIDs <- subset(frags_uniqPosIDs, remove == FALSE)
   frags_uniqPosIDs <- setDT(dplyr::select(frags_uniqPosIDs, -testSeq, -cluster_id, -remove))
@@ -523,10 +539,11 @@ runModule <- function(){
     x
   }))
   
-  saveRDS(UMIclusterDecisionTable, file.path(args$outputDir, paste0(args$fileTag, '_urc.rds')))
+  saveRDS(UMIclusterDecisionTable, file.path(args$outputDir, paste0(args$fileTag, '_UMIclusters.rds')))
   updateLog(paste0('UMI filter - removing ', n_distinct(subset(frags_uniqPosIDs, remove == TRUE)$readID), ' reads due to not being the clear choice.'))
   frags_uniqPosIDs <- subset(frags_uniqPosIDs, remove == FALSE)
   frags_uniqPosIDs <- dplyr::select(frags_uniqPosIDs, -remove)
+  
   
   # Count the number of reads associated with each fragment.
   # fragments with more than one read, i > 1, need additional processing.
@@ -591,7 +608,6 @@ runModule <- function(){
   updateLog('buildFragments module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
-
 
 args <- parser$parse_args()
 source(file.path(args$softwareRoot, 'lib.R'))

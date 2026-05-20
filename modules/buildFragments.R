@@ -1,5 +1,5 @@
 #!/usr/bin/env -S Rscript --vanilla
-for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'BiocParallel', 'stringi', 'fst')) suppressPackageStartupMessages(library(p, character.only = TRUE))
+for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'BiocParallel', 'stringi')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",               type = "character",     required = TRUE,            help = "Directory for output files")
@@ -24,6 +24,9 @@ runModule <- function(){
   }, add = TRUE)
   
   updateLog('Starting buildFragment module.')
+  
+  if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', file.exists(args$inputData), ') does not exist.'))
+  if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', file.exists(args$inputData), ') is empty.'))
   
   o <- readRDS(args$inputData)
   setkey(o$anchorReads, readID)

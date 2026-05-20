@@ -1,5 +1,5 @@
 #!/usr/bin/env -S Rscript --vanilla
-for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'BiocParallel', 'stringi')) suppressPackageStartupMessages(library(p, character.only = TRUE))
+for (p in c('argparse', 'tidyverse', 'data.table', 'stringi')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",               type = "character",     required = TRUE,         help = "Directory for output files")
@@ -8,11 +8,11 @@ parser$add_argument("--softwareRoot",            type = "character",     require
 parser$add_argument("--threads",                 type = "integer",       default = 50,            help = "Number of threads to use.")
 parser$add_argument("--fileTag",                 type = "character",     default = "buildSites",  help = "String appended to output files in the outpt directory.")
 parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",    help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-parser$add_argument("--disableDualDetect",       action = "store_true",  default = FALSE,         help = "xxx")
-parser$add_argument("--dualDetectWidth",         type = "integer",       default = 6,             help = "xxx")
-parser$add_argument("--integraseCorrectionDist", type = "integer",       default = 2,             help = "xxx")
-parser$add_argument("--sumSonicBreaksWithin",    type = "character",     default = "samples",     help = "xxx") 
-parser$add_argument("--leadSeqClusteringParms",  type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "xxx")
+parser$add_argument("--disableDualDetect",       action = "store_true",  default = FALSE,         help = "Diable the merging of U5 and U3 samples into dual-detection sites.")
+parser$add_argument("--dualDetectWidth",         type = "integer",       default = 6,             help = "Radius for searching for dual-detections.")
+parser$add_argument("--integraseCorrectionDist", type = "integer",       default = 2,             help = "Integrase correction value (NT) to account for gDNA duplication caused by integration.")
+parser$add_argument("--sumSonicBreaksWithin",    type = "character",     default = "samples",     help = "Sum sonic breaks within either 'samples' (default) or within sample 'replicates'.") 
+parser$add_argument("--leadSeqClusteringParms",  type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
 
 runModule <- function(){
   startModule()
@@ -25,15 +25,21 @@ runModule <- function(){
     unlink(args$ramDisk, recursive = TRUE, force = TRUE)
   }, add = TRUE)
   
-  updateLog('Starting buildSites module.')
   
+  updateLog('Starting buildSites module.')
+  if(! args$sumSonicBreaksWithin %in% c('samples', 'replicates')) stop("Error - the flag --sumSonicBreaksWithin must be set to with 'samples' or 'replicates'.")
+  
+  if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', file.exists(args$inputData), ') does not exist.'))
+  if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', file.exists(args$inputData), ') is empty.'))
   frags <- readRDS(args$inputData)
   
+  # Define fragment widths.
   frags$fragWidths <- frags$fragEnd - frags$fragStart + 1
   
+  # Define fragment IDs.
   frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, 
                           fragStrand, fragStart, fragEnd, sep = ":")]
-
+  
   if(! args$disableDualDetect & 'IN_u5' %in% frags$mode & 'IN_u3' %in% frags$mode){
     updateLog('Searching for dual detections.')
     
@@ -66,7 +72,7 @@ runModule <- function(){
             
             if(nrow(f1) == 0 | nrow(f2) == 0) return()
             
-            updateLog(paste0('Processing U3 posid ', u3_posid, ' as a dual detection with ', nrow(f2), ' U5 fragments.'))
+            updateLog(paste0('   Processing U3 posid ', u3_posid, ' as a dual detection with ', nrow(f2), ' U5 fragments.'))
             
             # Records processed u5 fragments 
             i <- which(frags$fragID %in% c(f1$fragID, f2$fragID))
@@ -89,6 +95,9 @@ runModule <- function(){
             
             # Find the most common fragment intSite position from combined fragments.
             pos <- names(sort(table(sub('[\\+\\-]', '', stringr::str_extract(frags[i,]$posid, '[\\+\\-]\\d+'))), decreasing = TRUE))[1]
+            
+            # Let a leaderSeqGroupNum value of zero represent dual-detections.
+            frags[i,]$leaderSeqGroupNum <<- 0
 
             if(strand == '-'){
               frags[i,]$fragStrand <<- '+'                  # Set the u3 frag strands to positive to reflect correct orientation. U5 posid already '+'.
@@ -101,7 +110,10 @@ runModule <- function(){
         }))
       }
     }))
+  }
     
+  if('IN_u5' %in% frags$mode | 'IN_u3' %in% frags$mode){
+    updateLog('Updating strandedness of U5 and U3 intSite calls.')
     
     frags <- bind_rows(lapply(split(frags, paste(frags$trial, frags$subject, frags$sample)), function(x){
       a <- subset(frags, trial == x$trial[1] & subject == x$subject[1] & sample == x$sample[1] & mode == 'dual detect')
@@ -142,6 +154,11 @@ runModule <- function(){
     }))
   }
   
+  # At this point, now that we're done parsing position ids, we can add leaderSeq
+  # identifiers if more than one leaderSeqGroupNum is present. 
+  
+  if(n_distinct(frags$leaderSeqGroupNum) > 1) frags$posid <- paste0(frags$posid, '.', frags$leaderSeqGroupNum)
+  
   consensusLeaderSeq <- function(x){
     tab <- dplyr::group_by(x, repLeaderSeq) %>% 
            dplyr::summarise(nWidths = n_distinct(fragWidths), nReads = sum(reads)) %>% 
@@ -168,6 +185,7 @@ runModule <- function(){
   # Create a sample + posid grouping vector.
   frags <- group_by(frags, trial, subject, sample, posid) %>% mutate(g = cur_group_id()) %>% ungroup() %>% data.table()
   
+  updateLog('Gather fragments into intSite events.')
   sites <- bind_rows(lapply(split(frags, frags$g), function(x){
              # Loop through replicates for this site defined by 'g'
              r <- bind_cols(lapply(min(frags$replicate):max(frags$replicate), function(r){
@@ -206,6 +224,7 @@ runModule <- function(){
   # Set nRepsObs to NA for dual detections since these have values of 1 after moving dual detection to rep-0.
   sites[sites$mode == 'dual detect',]$nRepsObs <- NA
   
+  updateLog('Collapsing replicate level sites into sample level records.')
   sites <- group_by(sites, trial, subject, sample) %>%
            mutate(sampleAbund = sum(sonicLengths)) %>%
            ungroup() %>%
@@ -213,6 +232,17 @@ runModule <- function(){
            mutate(percentSampleRelAbund = round((sonicLengths/sampleAbund[1]) * 100, 2), .after = 'nRepsObs') %>%
            ungroup() %>%
            select(-sampleAbund)
+  
+  updateLog('Sample level site summary:')
+  ts <- paste0(base::format(Sys.time(), "%m.%d.%Y"), ' [', timeElapsedString(), "]")
+  siteSummary <- group_by(sites, trial, subject, sample) %>% 
+                 summarise(nSites = n_distinct(posid), .groups = 'drop') %>% 
+                 ungroup() %>%
+                 mutate(timeStamp = ts, .before = trial) %>%
+                 mutate(across(everything(), as.character))
+  siteSummary <- rbind(names(siteSummary), siteSummary)
+  siteSummary[1,1] <- ts
+  write.table(siteSummary, file =  args$logFile, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE,  append = TRUE)
   
   saveRDS(sites, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('buildSites module completed.')

@@ -4,12 +4,14 @@ for (p in c('argparse', 'dplyr')) suppressPackageStartupMessages(library(p, char
 parser <- ArgumentParser(prog = "inspiired", description = "inspiired: Automated Vector Integration Analysis")
 
 version_file <- file.path(this.path::this.dir(), "VERSION")
-aavenger_version <- if (file.exists(version_file)) readLines(version_file, n = 1) else NA
-parser$add_argument("-v", "--version", action = "version", version = paste("inspiired", aavenger_version))
+version <- if (file.exists(version_file)) readLines(version_file, n = 1) else NA
+parser$add_argument("-v", "--version", action = "version", version = paste("inspiired", version))
 
 subparsers <- parser$add_subparsers(dest = "module", help = "inspiired modules")
 
-# Do not include --softwareRoot flags in sub parsers.
+# Define parameters for each module.
+# The parameters must match the parameters defined at the top of each module except that --softwareRoot flags should be excluded here.
+
 demux_parser <- subparsers$add_parser("demultiplex", help = "Separate reads by barcode")
 demux_parser$add_argument("--outputDir",                    type = "character",     required = TRUE,                  help = "Directory for output files")
 demux_parser$add_argument("--sampleData",                   type = "character",     required = TRUE,                  help = "Sample definition file")
@@ -62,7 +64,7 @@ alr_parser$add_argument("--blatMaxtNumInsert",       type = "integer",       def
 alr_parser$add_argument("--blatMaxqNumInsert",       type = "integer",       default = 1,              help = "BLAT max number of query inserts.")
 alr_parser$add_argument("--blatMaxtBaseInsert",      type = "integer",       default = 1,              help = "BLAT max number of target insert NTs.")
 alr_parser$add_argument("--blatMaxqBaseInsert",      type = "integer",       default = 1,              help = "BLAT max number of target insert NTs.")
-alr_parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 5000,           help = "Numbers of data rows to process per alignment worker.")
+alr_parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 1000,           help = "Numbers of data rows to process per alignment worker.")
 
 bdf_parser <- subparsers$add_parser("buildFragments", help = "Build genomic fragments from alignment data.")
 bdf_parser$add_argument("--outputDir",               type = "character",     required = TRUE,            help = "Directory for output files")
@@ -72,25 +74,29 @@ bdf_parser$add_argument("--fileTag",                 type = "character",     def
 bdf_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",       help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
 bdf_parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 5000,             help = "Numbers of data rows to process per alignment worker.")
 bdf_parser$add_argument("--minFrgamentLength",       type = "integer",       default = 50,               help = "Min. Fragment length.")
-bdf_parser$add_argument("--maxFrgamentLength",       type = "integer",       default = 100000L,           help = "Max. Fragment length.")
+bdf_parser$add_argument("--maxFrgamentLength",       type = "integer",       default = 100000L,          help = "Max. Fragment length.")
 
 bsf_parser <- subparsers$add_parser("buildStdFragments",   help = "Standardize genomic fragments.")
-bsf_parser$add_argument("--outputDir",                     type = "character",  required = TRUE,               help = "Directory for output files")
-bsf_parser$add_argument("--inputData",                     type = "character",  required = TRUE,               help = "Path to demultiplex module's rds output file.")
-bsf_parser$add_argument("--threads",                       type = "integer",    default = 50,                  help = "Number of threads to use.")
-bsf_parser$add_argument("--fileTag",                       type = "character",  default = "buildStdFragments", help = "String appended to output files in the outpt directory.")
-bsf_parser$add_argument("--ramDiskPath",                   type = "character",  default = "/dev/shm",          help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-bsf_parser$add_argument("--clusterLeaderSeqs",           action = "store_true", default = FALSE, help = 'Cluster leader sequences and consider when building fragments.')
-bsf_parser$add_argument("--disableBreakPointPosStd",     action = "store_true", default = FALSE, help = 'Disable break point standardization.')
-bsf_parser$add_argument("--disableIntSitePosStd",        action = "store_true", default = FALSE, help = 'Disable intSite position standardization.')
-bsf_parser$add_argument("--leaderSeqClusteringParams",     type = "character",  default =  "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = 'Clustering params for clustering leader sequences.')
-bsf_parser$add_argument("--UMIclusteringParams",           type = "character",  default =  "-c 0.80 -d 0 -M 0", help = 'Clustering params for clustering UMIs.')
-bsf_parser$add_argument("--anchorReadClusterParams",       type = "character",  default =  "-c 0.87 -d 0 -M 0 -g 1 -r 0 -ap 1 -G 0 -n 5 -gap -10 -gap-ext -5 -aS 0.95 -aL 0.95", help = 'Clustering params for clustering the start of anchor read sequences.')
-bsf_parser$add_argument("--anchorReadClusterLen",          type = "integer",    default = 30, help = 'Length of anchor read sequences to test for rearrangments.')
-bsf_parser$add_argument("--anchorReadClusterMinAbundDiff", type = "integer",    default = 5,  help = 'When clustering anchor read sequences, min. difference between 1st and 2nd most abundant sequence clusters to pick a winner.')
-bsf_parser$add_argument("--anchorReadClusterMinReadMult",  type = "integer",    default = 10, help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
-bsf_parser$add_argument("--UMIclusterMinReadMult",         type = "integer",    default = 5,  help = 'When clustering UMI sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winning target.')
-bsf_parser$add_argument("--minReadsPerFrag",               type = "integer",    default = 1,  help = 'Min. number of reads to accept a fragment.')
+bsf_parser$add_argument("--outputDir",                     type = "character",   required = TRUE,                help = "Directory for output files")
+bsf_parser$add_argument("--inputData",                     type = "character",   required = TRUE,                help = "Path to demultiplex module's rds output file.")
+bsf_parser$add_argument("--threads",                       type = "integer",     default  = 30,                  help = "Number of threads to use.")
+bsf_parser$add_argument("--fileTag",                       type = "character",   default  = "buildStdFragments", help = "String appended to output files in the outpt directory.")
+bsf_parser$add_argument("--ramDiskPath",                   type = "character",   default  = "/dev/shm",          help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+bsf_parser$add_argument("--clusterLeaderSeqs",           action = "store_true",  default  = FALSE,               help = 'Cluster leader sequences and consider when building fragments.')
+bsf_parser$add_argument("--disableBreakPointPosStd",     action = "store_true",  default  = FALSE,               help = 'Disable break point standardization.')
+bsf_parser$add_argument("--disableIntSitePosStd",        action = "store_true",  default  = FALSE,               help = 'Disable intSite position standardization.')
+bsf_parser$add_argument("--anchorReadClusterLen",          type = "integer",     default  = 30,                  help = 'Length of anchor read sequences to test for rearrangments.')
+bsf_parser$add_argument("--anchorReadClusterMinAbundDiff", type = "integer",     default  = 5,                   help = 'When clustering anchor read sequences, min. difference between 1st and 2nd most abundant sequence clusters to pick a winner.')
+bsf_parser$add_argument("--anchorReadClusterMinReadMult",  type = "integer",     default  = 10,                  help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
+bsf_parser$add_argument("--UMIclusterMinReadMult",         type = "integer",     default  = 5,                   help = 'When clustering UMI sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winning target.')
+bsf_parser$add_argument("--minReadsPerFrag",               type = "integer",     default  = 1,                   help = 'Min. number of reads to accept a fragment.')
+bsf_parser$add_argument("--UMIclusteringParams",           type = "character",   default  =  "-c 0.80 -d 0 -M 0 -g 1 -r 0 -n 4 -G 1",                                       help = 'Clustering params for clustering UMIs.')
+bsf_parser$add_argument("--leaderSeqClusteringParams",     type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -aS 0.80",                              help = 'Clustering params for clustering leader sequences.')
+bsf_parser$add_argument("--multiHitclusteringParams",      type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
+bsf_parser$add_argument("--anchorReadClusterParams",       type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
+
+
+
 
 bst_parser <- subparsers$add_parser("buildSites",   help = "Assemble standardized fragments into integration events.")
 bst_parser$add_argument("--outputDir",               type = "character",     required = TRUE,         help = "Directory for output files")
@@ -98,11 +104,11 @@ bst_parser$add_argument("--inputData",               type = "character",     req
 bst_parser$add_argument("--threads",                 type = "integer",       default = 50,            help = "Number of threads to use.")
 bst_parser$add_argument("--fileTag",                 type = "character",     default = "buildSites",  help = "String appended to output files in the outpt directory.")
 bst_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",    help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-bst_parser$add_argument("--disableDualDetect",       action = "store_true",  default = FALSE,         help = "xxx")
-bst_parser$add_argument("--dualDetectWidth",         type = "integer",       default = 6,             help = "xxx")
-bst_parser$add_argument("--integraseCorrectionDist", type = "integer",       default = 2,             help = "xxx")
-bst_parser$add_argument("--sumSonicBreaksWithin",    type = "character",     default = "samples",     help = "xxx") 
-bst_parser$add_argument("--leadSeqClusteringParms",  type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "xxx")
+bst_parser$add_argument("--disableDualDetect",       action = "store_true",  default = FALSE,         help = "Diable the merging of U5 and U3 samples into dual-detection sites.")
+bst_parser$add_argument("--dualDetectWidth",         type = "integer",       default = 6,             help = "Radius for searching for dual-detections.")
+bst_parser$add_argument("--integraseCorrectionDist", type = "integer",       default = 2,             help = "Integrase correction value (NT) to account for gDNA duplication caused by integration.")
+bst_parser$add_argument("--sumSonicBreaksWithin",    type = "character",     default = "samples",     help = "Sum sonic breaks within either 'samples' (default) or within sample 'replicates'.") 
+bst_parser$add_argument("--leadSeqClusteringParms",  type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
 
 if (length(commandArgs(trailingOnly = TRUE)) == 0) {
   parser$print_help()
