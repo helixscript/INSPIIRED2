@@ -164,6 +164,7 @@ RUN R -e "install.packages('BiocManager', repos='http://cran.case.edu')"
 RUN R -e "library('BiocManager'); BiocManager::install('ShortRead')" && R -e "stopifnot(require('ShortRead'))"
 RUN R -e "library('BiocManager'); BiocManager::install('rtracklayer')" && R -e "stopifnot(require('rtracklayer'))"
 RUN R -e "library('BiocManager'); BiocManager::install('BiocParallel')" && R -e "stopifnot(require('BiocParallel'))"
+RUN R -e "library('BiocManager'); BiocManager::install('GenomeInfoDb')" && R -e "stopifnot(require('BiocParallel'))"
 
 # --- COPY SOFTWARE ---
 COPY INSPIIRED2 /opt/INSPIIRED2

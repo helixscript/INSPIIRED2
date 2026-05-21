@@ -101,8 +101,6 @@ bsf_parser$add_argument("--multiHitclusteringParams",      type = "character",  
 bsf_parser$add_argument("--anchorReadClusterParams",       type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
 
 
-
-
 bst_parser <- subparsers$add_parser("buildSites",   help = "Assemble standardized fragments into integration events.")
 bst_parser$add_argument("--outputDir",               type = "character",     required = TRUE,         help = "Directory for output files")
 bst_parser$add_argument("--inputData",               type = "character",     required = TRUE,         help = "Path to demultiplex module's rds output file.")
@@ -114,6 +112,21 @@ bst_parser$add_argument("--dualDetectWidth",         type = "integer",       def
 bst_parser$add_argument("--integraseCorrectionDist", type = "integer",       default = 2,             help = "Integrase correction value (NT) to account for gDNA duplication caused by integration.")
 bst_parser$add_argument("--sumSonicBreaksWithin",    type = "character",     default = "samples",     help = "Sum sonic breaks within either 'samples' (default) or within sample 'replicates'.") 
 bst_parser$add_argument("--leadSeqClusteringParms",  type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
+
+ngn_parser <- subparsers$add_parser("nearestGenes",   help = "Annotate nearest genes.")
+ngn_parser$add_argument("--outputDir",               type = "character",     required = TRUE,         help = "Directory for output files")
+ngn_parser$add_argument("--inputData",               type = "character",     required = TRUE,         help = "Path to demultiplex module's rds output file.")
+ngn_parser$add_argument("--threads",                 type = "integer",       default = 50,            help = "Number of threads to use.")
+ngn_parser$add_argument("--fileTag",                 type = "character",     default = "nearestGenes",  help = "String appended to output files in the outpt directory.")
+ngn_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",    help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+
+anr_parser <- subparsers$add_parser("annotateRepeats",   help = "Annotate repeats.")
+anr_parser$add_argument("--outputDir",               type = "character",     required = TRUE,              help = "Directory for output files")
+anr_parser$add_argument("--inputData",               type = "character",     required = TRUE,              help = "Path to demultiplex module's rds output file.")
+anr_parser$add_argument("--threads",                 type = "integer",       default = 50,                 help = "Number of threads to use.")
+anr_parser$add_argument("--fileTag",                 type = "character",     default = "annotateRepeats",  help = "String appended to output files in the outpt directory.")
+anr_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",         help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+
 
 if (length(commandArgs(trailingOnly = TRUE)) == 0) {
   parser$print_help()
