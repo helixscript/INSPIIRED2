@@ -72,6 +72,29 @@ startModule <- function(){
 }
 
 
+vector_hmm_copy <- function(){
+  # If vector directory exists, copy its contents into INSPIIRED.
+  if(dir.exists(args$vectorDir)){
+    all_items <- list.files(args$vectorDir, full.names = TRUE)
+    if(length(all_items) > 0){
+      updateLog(paste0('Copying ', length(all_items), ' files from ', args$vectorDir, ' to ', file.path(args$softwareRoot, 'data', 'vectors')))
+      files_only <- all_items[!file.info(all_items)$isdir]
+      file.copy(from = files_only, to = file.path(args$softwareRoot, 'data', 'vectors'), overwrite = TRUE)
+    }
+  }
+  
+  # If hmm directory exists, copy its contents into INSPIIRED.
+  if(dir.exists(args$hmmDir)){
+    all_items <- list.files(args$hmmDir, full.names = TRUE)
+    if(length(all_items) > 0){
+      updateLog(paste0('Copying ', length(all_items), ' files from ', args$hmmDir, ' to ', file.path(args$softwareRoot, 'data', 'hmms')))
+      files_only <- all_items[!file.info(all_items)$isdir]
+      file.copy(from = files_only, to = file.path(args$softwareRoot, 'data', 'hmms'), overwrite = TRUE)
+    }
+  }
+}
+
+
 parseBLAToutput <- function(f){
   if(! file.exists(f) | file.info(f)$size == 0) return(tibble::tibble())
   b <- readr::read_delim(f, delim = '\t', col_names = FALSE, col_types = 'iiiiiiiicciiiciiiiccc')

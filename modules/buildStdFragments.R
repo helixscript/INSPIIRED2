@@ -604,6 +604,8 @@ runModule <- function(){
   
   frags <- frags[, .(mode, refGenome, trial, subject, sample, replicate, UMI, posid, reads, repLeaderSeq, fragChromosome, fragStrand, fragStart, fragEnd, anchorReadCluster, readIDs, UMIs, leaderSeqGroupNum)]
   
+  frags$clusterLeaderSeqs <- as.factor(args$clusterLeaderSeqs)
+    
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('buildFragments module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))

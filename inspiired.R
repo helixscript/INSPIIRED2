@@ -34,6 +34,8 @@ demux_parser$add_argument("--disableAdriftReadLinkers",     action = "store_true
 demux_parser$add_argument("--adriftReadLinkerMaxMismatch",  type = "integer",       default = 1,                      help = "Number of allowed mismatches to the linker sequence.")
 demux_parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",             help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
 demux_parser$add_argument("--disableSequenceCollapse",      action = "store_true",  default = FALSE,                  help = "Disable the collapse of duplicate sequences.")
+demux_parser$add_argument("--vectorDir",                    type = "character",     default = 'none',                 help = "Path to custom vector files.")
+demux_parser$add_argument("--hmmDir",                       type = "character",     default = 'none',                 help = "Path to custom hmm files.")
 
 
 prp_parser <- subparsers$add_parser("prepReads", help = "Prepare demultiplexed reads for alignment to a reference genome.")
@@ -48,6 +50,9 @@ prp_parser$add_argument("--minReadLength",           type = "integer",       def
 prp_parser$add_argument("--vectorTestWidth",         type = "integer",       default = 25,             help = "Number of NTs at the end of reads to use to test for vector homology.")
 prp_parser$add_argument("--vectorTestMinPercentID",  type  = "double",       default = 90,             help = "Min. perecent ID (0 .. 100) to accept a vector alignment.")
 prp_parser$add_argument("--vectorTestMinCoverage",   type = "double",        default = 90,             help = "Min. test sequence converage (0 .. 100) to accept a vector alignment.")
+prp_parser$add_argument("--vectorDir",               type = "character",     default = 'none',         help = "Path to custom vector files.")
+prp_parser$add_argument("--hmmDir",                  type = "character",     default = 'none',         help = "Path to custom hmm files.")
+
 
 alr_parser <- subparsers$add_parser("alignReads", help = "Align reads to a reference genome.")
 alr_parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")

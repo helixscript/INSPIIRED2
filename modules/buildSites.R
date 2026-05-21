@@ -4,7 +4,7 @@ for (p in c('argparse', 'tidyverse', 'data.table', 'stringi')) suppressPackageSt
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",               type = "character",     required = TRUE,         help = "Directory for output files")
 parser$add_argument("--inputData",               type = "character",     required = TRUE,         help = "Path to demultiplex module's rds output file.")
-parser$add_argument("--softwareRoot",            type = "character",     required = TRUE,         help = "Path to AAVengeR installation.")
+parser$add_argument("--softwareRoot",            type = "character",     required = TRUE,         help = "Path to INSPIIRED2 installation.")
 parser$add_argument("--threads",                 type = "integer",       default = 50,            help = "Number of threads to use.")
 parser$add_argument("--fileTag",                 type = "character",     default = "buildSites",  help = "String appended to output files in the outpt directory.")
 parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",    help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -157,7 +157,7 @@ runModule <- function(){
   # At this point, now that we're done parsing position ids, we can add leaderSeq
   # identifiers if more than one leaderSeqGroupNum is present. 
   
-  if(n_distinct(frags$leaderSeqGroupNum) > 1) frags$posid <- paste0(frags$posid, '.', frags$leaderSeqGroupNum)
+  if(as.logical(frags$clusterLeaderSeqs[1]) == TRUE) frags$posid <- paste0(frags$posid, '.', frags$leaderSeqGroupNum)
   
   consensusLeaderSeq <- function(x){
     tab <- dplyr::group_by(x, repLeaderSeq) %>% 

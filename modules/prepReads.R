@@ -4,7 +4,7 @@ for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'Bio
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")
 parser$add_argument("--inputData",               type = "character",     required = TRUE,          help = "Path to demultiplex module's rds output file.")
-parser$add_argument("--softwareRoot",            type = "character",     required = TRUE,          help = "Path to AAVengeR installation.")
+parser$add_argument("--softwareRoot",            type = "character",     required = TRUE,          help = "Path to INSPIIRED installation.")
 parser$add_argument("--threads",                 type = "integer",       default = 50,             help = "Number of threads to use.")
 parser$add_argument("--fileTag",                 type  = "character",    default = "prepReads",    help = "String appended to output files in the outpt directory.")
 parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",     help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -14,6 +14,8 @@ parser$add_argument("--minReadLength",           type = "integer",       default
 parser$add_argument("--vectorTestWidth",         type = "integer",       default = 25,             help = "Number of NTs at the end of reads to use to test for vector homology.")
 parser$add_argument("--vectorTestMinPercentID",  type  = "double",       default = 90,             help = "Min. perecent ID (0 .. 100) to accept a vector alignment.")
 parser$add_argument("--vectorTestMinCoverage",   type = "double",        default = 90,             help = "Min. test sequence converage (0 .. 100) to accept a vector alignment.")
+parser$add_argument("--vectorDir",               type = "character",     default = 'none',         help = "Path to custom vector files.")
+parser$add_argument("--hmmDir",                  type = "character",     default = 'none',         help = "Path to custom hmm files.")
 
 runModule <- function(){
   startModule()
@@ -30,6 +32,8 @@ runModule <- function(){
   
   if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', file.exists(args$inputData), ') does not exist.'))
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', file.exists(args$inputData), ') is empty.'))
+  
+  vector_hmm_copy()
   
   d <- readRDS(args$inputData)
   

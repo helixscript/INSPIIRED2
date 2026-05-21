@@ -24,6 +24,8 @@ parser$add_argument("--disableAdriftReadLinkers",     action = "store_true",  de
 parser$add_argument("--disableSequenceCollapse",      action = "store_true",  default = FALSE,                  help = "Disable the collapse of duplicate sequences.")
 parser$add_argument("--adriftReadLinkerMaxMismatch",  type = "integer",       default = 1,                      help = "Number of allowed mismatches to the linker sequence.")
 parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",             help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--vectorDir",                    type = "character",     default = 'none',                 help = "Path to custom vector files.")
+parser$add_argument("--hmmDir",                       type = "character",     default = 'none',                 help = "Path to custom hmm files.")
 
 runModule <- function(){
   startModule()
@@ -44,6 +46,8 @@ runModule <- function(){
     updateLog(paste0('Error - sampleData file does not exits. Provided path: ', args$sampleData)) 
     quit(status = 1)
   }
+  
+  vector_hmm_copy()
   
   sampleData <- read_tsv(args$sampleData, show_col_types = FALSE)
   
