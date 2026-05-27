@@ -140,6 +140,7 @@ runModule <- function(){
   updateLog(paste0(ppNum(n_distinct(adriftReadsAlignments$qName)), ' adrift reads returned one or more alignments.'))
  
   o$adriftReads <- left_join(adriftReads, adriftReadsAlignments, by = c('seqNum' = 'qName'), relationship = "many-to-many")
+  
   o$adriftReads <- o$adriftReads[! is.na(o$adriftReads$tName)]
   
   if(nrow(o$adriftReads) == 0) stop('Error - no adrift reads aligned to the reference.')
@@ -154,10 +155,10 @@ runModule <- function(){
   o$anchorReads$seqNum <- NULL
   o$adriftReads$seqNum <- NULL
   
-  o$anchorReads$trial     <- as.character(o$anchorReads$trial);    o$adriftReads$trial     <- as.character(o$adriftReads$trial)
-  o$anchorReads$subject   <- as.character(o$anchorReads$subject);  o$adriftReads$subject   <- as.character(o$adriftReads$subject)
-  o$anchorReads$sample    <- as.character(o$anchorReads$sample);   o$adriftReads$sample    <- as.character(o$adriftReads$sample)
-  o$anchorReads$replicate <- as.integer(o$anchorReads$replicate);  o$adriftReads$replicate <- as.integer(o$adriftReads$replicate)
+  o$anchorReads$trial     <- as.factor(o$anchorReads$trial);      o$adriftReads$trial     <- as.factor(o$adriftReads$trial)
+  o$anchorReads$subject   <- as.factor(o$anchorReads$subject);    o$adriftReads$subject   <- as.factor(o$adriftReads$subject)
+  o$anchorReads$sample    <- as.factor(o$anchorReads$sample);     o$adriftReads$sample    <- as.factor(o$adriftReads$sample)
+  o$anchorReads$replicate <- as.factor(o$anchorReads$replicate);  o$adriftReads$replicate <- as.factor(o$adriftReads$replicate)
   
   saveRDS(o, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('alignReads module completed.')

@@ -16,6 +16,12 @@ parser$add_argument("--anchorReadClusterMinAbundDiff", type = "integer",     def
 parser$add_argument("--anchorReadClusterMinReadMult",  type = "integer",     default  = 10,                  help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
 parser$add_argument("--UMIclusterMinReadMult",         type = "integer",     default  = 5,                   help = 'When clustering UMI sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winning target.')
 parser$add_argument("--minReadsPerFrag",               type = "integer",     default  = 1,                   help = 'Min. number of reads to accept a fragment.')
+parser$add_argument("--intSite_sp_window",             type = "integer",     default  = 8,                   help = 'Max search distance (in NT) for intSites candidate anchor points.')
+parser$add_argument("--intSite_sp_local_radius",       type = "integer",     default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
+parser$add_argument("--intSite_sp_sd_shrink",          type = "double",      default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
+parser$add_argument("--breakPoint_sp_window",          type = "integer",     default  = 5,                   help = 'Max search distance (in NT) for breakpoint candidate anchor points.')
+parser$add_argument("--breakPoint_sp_local_radius",    type = "integer",     default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
+parser$add_argument("--breakPoint_sp_sd_shrink",       type = "double",      default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
 parser$add_argument("--UMIclusteringParams",           type = "character",   default  =  "-c 0.80 -d 0 -M 0 -g 1 -r 0 -n 4 -G 1",                                       help = 'Clustering params for clustering UMIs.')
 parser$add_argument("--leaderSeqClusteringParams",     type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -aS 0.80",                              help = 'Clustering params for clustering leader sequences.')
 parser$add_argument("--multiHitclusteringParams",      type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
@@ -38,9 +44,15 @@ runModule <- function(){
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
   
   frags <- setDT(readRDS(args$inputData))
+  
+  # Drop factors to ensure split.data.table works as expected.
+  frags$trial     <- as.character(frags$trial)
+  frags$subject   <- as.character(frags$subject)
+  frags$sample    <- as.character(frags$sample)
+  frags$replicate <- as.integer(as.character(frags$replicate))
  
   
-  # leaderSeq clustering (optional)
+  # leaderSeq clustering
   #-----------------------------------------------------------------------------
   if(args$clusterLeaderSeqs){
     orgFragRowCount <- nrow(frags)
@@ -59,8 +71,6 @@ runModule <- function(){
     
     # Rename the clusters using table `o` so that the clusters with the highest number of reads are numbered the lowest.
     r <- parse_cdhit_clstr(clstr_path)
-    
-    browser()
     
     r <- left_join(r, o[, c('n', 'readID')], by = 'readID')
     k <- group_by(r, cluster_id) %>% summarise(newClusterID = paste('Cluster', min(n))) %>% ungroup()
@@ -104,7 +114,7 @@ runModule <- function(){
                                   start = fragStart, 
                                   end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(start, end, reads)
 
-               tab2 <- standardize_positions(tab, side = 'left', window = 10)
+               tab2 <- standardize_positions(tab, side = 'left', window = args$intSite_sp_window, local_radius = args$intSite_sp_local_radius, sd_shrink = args$intSite_sp_sd_shrink)
                update <- unique(data.table(fragStart = tab$start, newFragStart = tab2$start))
                
                preJoinRows <- nrow(x)
@@ -121,7 +131,7 @@ runModule <- function(){
                            strand = fragStrand, 
                            start = fragStart, 
                            end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end, start, reads)
-        tab2 <- standardize_positions(tab, side = 'right', window = 10)
+        tab2 <- standardize_positions(tab, side = 'right', window = args$intSite_sp_window, local_radius = args$intSite_sp_local_radius, sd_shrink = args$intSite_sp_sd_shrink)
 
         update <- unique(data.table(fragEnd = tab$end, newFragEnd = tab2$end))
         
@@ -169,7 +179,7 @@ runModule <- function(){
                         strand = fragStrand, 
                         start = fragStart, 
                         end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end, start, reads)
-        tab2 <- standardize_positions(tab, side = 'right', window = 5)
+        tab2 <- standardize_positions(tab, side = 'right', window = args$breakPoint_sp_window, local_radius = args$breakPoint_sp_local_radius, sd_shrink = args$breakPoint_sp_sd_shrink)
         update <- unique(data.table(fragEnd = tab$end, newFragEnd = tab2$end))
         preJoinRows <- nrow(x)
         x <- left_join(x, update, by = 'fragEnd')
@@ -185,7 +195,7 @@ runModule <- function(){
                         strand = fragStrand, 
                         start = fragStart, 
                         end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(start, end, reads)
-        tab2 <- standardize_positions(tab, side = 'left', window = 5)
+        tab2 <- standardize_positions(tab, side = 'left', window = args$breakPoint_sp_window, local_radius = args$breakPoint_sp_local_radius, sd_shrink = args$breakPoint_sp_sd_shrink)
         update <- unique(data.table(fragStart = tab$start, newFragStart = tab2$start))
         preJoinRows <- nrow(x)
         x <- left_join(x, update, by = 'fragStart')

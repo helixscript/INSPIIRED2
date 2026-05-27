@@ -157,6 +157,7 @@ RUN R -e "install.packages('kableExtra', repos='http://cran.case.edu')" && R -e 
 RUN R -e "install.packages('fst', repos='http://cran.case.edu')" && R -e "stopifnot(require('fst'))"
 RUN R -e "install.packages('stringi', repos='http://cran.case.edu')" && R -e "stopifnot(require('stringi'))"
 RUN R -e "install.packages('this.path', repos='http://cran.case.edu')" && R -e "stopifnot(require('this.path'))"
+RUN R -e "install.packages('arrow', repos='http://cran.case.edu')" && R -e "stopifnot(require('arrow'))"
 
 # --- BIOCONDUCTOR PACKAGES ---
 RUN R -e "install.packages('BiocManager', repos='http://cran.case.edu')"
@@ -164,9 +165,9 @@ RUN R -e "install.packages('BiocManager', repos='http://cran.case.edu')"
 RUN R -e "library('BiocManager'); BiocManager::install('ShortRead')" && R -e "stopifnot(require('ShortRead'))"
 RUN R -e "library('BiocManager'); BiocManager::install('rtracklayer')" && R -e "stopifnot(require('rtracklayer'))"
 RUN R -e "library('BiocManager'); BiocManager::install('BiocParallel')" && R -e "stopifnot(require('BiocParallel'))"
-RUN R -e "library('BiocManager'); BiocManager::install('GenomeInfoDb')" && R -e "stopifnot(require('BiocParallel'))"
+RUN R -e "library('BiocManager'); BiocManager::install('GenomeInfoDb')" && R -e "stopifnot(require('GenomeInfoDb'))"
 
 # --- COPY SOFTWARE ---
 COPY INSPIIRED2 /opt/INSPIIRED2
-RUN chmod +x /opt/INSPIIRED2/inspiired.R
-RUN ln -s /opt/INSPIIRED2/inspiired.R /usr/bin/inspiired
+RUN chmod +x /opt/INSPIIRED2/inspiired2.R
+RUN ln -s /opt/INSPIIRED2/inspiired2.R /usr/bin/inspiired2

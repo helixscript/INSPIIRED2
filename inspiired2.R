@@ -1,13 +1,13 @@
 #!/usr/bin/env -S Rscript --vanilla
 for (p in c('argparse', 'dplyr')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
-parser <- ArgumentParser(prog = "inspiired", description = "inspiired: Automated Vector Integration Analysis")
+parser <- ArgumentParser(prog = "inspiired2", description = "inspiired2: Automated Vector Integration Analysis")
 
 version_file <- file.path(this.path::this.dir(), "VERSION")
 version <- if (file.exists(version_file)) readLines(version_file, n = 1) else NA
-parser$add_argument("-v", "--version", action = "version", version = paste("inspiired", version))
+parser$add_argument("-v", "--version", action = "version", version = paste("inspiired2", version))
 
-subparsers <- parser$add_subparsers(dest = "module", help = "inspiired modules")
+subparsers <- parser$add_subparsers(dest = "module", help = "inspiired2 modules")
 
 # Define parameters for each module.
 # The parameters must match the parameters defined at the top of each module except that --softwareRoot flags should be excluded here.
@@ -37,7 +37,6 @@ demux_parser$add_argument("--disableSequenceCollapse",      action = "store_true
 demux_parser$add_argument("--vectorDir",                    type = "character",     default = 'none',                 help = "Path to custom vector files.")
 demux_parser$add_argument("--hmmDir",                       type = "character",     default = 'none',                 help = "Path to custom hmm files.")
 
-
 prp_parser <- subparsers$add_parser("prepReads", help = "Prepare demultiplexed reads for alignment to a reference genome.")
 prp_parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")
 prp_parser$add_argument("--inputData",               type = "character",     required = TRUE,          help = "Path to demultiplex module's rds output file.")
@@ -52,7 +51,6 @@ prp_parser$add_argument("--vectorTestMinPercentID",  type  = "double",       def
 prp_parser$add_argument("--vectorTestMinCoverage",   type = "double",        default = 90,             help = "Min. test sequence converage (0 .. 100) to accept a vector alignment.")
 prp_parser$add_argument("--vectorDir",               type = "character",     default = 'none',         help = "Path to custom vector files.")
 prp_parser$add_argument("--hmmDir",                  type = "character",     default = 'none',         help = "Path to custom hmm files.")
-
 
 alr_parser <- subparsers$add_parser("alignReads", help = "Align reads to a reference genome.")
 alr_parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")
@@ -77,9 +75,11 @@ bdf_parser$add_argument("--inputData",               type = "character",     req
 bdf_parser$add_argument("--threads",                 type = "integer",       default = 50,               help = "Number of threads to use.")
 bdf_parser$add_argument("--fileTag",                 type = "character",     default = "buildFragments", help = "String appended to output files in the outpt directory.")
 bdf_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",       help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-bdf_parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 5000,             help = "Numbers of data rows to process per alignment worker.")
+bdf_parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 5000L,            help = "Numbers of data rows to process per alignment worker.")
 bdf_parser$add_argument("--minFrgamentLength",       type = "integer",       default = 50,               help = "Min. Fragment length.")
 bdf_parser$add_argument("--maxFrgamentLength",       type = "integer",       default = 100000L,          help = "Max. Fragment length.")
+bdf_parser$add_argument("--dbConfigFile",            type = "character",     default = 'none',           help = "Path to db credential file.")
+bdf_parser$add_argument("--dbConfigID",              type = "character",     default = 'none',           help = "DB credential block identifier in db credential file.")
 
 bsf_parser <- subparsers$add_parser("buildStdFragments",   help = "Standardize genomic fragments.")
 bsf_parser$add_argument("--outputDir",                     type = "character",   required = TRUE,                help = "Directory for output files")
@@ -95,11 +95,16 @@ bsf_parser$add_argument("--anchorReadClusterMinAbundDiff", type = "integer",    
 bsf_parser$add_argument("--anchorReadClusterMinReadMult",  type = "integer",     default  = 10,                  help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
 bsf_parser$add_argument("--UMIclusterMinReadMult",         type = "integer",     default  = 5,                   help = 'When clustering UMI sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winning target.')
 bsf_parser$add_argument("--minReadsPerFrag",               type = "integer",     default  = 1,                   help = 'Min. number of reads to accept a fragment.')
+bsf_parser$add_argument("--intSite_sp_window",             type = "integer",     default  = 8,                   help = 'Max search distance (in NT) for candidate anchor points.')
+bsf_parser$add_argument("--intSite_sp_local_radius",       type = "integer",     default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
+bsf_parser$add_argument("--intSite_sp_sd_shrink",          type = "double",      default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
+bsf_parser$add_argument("--breakPoint_sp_window",          type = "integer",     default  = 5,                   help = 'Max search distance (in NT) for candidate anchor points.')
+bsf_parser$add_argument("--breakPoint_sp_local_radius",    type = "integer",     default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
+bsf_parser$add_argument("--breakPoint_sp_sd_shrink",       type = "double",      default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
 bsf_parser$add_argument("--UMIclusteringParams",           type = "character",   default  =  "-c 0.80 -d 0 -M 0 -g 1 -r 0 -n 4 -G 1",                                       help = 'Clustering params for clustering UMIs.')
 bsf_parser$add_argument("--leaderSeqClusteringParams",     type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -aS 0.80",                              help = 'Clustering params for clustering leader sequences.')
 bsf_parser$add_argument("--multiHitclusteringParams",      type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
 bsf_parser$add_argument("--anchorReadClusterParams",       type = "character",   default  =  "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
-
 
 bst_parser <- subparsers$add_parser("buildSites",   help = "Assemble standardized fragments into integration events.")
 bst_parser$add_argument("--outputDir",               type = "character",     required = TRUE,         help = "Directory for output files")
@@ -126,7 +131,6 @@ anr_parser$add_argument("--inputData",               type = "character",     req
 anr_parser$add_argument("--threads",                 type = "integer",       default = 50,                 help = "Number of threads to use.")
 anr_parser$add_argument("--fileTag",                 type = "character",     default = "annotateRepeats",  help = "String appended to output files in the outpt directory.")
 anr_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",         help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-
 
 if (length(commandArgs(trailingOnly = TRUE)) == 0) {
   parser$print_help()

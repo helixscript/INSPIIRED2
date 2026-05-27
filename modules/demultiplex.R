@@ -352,10 +352,10 @@ runModule <- function(){
   
   invisible(gc(verbose = FALSE))
   
-  o$trial     <- as.character(o$trial)
-  o$subject   <- as.character(o$subject)
-  o$sample    <- as.character(o$sample)
-  o$replicate <- as.integer(o$replicate)
+  o$trial     <- as.factor(o$trial)
+  o$subject   <- as.factor(o$subject)
+  o$sample    <- as.factor(o$sample)
+  o$replicate <- as.factor(o$replicate)
   
   updateLog(paste0('Writing ', ppNum(nrow(data)), ' reads.'))
   saveRDS(o, file.path(args$outputDir, paste0(args$fileTag, '.rds')), compress = FALSE)

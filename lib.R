@@ -21,6 +21,17 @@ updateLog <- function(msg, logFile = NULL){
 }
 
 
+createDBconnection <- function(){
+  tryCatch({
+    message(paste0('Connecting to the INSPIIRED database using cnf file "',  args$dbConfigFile, '" and group ID "', args$dbConfigID, '".'))
+    dbConnect(RMariaDB::MariaDB(), group = args$dbConfigID, default.file = args$dbConfigFile)
+  },
+  error=function(cond) {
+    stop(paste0('Error - could not connect to the database. Caught error: ', cond$message))
+  })
+}
+
+
 make_dt_iterator <- function(dt, chunk_size, chunk_num_start = 0) {
   current_row <- 1
   total_rows <- nrow(dt)
@@ -69,27 +80,40 @@ startModule <- function(){
   
   if(! dir.exists(args$ramDisk)) dir.create(args$ramDisk, recursive = TRUE)
   if(! dir.exists(args$ramDisk)) stop('Error -- could not create ram disk.')
+  
+  if(all(c('dbConfigFile', 'dbConfigID') %in% names(args))){
+    if(args$dbConfigFile != 'none' & args$dbConfigID != 'none'){
+      args$dbConn <<- createDBconnection()
+      updateLog('Established conection with database.')
+    } else {
+      args$dbConn <<- NULL
+    }
+  }
 }
 
 
 vector_hmm_copy <- function(){
   # If vector directory exists, copy its contents into INSPIIRED.
-  if(dir.exists(args$vectorDir)){
-    all_items <- list.files(args$vectorDir, full.names = TRUE)
-    if(length(all_items) > 0){
-      updateLog(paste0('Copying ', length(all_items), ' files from ', args$vectorDir, ' to ', file.path(args$softwareRoot, 'data', 'vectors')))
-      files_only <- all_items[!file.info(all_items)$isdir]
-      file.copy(from = files_only, to = file.path(args$softwareRoot, 'data', 'vectors'), overwrite = TRUE)
+  if('vectorDir' %in% names(args)){
+    if(dir.exists(args$vectorDir)){
+      all_items <- list.files(args$vectorDir, full.names = TRUE)
+      if(length(all_items) > 0){
+        updateLog(paste0('Copying ', length(all_items), ' files from ', args$vectorDir, ' to ', file.path(args$softwareRoot, 'data', 'vectors')))
+        files_only <- all_items[!file.info(all_items)$isdir]
+        file.copy(from = files_only, to = file.path(args$softwareRoot, 'data', 'vectors'), overwrite = TRUE)
+      }
     }
   }
   
   # If hmm directory exists, copy its contents into INSPIIRED.
-  if(dir.exists(args$hmmDir)){
-    all_items <- list.files(args$hmmDir, full.names = TRUE)
-    if(length(all_items) > 0){
-      updateLog(paste0('Copying ', length(all_items), ' files from ', args$hmmDir, ' to ', file.path(args$softwareRoot, 'data', 'hmms')))
-      files_only <- all_items[!file.info(all_items)$isdir]
-      file.copy(from = files_only, to = file.path(args$softwareRoot, 'data', 'hmms'), overwrite = TRUE)
+  if('hmmDir' %in% names(args)){
+    if(dir.exists(args$hmmDir)){
+      all_items <- list.files(args$hmmDir, full.names = TRUE)
+      if(length(all_items) > 0){
+        updateLog(paste0('Copying ', length(all_items), ' files from ', args$hmmDir, ' to ', file.path(args$softwareRoot, 'data', 'hmms')))
+        files_only <- all_items[!file.info(all_items)$isdir]
+        file.copy(from = files_only, to = file.path(args$softwareRoot, 'data', 'hmms'), overwrite = TRUE)
+      }
     }
   }
 }
@@ -169,7 +193,48 @@ run_blastn <- function(fastaFile, dbPath, params, threads = 1){
 }
 
 
-standardize_positions <- function(df, side = "left", window = 10, local_radius = 2, sd_shrink = 4) {
+#' Standardize Genomic Jitter using Gaussian Weighting
+#'
+#' This function standardizes high-throughput genomic fragment boundaries by 
+#' executing an optimized, two-tier "Competitive Mapping" algorithm engineered 
+#' for performance at scale using data.table.
+#'
+#' @param df A data.table or data.frame containing genomic fragment 
+#'   records. Must include seqnames, strand, reads, 
+#'   start, and end columns.
+#' @param side Character string, either "left" or "right". Controls 
+#'   which side of the genomic fragments is targeted as the active track for 
+#'   stabilization. Setting it to "left" focuses processing and 
+#'   adjustments entirely on the fragment start positions, whereas "right" 
+#'   targets the fragment end positions. Changing this parameter 
+#'   shifts the directional focus, allowing back-to-back runs to cleanly "box in" 
+#'   both edges. Default is "left".
+#' @param window Numeric scalar indicating the maximum search boundary fence (in 
+#'   nucleotides) for identifying candidate anchors. It creates an inclusive 
+#'   window of plus/minus window nucleotides around each observed coordinate. 
+#'   Increasing the value widens the search fence to capture widely dispersed noise, 
+#'   while decreasing it (e.g., to 3 or 5) restricts corrections to a localized range, 
+#'   preventing distinct biological peaks from blending together. Default is 10.
+#' @param local_radius Numeric scalar defining the strict genomic distance threshold 
+#'   (in nucleotides) used to identify true local maxima (anchors). A 
+#'   coordinate must have an aggregated read count greater than or equal to all neighboring 
+#'   sites within a strict plus/minus local_radius span to qualify as an anchor. 
+#'   Increasing this parameter minimizes false anchors by ignoring small background spikes across 
+#'   a wider area, whereas decreasing it to 1 preserves finer resolution 
+#'   by letting closely spaced peak shoulders form separate clusters. Default is 2.
+#' @param sd_shrink Numeric scalar acting as a mathematical divider to calculate the 
+#'   standard deviation (sigma = window / sd_shrink) of the Gaussian probability 
+#'   curve. This controls the "tightness" of the gravitational pull decay. 
+#'   Increasing this parameter (e.g., to 6 or 8) sharpens the curve into a narrow spike, 
+#'   punishing distance aggressively so only fragments very close to an anchor can snap. 
+#'   Decreasing it flattens and widens the curve, broadening its reach so prominent anchors can 
+#'   easily grab far-flung reads from the outer tails of the jitter distribution. Default is 4.
+#'
+#' @return A data.table with updated and standardized start or end coordinates, 
+#'   depending on the side evaluated. Temporary math and range columns are silently 
+#'   cleaned up prior to return.
+#' @export
+standardize_positions <- function(df, side = "left", window = 8, local_radius = 2, sd_shrink = 4) {
   if (nrow(df) == 0) return(df)
   
   # 1. Force data.table and stabilize join columns

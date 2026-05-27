@@ -36,6 +36,8 @@ runModule <- function(){
   vector_hmm_copy()
   
   d <- readRDS(args$inputData)
+  d$leaderSeqHMM <- as.character(d$leaderSeqHMM)
+  d$vectorFastaFile <- as.character(d$vectorFastaFile)
   
   hmm_worker <- function(chunk, ...) {
     if(! dir.exists(file.path(args$logDir, paste0('chunk_', chunk$chunk_num)))) dir.create(file.path(args$logDir, paste0('chunk_', chunk$chunk_num)))
@@ -250,14 +252,18 @@ runModule <- function(){
   updateLog('Writing output.')
   
   write_tsv(d[d$vectorHit == TRUE], file.path(args$outputDir, paste0(args$fileTag, '_vectorHitReads.tsv.gz')))
+  
   d <- d[d$vectorHit == FALSE]
+  
   d$vectorHit <- NULL
+  d$linker1   <- NULL
+  d$linker2   <- NULL
   
-  d$trial     <- as.character(d$trial)
-  d$subject   <- as.character(d$subject)
-  d$sample    <- as.character(d$sample)
-  d$replicate <- as.integer(d$replicate)
-  
+  d$trial     <- as.factor(d$trial)
+  d$subject   <- as.factor(d$subject)
+  d$sample    <- as.factor(d$sample)
+  d$replicate <- as.factor(d$replicate)
+
   saveRDS(d, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('prepReads module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))

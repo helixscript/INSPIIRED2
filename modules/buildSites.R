@@ -25,21 +25,20 @@ runModule <- function(){
     unlink(args$ramDisk, recursive = TRUE, force = TRUE)
   }, add = TRUE)
   
-  
   updateLog('Starting buildSites module.')
-  if(! args$sumSonicBreaksWithin %in% c('samples', 'replicates')) stop("Error - the flag --sumSonicBreaksWithin must be set to with 'samples' or 'replicates'.")
   
+  if(! args$sumSonicBreaksWithin %in% c('samples', 'replicates')) stop("Error - the flag --sumSonicBreaksWithin must be set to with 'samples' or 'replicates'.")
   if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
   
+  # Read in standardized fragments.
   frags <- readRDS(args$inputData)
   
   # Define fragment widths.
   frags$fragWidths <- frags$fragEnd - frags$fragStart + 1
   
   # Define fragment IDs.
-  frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, 
-                          fragStrand, fragStart, fragEnd, sep = ":")]
+  frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, fragStrand, fragStart, fragEnd, sep = ":")]
   
   if(! args$disableDualDetect & 'IN_u5' %in% frags$mode & 'IN_u3' %in% frags$mode){
     updateLog('Searching for dual detections.')
