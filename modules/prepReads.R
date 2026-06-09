@@ -152,15 +152,15 @@ runModule <- function(){
     
          my_iter <- make_dt_iterator(x, chunk_size = ceiling(nrow(x)/args$threads), chunk_num_start = chunk_start_num)
     
-        #param <- SerialParam(stop.on.error = TRUE) # Use SerialParam() for browser() statements.
-        param <- MulticoreParam(workers = args$threads)
+         ### param <- SerialParam(stop.on.error = TRUE) # Use SerialParam() for browser() statements.
+         param <- MulticoreParam(workers = args$threads)
     
-        results <- bpiterate(ITER = my_iter, FUN = hmm_worker, BPPARAM = param)
+         results <- bpiterate(ITER = my_iter, FUN = hmm_worker, BPPARAM = param)
     
-        bpstop(param)
-        closeAllConnections()
+         bpstop(param)
+         closeAllConnections()
     
-       rbindlist(results)
+        rbindlist(results)
     }))
   
   collated_logs <- unlist(lapply(list.files(args$logDir, full.names = TRUE, recursive = TRUE, pattern = '^log$'), readLines))

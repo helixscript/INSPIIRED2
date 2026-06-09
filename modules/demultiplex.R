@@ -320,31 +320,46 @@ runModule <- function(){
   updateLog(paste0('Collating ', length(files), ' data files from ', args$tmpDir, '/'))
   
   o <- rbindlist(lapply(files, function(x){
-    updateLog(paste0('   Loading ', x, ' ...'))
-    read_fst(x, as.data.table = TRUE)
-  }), use.names = TRUE, fill = TRUE)
+         updateLog(paste0('   Loading ', x, ' ...'))
+         read_fst(x, as.data.table = TRUE)
+       }), use.names = TRUE, fill = TRUE)
   
   group_vars <- c("trial", "subject", "sample", "replicate")
-
+  
   if (! args$disableSequenceCollapse) {
     updateLog('Collapsing duplicate reads.')
     group_vars <- c(group_vars, "UMI", "anchorReadSeq", "adriftReadSeq")
+    
+    # readID is pulled here because it is NOT in group_vars
+    o <- o[, .(
+      nReads          = .N, 
+      readID          = readID[1],
+      linker1         = linker1[1],
+      linker2         = linker2[1],
+      mode            = mode[1],
+      refGenome       = refGenome[1],
+      vectorFastaFile = vectorFastaFile[1],
+      leaderSeqHMM    = leaderSeqHMM[1]
+    ), by = group_vars]
+    
   } else {
     updateLog('Reads will not be collapsed - each demultiplexed read will be included in output.')
     group_vars <- c(group_vars, "readID")
+    
+    # Sequences are pulled here because they are NOT in group_vars
+    o <- o[, .(
+      nReads          = .N, 
+      UMI             = UMI[1],
+      anchorReadSeq   = anchorReadSeq[1],
+      adriftReadSeq   = adriftReadSeq[1],
+      linker1         = linker1[1],
+      linker2         = linker2[1],
+      mode            = mode[1],
+      refGenome       = refGenome[1],
+      vectorFastaFile = vectorFastaFile[1],
+      leaderSeqHMM    = leaderSeqHMM[1]
+    ), by = group_vars]
   }
-
-  o <- o[, .(
-    nReads          = .N, 
-    readID          = readID[1],
-    linker1         = linker1[1],
-    linker2         = linker2[1],
-    mode            = mode[1],
-    refGenome       = refGenome[1],
-    vectorFastaFile = vectorFastaFile[1],
-    leaderSeqHMM    = leaderSeqHMM[1]
-  ), by = group_vars]
-  
   
   demux_summary <- o[, .(
     demultiplexedReads = sum(as.numeric(nReads), na.rm = TRUE)
@@ -357,7 +372,7 @@ runModule <- function(){
   o$sample    <- as.factor(o$sample)
   o$replicate <- as.factor(o$replicate)
   
-  updateLog(paste0('Writing ', ppNum(nrow(data)), ' reads.'))
+  updateLog(paste0('Writing ', ppNum(n_distinct(o$readID)), ' reads.'))
   saveRDS(o, file.path(args$outputDir, paste0(args$fileTag, '.rds')), compress = FALSE)
   
   # Summary table
@@ -383,8 +398,6 @@ runModule <- function(){
   updateLog('Demultiplex module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
-
-#-------------------------------------------------------------------------------
 
 args <- parser$parse_args()
 args$qualTrimCode <- rawToChar(as.raw(args$qualTrimScore + 33))

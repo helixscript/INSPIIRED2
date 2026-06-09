@@ -17,7 +17,7 @@ parser$add_argument("--blatMaxtNumInsert",       type = "integer",       default
 parser$add_argument("--blatMaxqNumInsert",       type = "integer",       default = 2,              help = "BLAT max number of query inserts.")
 parser$add_argument("--blatMaxtBaseInsert",      type = "integer",       default = 3,              help = "BLAT max number of target insert NTs.")
 parser$add_argument("--blatMaxqBaseInsert",      type = "integer",       default = 3,              help = "BLAT max number of target insert NTs.")
-parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 1000,           help = "Numbers of data rows to process per alignment worker.")
+parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 2500,           help = "Numbers of data rows to process per alignment worker.")
 
 runModule <- function(){
   startModule()
@@ -100,7 +100,7 @@ runModule <- function(){
 
   my_iter <- make_dt_iterator(anchorReads[! duplicated(anchorReads$seqNum)], chunk_size = args$dataRowChunkSize, chunk_num_start = chunk_start_num)
   
-  #param <- SerialParam(stop.on.error = TRUE)
+  ### param <- SerialParam(stop.on.error = TRUE)
   param <- MulticoreParam(workers = args$threads)
   
   anchorReadsAlignments <- rbindlist(bpiterate(ITER = my_iter, FUN = alignment_worker, BPPARAM = param)) %>% dplyr::select(qName, tName, strand, tStart, tEnd)
@@ -131,7 +131,9 @@ runModule <- function(){
   updateLog('Starting adrift read alignments.')
   
   my_iter <- make_dt_iterator(adriftReads[! duplicated(adriftReads$seqNum)], chunk_size = args$dataRowChunkSize, chunk_num_start = chunk_start_num)
+  
   param <- MulticoreParam(workers = args$threads)
+  
   adriftReadsAlignments <- rbindlist(bpiterate(ITER = my_iter, FUN = alignment_worker, BPPARAM = param)) %>% dplyr::select(qName, tName, strand, tStart, tEnd)
   bpstop(param)
   closeAllConnections()
@@ -164,8 +166,6 @@ runModule <- function(){
   updateLog('alignReads module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
-
-#-------------------------------------------------------------------------------
 
 args <- parser$parse_args()
 source(file.path(args$softwareRoot, 'lib.R'))

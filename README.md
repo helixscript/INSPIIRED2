@@ -10,7 +10,8 @@ Place your sequencing data and processing script (run.sh) in a directory, eg. ~/
   
 ```docker run --rm --shm-size=30g -v ~/workspace:/workspace -w /workspace inspiired2 bash run.sh```
 
-#### Processing with databasing.
+#### Processing with databasing.  
+
 To include databasing features in your processing, additional parameters need to be passed to Docker.
 Databasing is only available for the buildFragments module and is implimented by including the --dbConfigFile --dbConfigID flags.   
   
