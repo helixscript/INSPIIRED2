@@ -336,7 +336,7 @@ sampleData = pandas.DataFrame({
 if(args.mode == 'integrase'):
   sampleData['leaderSeqHMM'] = args.integraseHMM
   sampleData['mode'] = 'IN_u5'
-  sampleData['vectorFastaFile'] = 'none.fasta'
+  sampleData['vectorFastaFile'] = 'synDataTest.fasta'
 else:
   sampleData['anchorReadStartSeq'] = args.anchorReadStartSeq
   sampleData['mode'] = 'AAV'

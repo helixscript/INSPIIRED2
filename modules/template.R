@@ -32,8 +32,6 @@ runModule <- function(){
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
 
-#-------------------------------------------------------------------------------
-
 args <- parser$parse_args()
 source(file.path(args$softwareRoot, 'lib.R'))
 

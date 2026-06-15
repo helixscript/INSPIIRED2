@@ -372,6 +372,13 @@ runModule <- function(){
   o$sample    <- as.factor(o$sample)
   o$replicate <- as.factor(o$replicate)
   
+  # UMIs have been shown to be too problematic to track reliably.
+  # Here are are discarding recovered sequences and setting to poly-A.
+  # They can be re-introduced in later versions once the wet-side has greatly suppressed rearrangements.
+  
+  o$UMI <- "AAAAAAAAAAAA"
+  o$UMI <- as.factor(o$UMI)
+  
   updateLog(paste0('Writing ', ppNum(n_distinct(o$readID)), ' reads.'))
   saveRDS(o, file.path(args$outputDir, paste0(args$fileTag, '.rds')), compress = FALSE)
   

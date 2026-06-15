@@ -12,11 +12,10 @@ parser$add_argument("--clusterLeaderSeqs",                 action = "store_true"
 parser$add_argument("--disableBreakPointPosStd",           action = "store_true",  default  = FALSE,               help = 'Disable break point standardization.')
 parser$add_argument("--disableIntSitePosStd",              action = "store_true",  default  = FALSE,               help = 'Disable intSite position standardization.')
 parser$add_argument("--disableAnchorReadClusteringFilter", action = "store_true",  default  = FALSE,               help = 'Disable the anchor read clustering filter.')
-parser$add_argument("--disableUMIfragmentFilter",          action = "store_true",  default  = FALSE,               help = 'Disable the UMI fragment filter.')
 parser$add_argument("--anchorReadClusterLen",              type = "integer",       default  = 30,                  help = 'Length of anchor read sequences to test for rearrangments.')
+parser$add_argument("--anchorReadClusterGrouping",         type = "character",     default  = 'subject',           help = 'Grouping within which anchorRead sequences are clusteres. Must be trial, subject, or sample.')
 parser$add_argument("--anchorReadClusterMinAbundDiff",     type = "integer",       default  = 5,                   help = 'When clustering anchor read sequences, min. difference between 1st and 2nd most abundant sequence clusters to pick a winner.')
 parser$add_argument("--anchorReadClusterMinReadMult",      type = "integer",       default  = 10,                  help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
-parser$add_argument("--UMIclusterMinReadMult",             type = "integer",       default  = 5,                   help = 'When clustering UMI sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winning target.')
 parser$add_argument("--minReadsPerFrag",                   type = "integer",       default  = 1,                   help = 'Min. number of reads to accept a fragment.')
 parser$add_argument("--intSite_sp_window",                 type = "integer",       default  = 8,                   help = 'Max search distance (in NT) for intSites candidate anchor points.')
 parser$add_argument("--intSite_sp_local_radius",           type = "integer",       default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
@@ -24,7 +23,6 @@ parser$add_argument("--intSite_sp_sd_shrink",              type = "double",     
 parser$add_argument("--breakPoint_sp_window",              type = "integer",       default  = 5,                   help = 'Max search distance (in NT) for breakpoint candidate anchor points.')
 parser$add_argument("--breakPoint_sp_local_radius",        type = "integer",       default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
 parser$add_argument("--breakPoint_sp_sd_shrink",           type = "double",        default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
-parser$add_argument("--UMIclusteringParams",               type = "character",     default  = "-c 0.80 -d 0 -M 0 -g 1 -r 0 -n 4 -G 1",                                       help = 'Clustering params for clustering UMIs.')
 parser$add_argument("--leaderSeqClusteringParams",         type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -aS 0.80",                              help = 'Clustering params for clustering leader sequences.')
 parser$add_argument("--multiHitclusteringParams",          type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
 parser$add_argument("--anchorReadClusterParams",           type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
@@ -51,6 +49,7 @@ runModule <- function(){
   frags$trial     <- as.character(frags$trial)
   frags$subject   <- as.character(frags$subject)
   frags$sample    <- as.character(frags$sample)
+  frags$UMI       <- as.character(frags$UMI)
   frags$replicate <- as.integer(as.character(frags$replicate))
  
   
@@ -231,110 +230,6 @@ runModule <- function(){
   
   frags <- rbindlist(list(posRepFrags, negRepFrags))
   
-  
-  # UMI cleanup.
-  #-----------------------------------------------------------------------------
-  
-  updateLog('Clustering UMIs within standardized fragment records.')
-
-  frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, 
-                          fragStrand, fragStart, fragEnd, leaderSeqGroupNum, sep = ":")]
-  
-  UMI_worker <- function(f) {
-    results <- lapply(split(f$data, f$data$fragID), function(x) {
-      
-      unique_umis <- unique(x$UMI) # Ensure we only cluster unique sequences
-      
-      if (length(unique_umis) > 1) {
-        ts <- tmpString()
-        fasta_path <- file.path(args$ramDisk, paste0(ts, '.fasta'))
-        out_prefix <- file.path(args$ramDisk, paste0(ts, "_cdhit"))
-        
-        # 1. Write ONLY unique UMIs to the fasta to prevent row explosion
-        write(paste0('>', unique_umis, '\n', unique_umis), file = fasta_path)
-        
-        cmd <- paste0("cd-hit-est ", args$UMIclusteringParams, " -T 1 -i ", fasta_path, " -o ", out_prefix)
-        system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
-        
-        clstr_path <- paste0(out_prefix, ".clstr")
-        if (!file.exists(clstr_path)) stop("cd-hit-est failed.")
-        
-        # Parse and create a 1:1 mapping table: original_UMI -> newUMI
-        r <- parse_cdhit_clstr(clstr_path)
-        
-        # Identify the most frequent UMI in each cluster to act as the 'newUMI'
-        mapping <- as.data.table(r)[, .(newUMI = .SD[1, readID]), by = cluster_id]
-        r_mapped <- merge(as.data.table(r), mapping, by = "cluster_id")
-        
-        # Final 1:1 lookup table
-        lookup <- unique(r_mapped[, .(readID, newUMI)])
-        
-        # Join back to fragment data 
-        x_dt <- as.data.table(x)
-        x_dt[lookup, newUMI := i.newUMI, on = .(UMI = readID)]
-        return(x_dt)
-        
-      } else {
-        # If only one UMI, newUMI is just the original UMI
-        x_dt <- as.data.table(x)
-        x_dt[, newUMI := UMI]
-        return(x_dt)
-      }
-    })
-    
-    rbindlist(results)
-  }
-  
-
-  make_fragment_iterator <- function(dt, chunk_num_start = 0) {
-    chunks <- sort(unique(dt$chunkNum))
-    current_idx <- 1
-    total_chunks <- length(chunks)
-    chunk_count <- chunk_num_start
-    
-    function() {
-      if (current_idx > total_chunks) return(NULL)
-      this_chunk_id <- chunks[current_idx]
-      chunk_data <- dt[chunkNum == this_chunk_id]
-      chunk_count <<- chunk_count + 1
-      current_idx <<- current_idx + 1
-      
-      list(
-        data = chunk_data,
-        chunk_num = chunk_count,
-        is_last = (current_idx > total_chunks)
-      )
-    }
-  }
-  
-  unique_frags <- frags[, .(fragID = unique(fragID))]
-  unique_frags[, chunkNum := cut(seq_len(.N), breaks = args$threads, labels = FALSE)]
-  
-  frags_rowCount <- nrow(frags)
-  
-  frags[unique_frags, chunkNum := i.chunkNum, on = "fragID"]
-  frag_iterator <- make_fragment_iterator(frags)
-  rm(unique_frags)
-  
-  param <- MulticoreParam(workers = args$threads)
-  frags <- rbindlist(bpiterate(ITER = frag_iterator, FUN = UMI_worker, BPPARAM = param))
-  
-  bpstop(param)
-  closeAllConnections()
-  
-  if(nrow(frags) != frags_rowCount) stop('Error -- the number of fragment data rows was changed while correcting for UMI sequencing error.')
-  rm(frags_rowCount)
-  
-  updateLog(paste0(sprintf("%.2f%%", (sum(frags$UMI != frags$newUMI) / nrow(frags))*100), ' UMI sequences updated.'))
-  frags$UMI <- frags$newUMI
-  frags$newUMI <- NULL
-  
-  
-  # Add UMIs back to fragments records.
-  frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, 
-                          fragStrand, fragStart, fragEnd, leaderSeqGroupNum, 
-                          UMI, sep = ":")]
-  
   # Create position ids.
   frags$posid <- paste0(frags$fragChromosome, frags$fragStrand, ifelse(frags$fragStrand == '+', frags$fragStart, frags$fragEnd))
 
@@ -436,17 +331,24 @@ runModule <- function(){
     
     frags_uniqPosIDs_rowCount <- nrow(frags_uniqPosIDs)
     
-    frags_uniqPosIDs <- bind_rows(lapply(split(frags_uniqPosIDs, by = c('trial', 'subject', 'sample'), flatten = TRUE, sorted = TRUE), function(s){ 
+    split_cols <- switch(args$anchorReadClusterGrouping ,
+                         "trial"   = c('trial'),
+                         "subject" = c('trial', 'subject'),
+                         "sample"  = c('trial', 'subject', 'sample'),
+                         stop(paste("Error: Invalid groupLevel '", args$anchorReadClusterGrouping, "'. Must be 'trial', 'subject', or 'sample'.")))
+    
+    frags_uniqPosIDs <- bind_rows(lapply(split(frags_uniqPosIDs, by = split_cols, flatten = TRUE, sorted = TRUE), function(s){ 
+      
       # Sort fragment records so that fragments likely to contribute to high abund / high read count fragments apart first.
-      s <- group_by(s, posid) %>%
-        mutate(potentialAbund = n_distinct(abs(fragEnd - fragStart))) %>%
-        ungroup() %>%
-        group_by(anchor_seq) %>%
-        mutate(anchorReadSeqReads = n()) %>%
-        ungroup() %>%
-        mutate(anchorReadSeqLen = nchar(anchor_seq)) %>%
-        arrange(desc(potentialAbund), desc(anchorReadSeqReads), desc(anchorReadSeqLen)) %>%
-        select(-potentialAbund, -anchorReadSeqReads, -anchorReadSeqLen)
+      s <- dplyr::group_by(s, posid) %>%
+           dplyr::mutate(potentialAbund = n_distinct(abs(fragEnd - fragStart))) %>%
+           dplyr::ungroup() %>%
+           dplyr::group_by(anchor_seq) %>%
+           dplyr::mutate(anchorReadSeqReads = n()) %>%
+           dplyr::ungroup() %>%
+           dplyr::mutate(anchorReadSeqLen = nchar(anchor_seq)) %>%
+           dplyr::arrange(desc(potentialAbund), desc(anchorReadSeqReads), desc(anchorReadSeqLen)) %>%
+           dplyr::select(-potentialAbund, -anchorReadSeqReads, -anchorReadSeqLen)
       
       # Determine anchor read test sequences, write to disk, cluster, and parse.
       s$testSeq <- substr(s$anchor_seq, 1, args$anchorReadClusterLen)
@@ -473,15 +375,15 @@ runModule <- function(){
           
           x$anchorReadCluster <- TRUE
           
-          z  <- group_by(x, trial, subject, sample, posid) %>% 
-            summarise(frags = n_distinct(fragEnd - fragStart + 1), reads = n(), readIDs = list(readID), .groups = "drop") %>% 
-            ungroup() %>% 
-            arrange(desc(frags), desc(reads)) %>%
-            mutate(clusterNum = clusterNum - 1,
-                   clusterRepSeq = repSeq,
-                   selected = FALSE,
-                   remove = TRUE,
-                   criteria = NA)
+          z <- dplyr::group_by(x, trial, subject, sample, posid) %>% 
+               dplyr::summarise(frags = n_distinct(fragEnd - fragStart + 1), reads = n(), readIDs = list(readID), .groups = "drop") %>% 
+               dplyr::ungroup() %>% 
+               dplyr::arrange(desc(frags), desc(reads)) %>%
+               dplyr::mutate(clusterNum = clusterNum - 1,
+                             clusterRepSeq = repSeq,
+                             selected = FALSE,
+                             remove = TRUE,
+                             criteria = NA)
           
           z2 <- arrange(z, desc(reads), desc(frags)) # Re-sort table for read based decisions.
           
@@ -492,7 +394,7 @@ runModule <- function(){
             z$selected <- z$posid == z[1,]$posid
             anchorReadClusterDecisionTable <<- bind_rows(anchorReadClusterDecisionTable, z)
           } else if(z2[1,]$reads >= (z2[2,]$reads * args$anchorReadClusterMinReadMult)){
-            x$remove  <- ifelse(x$posid == z2[1,]$posid, FALSE, TRUE)
+            x$remove  <- ifelse(x$posid == z2[1,]$posid,  FALSE, TRUE)
             z2$remove <- ifelse(z2$posid == z2[1,]$posid, FALSE, TRUE)
             z2$criteria <- ifelse(z2$posid == z2[1,]$posid, 'read counts', NA)
             z2$selected <- z2$posid == z2[1,]$posid
@@ -515,7 +417,7 @@ runModule <- function(){
     }))
     
     if(nrow(frags_uniqPosIDs) != frags_uniqPosIDs_rowCount) stop('Error -- the number of fragment data rows was changed while clustering anchor read start sequences.')
-    
+  
     saveRDS(anchorReadClusterDecisionTable, file.path(args$outputDir, paste0(args$fileTag, '_anchorReadClusters.rds')))
     
     updateLog(paste0('Anchor read filter - removing ', 
@@ -526,60 +428,6 @@ runModule <- function(){
     
     frags_uniqPosIDs <- subset(frags_uniqPosIDs, remove == FALSE)
     frags_uniqPosIDs <- setDT(dplyr::select(frags_uniqPosIDs, -testSeq, -cluster_id, -remove))
-  }
-  
-  
-  # UMI filter
-  #-----------------------------------------------------------------------------
-  
-  if(! args$disableUMIfragmentFilter){
-    UMIclusterDecisionTable <- tibble()
-    updateLog('Ensuring that each fragment record is associated with a single UMI sequence.')
-    
-    frags_uniqPosIDs <- rbindlist(lapply(split(frags_uniqPosIDs, by = c('trial', 'subject', 'sample', 'UMI'), flatten = TRUE, sorted = TRUE), function(x){
-      if(n_distinct(x$posid) > 1){
-        
-        z  <- group_by(x, trial, subject, sample, UMI, posid) %>% 
-          summarise(frags = n_distinct(fragEnd - fragStart + 1), reads = n(), readIDs = list(readID), .groups = "drop") %>% 
-          ungroup() %>% 
-          arrange(desc(reads)) %>%
-          mutate(selected = FALSE,
-                 remove = TRUE,
-                 criteria = NA)
-        
-        if(any(z$frags) > 1){
-          x$remove <- TRUE
-          z$remove <- TRUE
-          z$selected <- FALSE
-        } else if(z[1,]$reads >= (z[2,]$reads * args$UMIclusterMinReadMult)){
-          x$remove <- ifelse(x$posid == z[1,]$posid, FALSE, TRUE)
-          z$remove <- ifelse(z$posid == z[1,]$posid, FALSE, TRUE)
-          z$criteria <- ifelse(z$posid == z[1,]$posid, 'read counts', NA)
-          z$selected <- z$posid == z[1,]$posid
-        } else {
-          x$remove <- TRUE
-          z$remove <- TRUE
-          z$selected <- FALSE
-        }
-        
-        UMIclusterDecisionTable <<- bind_rows(UMIclusterDecisionTable, z)
-      } else {
-        x$remove <- FALSE
-      }
-      
-      x
-    }))
-    
-    saveRDS(UMIclusterDecisionTable, file.path(args$outputDir, paste0(args$fileTag, '_UMIclusters.rds')))
-    
-    updateLog(paste0('UMI filter - removing ', 
-                     ppNum(n_distinct(subset(frags_uniqPosIDs, remove == TRUE)$readID)), ' reads, ',
-                     ppNum(n_distinct(subset(frags_uniqPosIDs, remove == TRUE)$fragID)), ' fragments, associated with ',
-                     ppNum(n_distinct(subset(frags_uniqPosIDs, remove == TRUE)$posid)), ' position ids due to not being the clear choice.'))
-    updateLog(paste0('See ', file.path(args$outputDir, paste0(args$fileTag, '_UMIclusters.rds')), ' for more details.'))
-    
-    frags_uniqPosIDs <- subset(frags_uniqPosIDs, remove == FALSE)
-    frags_uniqPosIDs <- dplyr::select(frags_uniqPosIDs, -remove)
   }
   
   
