@@ -11,7 +11,7 @@ parser$add_argument("--ramDiskPath",             type = "character",     default
 parser$add_argument("--disableDualDetect",       action = "store_true",  default = FALSE,         help = "Diable the merging of U5 and U3 samples into dual-detection sites.")
 parser$add_argument("--dualDetectWidth",         type = "integer",       default = 6,             help = "Radius for searching for dual-detections.")
 parser$add_argument("--integraseCorrectionDist", type = "integer",       default = 2,             help = "Integrase correction value (NT) to account for gDNA duplication caused by integration.")
-parser$add_argument("--sumSonicBreaksWithin",    type = "character",     default = "samples",     help = "Sum sonic breaks within either 'samples' (default) or within sample 'replicates'.") 
+parser$add_argument("--sumSonicBreaksWithin",    type = "character",     default = "replicates",  help = "Sum sonic breaks within either 'replicates' (default) or within sample 'samples'.") 
 parser$add_argument("--leadSeqClusteringParms",  type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
 
 runModule <- function(){
