@@ -27,6 +27,8 @@ parser.add_argument('-y', '--R2_length', type=int, default = 150, help='Total le
 parser.add_argument('-z', '--I1_length', type=int, default = 12, help='Total length of I1 reads. Default (12).', metavar='')
 parser.add_argument('-e', '--percentGenomicError', type=float, default = 0, help='Percent gDNA error (0.0 - 1.0) to simulate in R1 and R2 reads. Default (0).', metavar='')
 parser.add_argument('-c', '--positionChatterSD', type=float, default = 0.50, help='StdDev of Gaussian centered on expected fragment ends used to simulate position chatter. (Default 0.50).', metavar='')
+parser.add_argument('-k', '--singleSample', action='store_true', default=False, help='Consolidate all synthetic sites into a single sample with 4 replicates.')
+parser.add_argument('-b', '--minSiteDistance', type=int, default = 500, help='Minimum distance (NT) between simulated integration sites. Default (500).', metavar='')
 
 args = parser.parse_args()
 args.refGenomePath = os.path.expanduser(args.refGenomePath)
@@ -122,10 +124,6 @@ def simulateError(seq):
   for x in locs:
     seq = mutateAtPos(seq, x)
 
-#  ed = Levenshtein.distance(orgSeq, seq)
-#  if ed >= 5:
-#      print('nPos: ', nPos, ' orgLen: ', len(seq), ' new length: ', len(seq), ' Edit dist: ', ed)
-
   return(seq)
 
 
@@ -218,20 +216,36 @@ class site:
 
 sites = []
 print("Compiling site building data.")
+
+# Keep track of chosen positions per chromosome to enforce minimum distance
+chosen_positions = {c: [] for c in set(chromosomes)}
+
 for c in chromosomes:
-  # Select a position within the chromosome excluding the ends.
-  pos = random.randint(1+10000, len(d[c])-10000)
-  seq = 'N'
-
-  # Select a 1000 NT chunk from the genome that does not contain any Ns.
-  # This R1 and R2 reads will be created from the both sides of this large chunk.
+  attempts = 0
   while True:
-    seq = d[c][pos:pos+1000]
-    if 'N' not in seq:
-      break
-
-    # Select new position if previous yielded a sequence with Ns.
+    # Prevent infinite loops if a chromosome is packed or very small
+    attempts += 1
+    if attempts > 1000:
+       print(f"Warning: Struggling to find appropriately spaced sites on {c}. Proceeding with closest fit.")
+       
+    # Select a position within the chromosome excluding the ends.
     pos = random.randint(1+10000, len(d[c])-10000)
+    
+    # 1. Check distance against previously chosen sites on this chromosome
+    too_close = False
+    for existing_pos in chosen_positions[c]:
+      if abs(pos - existing_pos) < args.minSiteDistance:
+        too_close = True
+        break
+        
+    if too_close and attempts <= 1000:
+       continue # Try a new random position
+
+    # 2. Check for Ns in the 1000 NT block
+    seq = d[c][pos:pos+1000]
+    if 'N' not in seq.upper():
+      chosen_positions[c].append(pos)
+      break # Found a valid site!
 
   strand = random.sample(['+', '-'], 1)[0]
 
@@ -321,16 +335,26 @@ for s in sites:
 
 # Build sample data file.
 print("Building sample table.")
-sampleData = pandas.DataFrame({
-  'replicate': [1,2,3,4] * 9,
-  'subject': flatten([['subjectA'] * 12, ['subjectB'] * 12, ['subjectC'] * 12]),
-  'sample': flatten([['sample1'] * 4, ['sample2'] * 4, ['sample3'] * 4]*3),
-  'trial': 'test',
-  'index1Seq': [randomBarCode() for i in range(36)],
-  'adriftReadLinkerSeq': linker,
-  'refGenome': args.refGenomeID
-})
-
+if args.singleSample:
+  sampleData = pandas.DataFrame({
+    'replicate': [1, 2, 3, 4],
+    'subject': ['subjectA'] * 4,
+    'sample': ['sample1'] * 4,
+    'trial': 'test',
+    'index1Seq': [randomBarCode() for i in range(4)],
+    'adriftReadLinkerSeq': linker,
+    'refGenome': args.refGenomeID
+  })
+else:
+  sampleData = pandas.DataFrame({
+    'replicate': [1,2,3,4] * 9,
+    'subject': flatten([['subjectA'] * 12, ['subjectB'] * 12, ['subjectC'] * 12]),
+    'sample': flatten([['sample1'] * 4, ['sample2'] * 4, ['sample3'] * 4]*3),
+    'trial': 'test',
+    'index1Seq': [randomBarCode() for i in range(36)],
+    'adriftReadLinkerSeq': linker,
+    'refGenome': args.refGenomeID
+  })
 
 # Add mode specific columns.
 if(args.mode == 'integrase'):
@@ -362,14 +386,14 @@ for (key, group) in sampleGroups:
     for x in siteGroups[z]:
 
       # Keep fragments within replicates since they are standardized within replicates.
-      fragIDs = [re.search('frag\\d+', m).group(0) for m in x.readIDs]
+      fragIDs = [re.search(r'frag\d+', m).group(0) for m in x.readIDs]
       reps = [fragToRep[n] for n in fragIDs]
       barCodesToUse = [barCodes[x-1] for x in reps]
 
       # Add entry to truths.
-      truths.append({'trial': key[0], 'subject': key[1], 'sample': key[2], 'posid': x.readIDs[i].split('_')[0], 
-                    'nReads': args.nFrags * args.nReadsPerFrag, 'nFrags': args.nFrags, 'nUMIs': args.nFrags, 
-                    'leaderSeq': x.remnant})
+      truths.append({'trial': key[0], 'subject': key[1], 'sample': key[2], 'posid': x.readIDs[0].split('_')[0], 
+                     'nReads': args.nFrags * args.nReadsPerFrag, 'nFrags': args.nFrags, 'nUMIs': args.nFrags, 
+                     'leaderSeq': x.remnant})
 
       for i in range(len(x.readIDs)):
         # Replace NNN in linker with fragment UMIs, build R1 FASTQ, write.

@@ -428,6 +428,8 @@ runModule <- function(){
     
     frags_uniqPosIDs <- subset(frags_uniqPosIDs, remove == FALSE)
     frags_uniqPosIDs <- setDT(dplyr::select(frags_uniqPosIDs, -testSeq, -cluster_id, -remove))
+  } else {
+    frags_uniqPosIDs$anchorReadCluster <- NA
   }
   
   
@@ -493,7 +495,7 @@ runModule <- function(){
   frags$clusterLeaderSeqs <- as.factor(args$clusterLeaderSeqs)
     
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
-  updateLog('buildFragments module completed.')
+  updateLog('buildStdFragments module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
 

@@ -8,6 +8,8 @@ parser$add_argument("--softwareRoot",            type = "character",     require
 parser$add_argument("--threads",                 type = "integer",       default = 50,             help = "Number of threads to use.")
 parser$add_argument("--fileTag",                 type  = "character",    default = "prepReads",    help = "String appended to output files in the outpt directory.")
 parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",     help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--disableOverReadTrimming", action = "store_true",  default = FALSE,          help = "Disable over-read trimming.")
+parser$add_argument("--disableVectorFilter",     action = "store_true",  default = FALSE,          help = "Disable removing reads due to similarity to vector sequence.")
 parser$add_argument("--ORtrimPatternWidth",      type = "integer",       default = 8,              help = "Number of NTs used to build over-reading patterns.")
 parser$add_argument("--ORseqMaxMismatch",        type = "double",        default = 0.10,           help = "Max mismatch percentage (0 .. 1) allowed to match over-reading patterns.")
 parser$add_argument("--minReadLength",           type = "integer",       default = 30,             help = "Minial read length allowed.")
@@ -173,91 +175,94 @@ runModule <- function(){
   d$targetStart <- NULL
   d$targetEnd <- NULL
 
-  updateLog('Trimming over reading.')
+  if(! args$disableOverReadTrimming){
+    updateLog('Trimming over reading.')
   
-  d$anchorReadTrimSeq <- as.character(subseq(reverseComplement(DNAStringSet(d$linker2)), 1, args$ORtrimPatternWidth))
-  d$adriftReadTrimSeq <- as.character(subseq(reverseComplement(DNAStringSet(d$leaderSeq)), 1, args$ORtrimPatternWidth))
+    d$anchorReadTrimSeq <- as.character(subseq(reverseComplement(DNAStringSet(d$linker2)), 1, args$ORtrimPatternWidth))
+    d$adriftReadTrimSeq <- as.character(subseq(reverseComplement(DNAStringSet(d$leaderSeq)), 1, args$ORtrimPatternWidth))
   
-  d <- rbindlist(lapply(split(d, d$anchorReadTrimSeq), function(x){
-         maxMisMatch <- ceiling(args$ORtrimPatternWidth * args$ORseqMaxMismatch)
-         matches <- vmatchPattern(x$anchorReadTrimSeq[1], DNAStringSet(x$anchorReadSeq), max.mismatch = maxMisMatch, fixed = TRUE)
-         match_starts <- unlist(lapply(startIndex(matches), function(m) if(length(m) > 0) tail(m, 1) else NA))
-         toTrimIndex <- ! is.na(match_starts) & match_starts > 1
+    d <- rbindlist(lapply(split(d, d$anchorReadTrimSeq), function(x){
+           maxMisMatch <- ceiling(args$ORtrimPatternWidth * args$ORseqMaxMismatch)
+           matches <- vmatchPattern(x$anchorReadTrimSeq[1], DNAStringSet(x$anchorReadSeq), max.mismatch = maxMisMatch, fixed = TRUE)
+           match_starts <- unlist(lapply(startIndex(matches), function(m) if(length(m) > 0) tail(m, 1) else NA))
+           toTrimIndex <- ! is.na(match_starts) & match_starts > 1
     
-        if(any(toTrimIndex)){
-          x[toTrimIndex]$anchorReadSeq <- substr(x[toTrimIndex]$anchorReadSeq, 1, match_starts[toTrimIndex] - 1)
-        }
+          if(any(toTrimIndex)){
+            x[toTrimIndex]$anchorReadSeq <- substr(x[toTrimIndex]$anchorReadSeq, 1, match_starts[toTrimIndex] - 1)
+          }
     
-        x
-     }))
+          x
+       }))
   
-  d$anchorReadTrimSeq <- NULL
+    d$anchorReadTrimSeq <- NULL
   
-  d <- rbindlist(lapply(split(d, d$adriftReadTrimSeq), function(x){
-         maxMisMatch <- ceiling(args$ORtrimPatternWidth * args$ORseqMaxMismatch)
-         matches <- vmatchPattern(x$adriftReadTrimSeq[1], DNAStringSet(x$adriftReadSeq), max.mismatch = maxMisMatch, fixed = TRUE)
-         match_starts <- unlist(lapply(startIndex(matches), function(m) if(length(m) > 0) tail(m, 1) else NA))
-         toTrimIndex <- ! is.na(match_starts) & match_starts > 1
+    d <- rbindlist(lapply(split(d, d$adriftReadTrimSeq), function(x){
+           maxMisMatch <- ceiling(args$ORtrimPatternWidth * args$ORseqMaxMismatch)
+           matches <- vmatchPattern(x$adriftReadTrimSeq[1], DNAStringSet(x$adriftReadSeq), max.mismatch = maxMisMatch, fixed = TRUE)
+           match_starts <- unlist(lapply(startIndex(matches), function(m) if(length(m) > 0) tail(m, 1) else NA))
+           toTrimIndex <- ! is.na(match_starts) & match_starts > 1
     
-        if(any(toTrimIndex)){
-          x[toTrimIndex]$adriftReadSeq <- substr(x[toTrimIndex]$adriftReadSeq, 1, match_starts[toTrimIndex] - 1)
-        }
+          if(any(toTrimIndex)){
+            x[toTrimIndex]$adriftReadSeq <- substr(x[toTrimIndex]$adriftReadSeq, 1, match_starts[toTrimIndex] - 1)
+          }
     
-        x
-      }))
+          x
+        }))
   
-  d$adriftReadTrimSeq <- NULL
+    d$adriftReadTrimSeq <- NULL
   
-  keep_idx <- which(nchar(d$anchorReadSeq) >= args$minReadLength & nchar(d$adriftReadSeq) >= args$minReadLength)
+    keep_idx <- which(nchar(d$anchorReadSeq) >= args$minReadLength & nchar(d$adriftReadSeq) >= args$minReadLength)
   
-  d <- d[keep_idx]
+    d <- d[keep_idx]
+  }
   
-  # Vector alignments test
-  
-  d <- rbindlist(lapply(split(d, d$vectorFastaFile), function(x){
-    ts <- tmpString()
-    system2("makeblastdb", args = c("-in",  file.path(args$softwareRoot, 'data', 'vectors', x$vectorFastaFile[1]), "-dbtype", "nucl", "-out", file.path(args$ramDisk, ts)), stdout = FALSE, stderr = FALSE)
-    
-    x$testSeq <- substr(x$anchorReadSeq, (nchar(x$anchorReadSeq) - args$vectorTestWidth + 1), nchar(x$anchorReadSeq))
-    
-    x2 <- dplyr::select(x, readID, testSeq)
-    x2 <- x2[! duplicated(x2$testSeq),]
-    write(paste0('>', x2$readID, '\n', x2$testSeq), file = file.path(args$ramDisk, paste0(ts, '.fasta')))
-    
-    blastn_out <- run_blastn_parallel( file.path(args$ramDisk, paste0(ts, '.fasta')), file.path(args$ramDisk, ts), paste0("-word_size 8 -perc_identity ", args$vectorTestMinPercentID, " -gapopen 10 -gapextend 6 -evalue 10 -dust no -soft_masking false"), threads = args$threads)
-    
-    if(nrow(blastn_out) > 0){
-      blastn_out$coverage <- (blastn_out$len / args$vectorTestWidth) * 100         # Calculate alignment coverage 
-      blastn_out <- blastn_out[blastn_out$coverage >= args$vectorTestMinCoverage]  # Filter for alignments >= args$vectorTestMinCoverage
+ 
+  if(! args$disableVectorFilter){
+    d <- rbindlist(lapply(split(d, d$vectorFastaFile), function(x){
+      ts <- tmpString()
+      system2("makeblastdb", args = c("-in",  file.path(args$softwareRoot, 'data', 'vectors', x$vectorFastaFile[1]), "-dbtype", "nucl", "-out", file.path(args$ramDisk, ts)), stdout = FALSE, stderr = FALSE)
+      
+      x$testSeq <- substr(x$anchorReadSeq, (nchar(x$anchorReadSeq) - args$vectorTestWidth + 1), nchar(x$anchorReadSeq))
+      
+      x2 <- dplyr::select(x, readID, testSeq)
+      x2 <- x2[! duplicated(x2$testSeq),]
+      write(paste0('>', x2$readID, '\n', x2$testSeq), file = file.path(args$ramDisk, paste0(ts, '.fasta')))
+      
+      blastn_out <- run_blastn_parallel( file.path(args$ramDisk, paste0(ts, '.fasta')), file.path(args$ramDisk, ts), paste0("-word_size 8 -perc_identity ", args$vectorTestMinPercentID, " -gapopen 10 -gapextend 6 -evalue 10 -dust no -soft_masking false"), threads = args$threads)
       
       if(nrow(blastn_out) > 0){
-        x2 <- x2[x2$readID %in% blastn_out$qName]                                  # Limit original test sequences to those with significant hits
-        x2$readID <- NULL                                                          # Remove read ID and add vectorHit to create a two column table that can be joined to original
-        x2$vectorHit <- TRUE
-        x <- left_join(x, x2, by = 'testSeq')                                      # Join table by test sequence.
-        x$vectorHit <- ifelse(is.na(x$vectorHit), FALSE, TRUE)                     # Create a boolean to show if a read is a likely internal read
+        blastn_out$coverage <- (blastn_out$len / args$vectorTestWidth) * 100         # Calculate alignment coverage 
+        blastn_out <- blastn_out[blastn_out$coverage >= args$vectorTestMinCoverage]  # Filter for alignments >= args$vectorTestMinCoverage
+        
+        if(nrow(blastn_out) > 0){
+          x2 <- x2[x2$readID %in% blastn_out$qName]                                  # Limit original test sequences to those with significant hits
+          x2$readID <- NULL                                                          # Remove read ID and add vectorHit to create a two column table that can be joined to original
+          x2$vectorHit <- TRUE
+          x <- left_join(x, x2, by = 'testSeq')                                      # Join table by test sequence.
+          x$vectorHit <- ifelse(is.na(x$vectorHit), FALSE, TRUE)                     # Create a boolean to show if a read is a likely internal read
+        } else {
+          x$vectorHit <- FALSE
+        }
       } else {
         x$vectorHit <- FALSE
       }
-    } else {
-      x$vectorHit <- FALSE
-    }
+      
+      invisible(file.remove(list.files(args$ramDisk, pattern = ts, full.names = TRUE)))
+      x$testSeq <- NULL
+      x
+    }))
     
-    invisible(file.remove(list.files(args$ramDisk, pattern = ts, full.names = TRUE)))
-    x$testSeq <- NULL
-    x
-  }))
-  
-  updateLog(paste0(sprintf("%.1f%%", (sum(d$vectorHit) / nrow(d))*100), ' anchorRead ends matched the vector sequences.'))
-  updateLog('Writing output.')
-  
-  write_tsv(d[d$vectorHit == TRUE], file.path(args$outputDir, paste0(args$fileTag, '_vectorHitReads.tsv.gz')))
-  
-  d <- d[d$vectorHit == FALSE]
-  
-  d$vectorHit <- NULL
-  d$linker1   <- NULL
-  d$linker2   <- NULL
+    updateLog(paste0(sprintf("%.1f%%", (sum(d$vectorHit) / nrow(d))*100), ' anchorRead ends matched the vector sequences.'))
+    updateLog('Writing output.')
+    
+    write_tsv(d[d$vectorHit == TRUE], file.path(args$outputDir, paste0(args$fileTag, '_vectorHitReads.tsv.gz')))
+    
+    d <- d[d$vectorHit == FALSE]
+    
+    d$vectorHit <- NULL
+    d$linker1   <- NULL
+    d$linker2   <- NULL
+  }
   
   d$trial     <- as.factor(d$trial)
   d$subject   <- as.factor(d$subject)

@@ -2,17 +2,18 @@
 for (p in c('argparse', 'tidyverse', 'data.table', 'stringi')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
-parser$add_argument("--outputDir",               type = "character",     required = TRUE,         help = "Directory for output files")
-parser$add_argument("--inputData",               type = "character",     required = TRUE,         help = "Path to demultiplex module's rds output file.")
-parser$add_argument("--softwareRoot",            type = "character",     required = TRUE,         help = "Path to INSPIIRED2 installation.")
-parser$add_argument("--threads",                 type = "integer",       default = 50,            help = "Number of threads to use.")
-parser$add_argument("--fileTag",                 type = "character",     default = "buildSites",  help = "String appended to output files in the outpt directory.")
-parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",    help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-parser$add_argument("--disableDualDetect",       action = "store_true",  default = FALSE,         help = "Diable the merging of U5 and U3 samples into dual-detection sites.")
-parser$add_argument("--dualDetectWidth",         type = "integer",       default = 6,             help = "Radius for searching for dual-detections.")
-parser$add_argument("--integraseCorrectionDist", type = "integer",       default = 2,             help = "Integrase correction value (NT) to account for gDNA duplication caused by integration.")
-parser$add_argument("--sumSonicBreaksWithin",    type = "character",     default = "replicates",  help = "Sum sonic breaks within either 'replicates' (default) or within sample 'samples'.") 
-parser$add_argument("--leadSeqClusteringParms",  type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
+parser$add_argument("--outputDir",                    type = "character",     required = TRUE,         help = "Directory for output files")
+parser$add_argument("--inputData",                    type = "character",     required = TRUE,         help = "Path to demultiplex module's rds output file.")
+parser$add_argument("--softwareRoot",                 type = "character",     required = TRUE,         help = "Path to INSPIIRED2 installation.")
+parser$add_argument("--threads",                      type = "integer",       default = 50,            help = "Number of threads to use.")
+parser$add_argument("--fileTag",                      type = "character",     default = "buildSites",  help = "String appended to output files in the outpt directory.")
+parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",    help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--disableDualDetect",            action = "store_true",  default = FALSE,         help = "Diable the merging of U5 and U3 samples into dual-detection sites.")
+parser$add_argument("--disableOrientationCorrection", action = "store_true",  default = FALSE,         help = "Disable the changing of fragment strands to reflect integrated vector orientation.")
+parser$add_argument("--dualDetectWidth",              type = "integer",       default = 6,             help = "Radius for searching for dual-detections.")
+parser$add_argument("--integraseCorrectionDist",      type = "integer",       default = 2,             help = "Integrase correction value (NT) to account for gDNA duplication caused by integration.")
+parser$add_argument("--sumSonicBreaksWithin",         type = "character",     default = "replicates",  help = "Sum sonic breaks within either 'replicates' (default) or within sample 'samples'.") 
+parser$add_argument("--leadSeqClusteringParms",       type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
 
 runModule <- function(){
   startModule()
@@ -112,7 +113,7 @@ runModule <- function(){
     }))
   }
     
-  if('IN_u5' %in% frags$mode | 'IN_u3' %in% frags$mode){
+  if(! args$disableOrientationCorrection & ('IN_u5' %in% frags$mode | 'IN_u3' %in% frags$mode)){
     updateLog('Updating strandedness of U5 and U3 intSite calls.')
     
     frags <- bind_rows(lapply(split(frags, paste(frags$trial, frags$subject, frags$sample)), function(x){
