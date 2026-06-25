@@ -8,6 +8,7 @@ import re
 import sys
 import yaml
 import subprocess
+import itertools
 from Bio.SeqIO import TwoBitIO
 
 parser = argparse.ArgumentParser()
@@ -27,8 +28,9 @@ parser.add_argument('-y', '--R2_length', type=int, default = 150, help='Total le
 parser.add_argument('-z', '--I1_length', type=int, default = 12, help='Total length of I1 reads. Default (12).', metavar='')
 parser.add_argument('-e', '--percentGenomicError', type=float, default = 0, help='Percent gDNA error (0.0 - 1.0) to simulate in R1 and R2 reads. Default (0).', metavar='')
 parser.add_argument('-c', '--positionChatterSD', type=float, default = 0.50, help='StdDev of Gaussian centered on expected fragment ends used to simulate position chatter. (Default 0.50).', metavar='')
-parser.add_argument('-k', '--singleSample', action='store_true', default=False, help='Consolidate all synthetic sites into a single sample with 4 replicates.')
+parser.add_argument('-k', '--singleSample', action='store_true', default=False, help='Consolidate all synthetic sites into a single sample.')
 parser.add_argument('-b', '--minSiteDistance', type=int, default = 500, help='Minimum distance (NT) between simulated integration sites. Default (500).', metavar='')
+parser.add_argument('-v', '--nReplicates', type=int, default = 4, help='Number of technical replicates per sample. Default (4).', metavar='')
 
 args = parser.parse_args()
 args.refGenomePath = os.path.expanduser(args.refGenomePath)
@@ -42,8 +44,12 @@ if args.mode not in ['integrase', 'AAV']:
   print('Error - mode must be set to "integrase" or "AAV".')
   sys.exit(1)
 
-if args.nFrags > 50:
-  print('Error - nFrags must be set to a value no more than 50.')
+if args.nFrags > 100:
+  print('Error - nFrags must be set to a value no more than 100.')
+  sys.exit(1)
+
+if args.nReplicates < 1:
+  print('Error - nReplicates must be at least 1.')
   sys.exit(1)
 
 if args.percentGenomicError < 0 or args.percentGenomicError > 1:
@@ -82,12 +88,10 @@ for f in files:
   if os.path.exists(f):
     os.remove(f)
 
-
 # Linkers to be used for faux sites.
 remnant0 = 'TCTGCGCGCTCGCTCGCTCA' # To be used for integrase mode.
 remnant  = 'TCTGCGCGCTCGCTCGCTCACTGAGGCCGGGCGACCAAAGGTCGCCCGACGCCCGGGCTTTGCCCGGGCGGCCTCAGTG' 
 linker   = 'GAACGAGCACTAGTAAGCCCNNNNNNNNNNNNCTCCGCTTAAGGGACT' 
-
 
 # Helper functions.
 def flatten(xss):
@@ -119,13 +123,10 @@ def mutateAtPos(string, index):
 def simulateError(seq):
   nPos = round(args.percentGenomicError * len(seq))
   orgSeq = seq
-
   locs = random.sample(list(range(1, len(seq))), nPos)
   for x in locs:
     seq = mutateAtPos(seq, x)
-
   return(seq)
-
 
 # Build a collection of scrambled remnants to draw from. 
 # Pieces will be between 12 and 36 NTs with a 50% of being flipped to RC.
@@ -151,17 +152,15 @@ for i in range(len(start)):
 remnants = []
 for i in range(500):
    n = random.randint(0, 3)
-
    if n == 0:
      remnants.append(remnant[0:random.randint(12, 24)])
    else:
       # Start remnant with a variable length fragment starting from the beginning.
       o = [remnant[0:random.randint(12, 24)]]
-
       # Randomly draw 1 - 3 remnant pieces.
       k = random.sample(range(1, len(pieces)), n)
       p = [pieces[x] for x in k]
-    
+      
       # Randomly flip pieces to RC.
       p2 = []
       for r in p:
@@ -169,14 +168,12 @@ for i in range(500):
             p2.append(r)
          else:
             p2.append(revCompSeq(r))
-
       o.append(p2)
       o = flatten(o)
       remnants.append(''.join(o))
 
 if args.mode == 'integrase':
    remnants = [remnant0]
-
 
 # Read in genomic data pointers.
 print('Reading reference genome data.')
@@ -255,7 +252,6 @@ for c in chromosomes:
 
   sites.append(site(c, pos, seq, strand))
 
-
 # Loop through site objects and build read sequences.
 print("Building site reads.")
 for s in sites:
@@ -332,26 +328,29 @@ for s in sites:
 
     s.R1.append(linker + gDNA)
 
-
 # Build sample data file.
 print("Building sample table.")
+reps_seq = list(range(1, args.nReplicates + 1))
+
 if args.singleSample:
   sampleData = pandas.DataFrame({
-    'replicate': [1, 2, 3, 4],
-    'subject': ['subjectA'] * 4,
-    'sample': ['sample1'] * 4,
+    'replicate': reps_seq,
+    'subject': ['subjectA'] * args.nReplicates,
+    'sample': ['sample1'] * args.nReplicates,
     'trial': 'test',
-    'index1Seq': [randomBarCode() for i in range(4)],
+    'index1Seq': [randomBarCode() for i in range(args.nReplicates)],
     'adriftReadLinkerSeq': linker,
     'refGenome': args.refGenomeID
   })
 else:
+  # 3 subjects * nReplicates = total rows per subject
+  sub_len = 3 * args.nReplicates
   sampleData = pandas.DataFrame({
-    'replicate': [1,2,3,4] * 9,
-    'subject': flatten([['subjectA'] * 12, ['subjectB'] * 12, ['subjectC'] * 12]),
-    'sample': flatten([['sample1'] * 4, ['sample2'] * 4, ['sample3'] * 4]*3),
+    'replicate': reps_seq * 9,
+    'subject': flatten([['subjectA'] * sub_len, ['subjectB'] * sub_len, ['subjectC'] * sub_len]),
+    'sample': flatten([['sample1'] * args.nReplicates, ['sample2'] * args.nReplicates, ['sample3'] * args.nReplicates]*3),
     'trial': 'test',
-    'index1Seq': [randomBarCode() for i in range(36)],
+    'index1Seq': [randomBarCode() for i in range(9 * args.nReplicates)],
     'adriftReadLinkerSeq': linker,
     'refGenome': args.refGenomeID
   })
@@ -373,9 +372,8 @@ siteGroups = numpy.array_split(sites, sampleGroups.ngroups)
 z = 0
 truths = []
 
-# Create a dictionary of fragment ids to replicate numbrtd (1 - 4).
-# (!) Only goes out to frag100 - need to limit user frag requests.
-fragToRep = dict(zip(['frag' + str(n) for n in list(range(1,101))], list(range(1, 5))*20))
+# Create a continuous round-robin dealer for replicates
+rep_cycler = itertools.cycle(range(1, args.nReplicates + 1))
 
 print("Building I1 reads and writing all reads to output.")
 for (key, group) in sampleGroups:
@@ -387,7 +385,12 @@ for (key, group) in sampleGroups:
 
       # Keep fragments within replicates since they are standardized within replicates.
       fragIDs = [re.search(r'frag\d+', m).group(0) for m in x.readIDs]
-      reps = [fragToRep[n] for n in fragIDs]
+      
+      # Extract unique fragments in order, and deal them to the next available replicate
+      unique_frags = list(dict.fromkeys(fragIDs))
+      site_fragToRep = {f: next(rep_cycler) for f in unique_frags}
+      
+      reps = [site_fragToRep[n] for n in fragIDs]
       barCodesToUse = [barCodes[x-1] for x in reps]
 
       # Add entry to truths.

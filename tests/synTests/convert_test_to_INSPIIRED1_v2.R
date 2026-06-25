@@ -1,6 +1,6 @@
 library(tidyverse)
 
-in_dir  <- 'U5_sites10000_seed1_error0.00'
+in_dir  <- 'U5_sites5000_seed1_error0.00'
 out_dir <- '101010_M03249_0302_000000000-SYN00'
 
 dir.create(paste0(out_dir, '/Data/Intensities/BaseCalls'), recursive = TRUE)
@@ -10,7 +10,7 @@ o <- read_tsv(file.path(in_dir, 'sampleData.tsv'))
 t <- tibble(subject = o$subject,
             sample = o$sample,
             replicate = o$replicate,
-            alias = 'x',
+            alias = paste0(o$sample, '-', o$replicate),
             linkerSequence = o$adriftReadLinkerSeq,
             bcSeq = o$index1Seq,
             gender = 'u',

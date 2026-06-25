@@ -103,7 +103,6 @@ runModule <- function(){
   
   if(nrow(posFrags) > 0) posSubjectFrags <- split(posFrags, by = c('trial', 'subject', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   if(nrow(negFrags) > 0) negSubjectFrags <- split(negFrags, by = c('trial', 'subject', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
-
   
   # Standardize intSite positions.
   #-----------------------------------------------------------------------------
@@ -146,31 +145,44 @@ runModule <- function(){
   }
   
   posSubjectFrags <- rbindlist(posSubjectFrags)
-  posMaxUpdatedDist <- abs(max(posSubjectFrags$newFragStart - posSubjectFrags$fragStart))
-  posPercentUpdated <- sprintf("%.2f%%", (sum(posSubjectFrags$fragStart != posSubjectFrags$newFragStart) / nrow(posSubjectFrags))*100)
+  
+  posMaxUpdatedDist <- NA
+  posPercentUpdated <- NA
+
+  if(nrow(posSubjectFrags) > 0){  
+    posMaxUpdatedDist <- abs(max(posSubjectFrags$newFragStart - posSubjectFrags$fragStart))
+    posPercentUpdated <- sprintf("%.2f%%", (sum(posSubjectFrags$fragStart != posSubjectFrags$newFragStart) / nrow(posSubjectFrags))*100)
+  }
   
   updateLog(paste0('Intsite positions updated for positive strand fragments. Max position shift: ', posMaxUpdatedDist, 
                    ', percent fragments updated: ', posPercentUpdated))
   
   negSubjectFrags <- rbindlist(negSubjectFrags)
-  negMaxUpdatedDist <- abs(max(negSubjectFrags$newFragEnd - negSubjectFrags$fragEnd))
-  negPercentUpdated <- sprintf("%.2f%%", (sum(negSubjectFrags$fragEnd != negSubjectFrags$newFragEnd) / nrow(negSubjectFrags))*100)
+  
+  negMaxUpdatedDist <- NA
+  negPercentUpdated <- NA
+  
+  if(nrow(negSubjectFrags) > 0){
+    negMaxUpdatedDist <- abs(max(negSubjectFrags$newFragEnd - negSubjectFrags$fragEnd))
+    negPercentUpdated <- sprintf("%.2f%%", (sum(negSubjectFrags$fragEnd != negSubjectFrags$newFragEnd) / nrow(negSubjectFrags))*100)
+  }
   
   updateLog(paste0('Intsite positions updated for negative strand fragments. Max position shift: ', negMaxUpdatedDist, 
                    ', percent fragments updated: ', negPercentUpdated))
   
-  
   # Assign updated coordinates.
-  posSubjectFrags$fragStart <- posSubjectFrags$newFragStart
-  negSubjectFrags$fragEnd   <- negSubjectFrags$newFragEnd
+  if(nrow(posSubjectFrags) > 0) posSubjectFrags$fragStart <- posSubjectFrags$newFragStart
+  if(nrow(negSubjectFrags) > 0) negSubjectFrags$fragEnd   <- negSubjectFrags$newFragEnd
   
-  posSubjectFrags$newFragStart <- NULL
-  negSubjectFrags$newFragEnd   <- NULL
+  if(nrow(posSubjectFrags) > 0) posSubjectFrags$newFragStart <- NULL
+  if(nrow(negSubjectFrags) > 0) negSubjectFrags$newFragEnd   <- NULL
+  
+  posRepFrags <- list()
+  negRepFrags <- list()
   
   if(nrow(posFrags) > 0) posRepFrags <- split(posSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   if(nrow(negFrags) > 0) negRepFrags <- split(negSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
-  
-  
+
   # Standardize break point positions.
   #-----------------------------------------------------------------------------
   if(! args$disableBreakPointPosStd){
@@ -215,18 +227,24 @@ runModule <- function(){
                    ', percent fragments updated: ', posPercentUpdated))
   
   negRepFrags <- rbindlist(negRepFrags)
-  negMaxUpdatedDist <- abs(max(negRepFrags$newFragStart - negRepFrags$fragStart))
-  negPercentUpdated <- sprintf("%.2f%%", (sum(negRepFrags$fragStart != negRepFrags$newFragStart) / nrow(negRepFrags))*100)
+  
+  negMaxUpdatedDist <- NA
+  negPercentUpdated <- NA
+  
+  if(nrow(negRepFrags) > 0){
+    negMaxUpdatedDist <- abs(max(negRepFrags$newFragStart - negRepFrags$fragStart))
+    negPercentUpdated <- sprintf("%.2f%%", (sum(negRepFrags$fragStart != negRepFrags$newFragStart) / nrow(negRepFrags))*100)
+  }
   
   updateLog(paste0('Intsite break points updated for negative strand fragments. Max position shift: ', negMaxUpdatedDist, 
                    ', percent fragments updated: ', negPercentUpdated))
   
   # Assign updated coordinates.
-  posRepFrags$fragEnd <- posRepFrags$newFragEnd
-  negRepFrags$fragStart <- negRepFrags$newFragStart
+  if(nrow(posRepFrags) > 0) posRepFrags$fragEnd <- posRepFrags$newFragEnd
+  if(nrow(negRepFrags) > 0) negRepFrags$fragStart <- negRepFrags$newFragStart
   
-  posRepFrags$newFragEnd <- NULL
-  negRepFrags$newFragStart <- NULL
+  if(nrow(posRepFrags) > 0) posRepFrags$newFragEnd <- NULL
+  if(nrow(negRepFrags) > 0) negRepFrags$newFragStart <- NULL
   
   frags <- rbindlist(list(posRepFrags, negRepFrags))
   

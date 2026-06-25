@@ -2,7 +2,7 @@ library(RMySQL)
 library(dplyr)
 library(readr)
 
-# Update input and output paths as needed.
+# Input file is sites list need to get GTSP ids.
 
 ### input_file  <- 'Jones_limit_of_detection2_INSPIIRED1.tsv'
 ### output_file <- 'Jones_limit_of_detection2_INSPIIRED1_multiHitClusters.rds'
