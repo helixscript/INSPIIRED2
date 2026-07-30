@@ -3,6 +3,11 @@ tmpString <- function() paste0(Sys.getpid(), '___', stringi::stri_rand_strings(1
 
 ppNum <- function(n) format(n, big.mark = ",", scientific = FALSE, trim = TRUE)
 
+parse_bool <- function(x) {
+  if (tolower(x) %in% c("true", "t", "1", "yes")) return(TRUE)
+  if (tolower(x) %in% c("false", "f", "0", "no")) return(FALSE)
+  stop("Must be a valid boolean value.")
+}
 
 timeElapsedString <- function(){
   elapsed_period <- lubridate::as.period(lubridate::now() - args$startTime)

@@ -4,9 +4,9 @@ for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'Bio
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",                    type = "character",     required = TRUE,                  help = "Directory for output files")
 parser$add_argument("--sampleData",                   type = "character",     required = TRUE,                  help = "Sample definition file")
-parser$add_argument("--I1",                           type = "character",     required = TRUE,                  help = "Path to the Index1 read FASTQ file")
-parser$add_argument("--R1",                           type = "character",     required = TRUE,                  help = "Path to the Forward read FASTQ file")
-parser$add_argument("--R2",                           type = "character",     required = TRUE,                  help = "Path to the Reverse read FASTQ file")
+parser$add_argument("--indexReads",                   type = "character",     required = TRUE,                  help = "Path to the Index1 read FASTQ file")
+parser$add_argument("--adriftReads",                  type = "character",     required = TRUE,                  help = "Path to the Forward read FASTQ file")
+parser$add_argument("--anchorReads",                  type = "character",     required = TRUE,                  help = "Path to the Reverse read FASTQ file")
 parser$add_argument("--softwareRoot",                 type = "character",     required = TRUE,                  help = "Path to AAVengeR installation.")
 parser$add_argument("--threads",                      type = "integer",       default = 50,                     help = "Number of threads to use.")
 parser$add_argument("--fileTag",                      type = "character",     default = "demultiplex",          help = "String appended to output files in the outpt directory.")
@@ -54,18 +54,18 @@ runModule <- function(){
   knownVectors <- list.files(file.path(args$softwareRoot, 'data', 'vectors'))
   knownHMMs <- list.files(file.path(args$softwareRoot, 'data', 'hmms'))
   
-  if(! file.exists(args$I1)){
-    updateLog(paste0('Error - I1 sequencing file does not exits. Provided path: ', args$I1)) 
+  if(! file.exists(args$indexReads)){
+    updateLog(paste0('Error - I1 sequencing file does not exits. Provided path: ', args$indexReads)) 
     quit(status = 1)
   }
   
-  if(! file.exists(args$R1)){
-    updateLog(paste0('Error - R1 sequencing file does not exits. Provided path: ', args$R1)) 
+  if(! file.exists(args$adriftReads)){
+    updateLog(paste0('Error - R1 sequencing file does not exits. Provided path: ', args$adriftReads)) 
     quit(status = 1)
   }
   
-  if(! file.exists(args$R2)){
-    updateLog(paste0('Error - R2 sequencing file does not exits. Provided path: ', args$R2)) 
+  if(! file.exists(args$anchorReads)){
+    updateLog(paste0('Error - R2 sequencing file does not exits. Provided path: ', args$anchorReads)) 
     quit(status = 1)
   }
   
@@ -94,7 +94,7 @@ runModule <- function(){
   if(! args$disableAutoBarcodeOrt){
     updateLog('Determining if I1 barcodes need to be reverse-complimented.')
     
-    stream_I1 <- FastqStreamer(args$I1, n = dataStreamChunkSize)
+    stream_I1 <- FastqStreamer(args$indexReads, n = dataStreamChunkSize)
     I1_test <- yield(stream_I1)
     close(stream_I1)
     
@@ -109,9 +109,9 @@ runModule <- function(){
     suppressWarnings(rm(a, b, I1_test))
   }
   
-  stream_I1 <- FastqStreamer(args$I1, n = dataStreamChunkSize)
-  stream_R1 <- FastqStreamer(args$R1, n = dataStreamChunkSize)
-  stream_R2 <- FastqStreamer(args$R2, n = dataStreamChunkSize)
+  stream_I1 <- FastqStreamer(args$indexReads, n = dataStreamChunkSize)
+  stream_R1 <- FastqStreamer(args$adriftReads, n = dataStreamChunkSize)
+  stream_R2 <- FastqStreamer(args$anchorReads, n = dataStreamChunkSize)
   
   chunk_num <- 0
   total_reads <- 0

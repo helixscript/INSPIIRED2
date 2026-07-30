@@ -18,6 +18,8 @@ parser$add_argument("--vectorTestMinPercentID",  type  = "double",       default
 parser$add_argument("--vectorTestMinCoverage",   type = "double",        default = 90,             help = "Min. test sequence converage (0 .. 100) to accept a vector alignment.")
 parser$add_argument("--vectorDir",               type = "character",     default = 'none',         help = "Path to custom vector files.")
 parser$add_argument("--hmmDir",                  type = "character",     default = 'none',         help = "Path to custom hmm files.")
+parser$add_argument("--HMMparams",               type = "character",     default = 'none',         help = "Comma delimited shorthand containing HMM parmaters.")
+
 
 runModule <- function(){
   startModule()
@@ -45,17 +47,67 @@ runModule <- function(){
     if(! dir.exists(file.path(args$logDir, paste0('chunk_', chunk$chunk_num)))) dir.create(file.path(args$logDir, paste0('chunk_', chunk$chunk_num)))
     logFile <- file.path(args$logDir, paste0('chunk_', chunk$chunk_num), 'log')
     
+    hmmName <- as.character(chunk$data$leaderSeqHMM[1])
+    
     updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tStarting HMM chunk with ', ppNum(nrow(chunk$data)), ' data rows.'), logFile = logFile)
-    updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tHMM file: ', as.character(chunk$data$leaderSeqHMM[1])), logFile = logFile)
+    updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tHMM file: ', hmmName), logFile = logFile)
   
     ts <- tmpString()
     
     write(paste0('>', chunk$data$readID, '\n', chunk$data$anchorReadSeq), file = file.path(args$ramDisk, ts))
     
+    if(args$HMMparams != 'none'){
+      # HIV1_1-100_U5.hmm,1,5,10,30,TRUE,CA,2|HIV1_1-100_U3_RC.hmm,1,5,30,60,TRUE,CA,2
+      updateLog(paste0('Processing --HMMparams ', args$HMMparams), logFile = logFile)
+      
+      a <- unlist(str_split(args$HMMparams, '\\|'))
+   
+      hmmList <- lapply(a, function(x){
+        p <- unlist(str_split(x, '\\s*,\\s*'))
+        p[2:length(p)]
+      })
+      names(hmmList) <- unlist(lapply(str_split(a, ','), '[[', 1))
+      
+      if(! hmmName %in% names(hmmList)) stop(paste0('Error - ', hmmName, ' was not defined in --HMMparams.'))
+      
+      p <- hmmList[[hmmName]]
+      if(length(p) != 7) stop(paste0('Error - an argument string passed by --HMMparams did not contain 7 elements as expected for hmm: ', hmmName))
+      
+      args$HMMminStartPos      <- as.integer(p[1])
+      args$HMMmaxStartPos      <- as.integer(p[2])
+      args$HMMminFullBitScore  <- as.numeric(p[3])
+      args$HMMmaxFullBitScore  <- as.numeric(p[4])
+      args$HMMmatchEnd         <- ifelse(grepl('TRUE', p[5], ignore.case = TRUE), TRUE, FALSE)
+      args$HMMmatchTerminalSeq <- p[6]
+      args$HMMmatchEndRadius   <- as.integer(p[7])
+    } else if (file.exists(file.path(args$softwareRoot, 'data', 'hmms', sub('\\.hmm$', '.cfg', hmmName)))){
+      updateLog(paste0('--HMMparams was not provided, processing default HMM settings from file ', hmmName), logFile = logFile)
+      p <- readr::read_tsv(file.path(args$softwareRoot, 'data', 'hmms', sub('\\.hmm$', '.cfg', hmmName)), col_names = FALSE, show_col_types = FALSE)
+      if(nrow(p) != 7 | ncol(p) != 2) stop(paste0('Error - the hmm cfg file for hmm: ', hmmName, ' did not have the expected dimensions.'))
+      if(any(is.na(p))) stop(paste0('Error - the hmm cfg file for hmm: ', hmmName, ' contained one or more NA values when read.'))
+      
+      args$HMMminStartPos      <- as.integer(p[which(p$X1 == 'HMMminStartPos'),]$X2)
+      args$HMMmaxStartPos      <- as.integer(p[which(p$X1 == 'HMMmaxStartPos'),]$X2)
+      args$HMMminFullBitScore  <- as.numeric(p[which(p$X1 == 'HMMminFullBitScore'),]$X2)
+      args$HMMmaxFullBitScore  <- as.numeric(p[which(p$X1 == 'HMMmaxFullBitScore'),]$X2)
+      args$HMMmatchEnd         <- ifelse(grepl('TRUE', p[which(p$X1 == 'HMMmatchEnd'),]$X2, ignore.case = TRUE), TRUE, FALSE)
+      args$HMMmatchTerminalSeq <- p[which(p$X1 == 'HMMmatchTerminalSeq'),]$X2
+      args$HMMmatchEndRadius   <- as.integer(p[which(p$X1 == 'HMMmatchEndRadius'),]$X2)
+    } else {
+      stop(paste0('Error - could not determine processing parameters for hmm: ', hmmName))
+    }
+    
+    args$HMMparams <- NULL
+    HMMparams <- tibble(timeStamp = paste0(base::format(Sys.time(), "%m.%d.%Y"), ' [', timeElapsedString(), "]"),  param = names(args)[grepl('^HMM', names(args))])
+    HMMparams$value <- unlist(args[names(args) %in% HMMparams$param])
+    names(HMMparams) <- c('', 'parameter', 'value')
+    updateLog(paste0('HMM paramters for ', hmmName, ':'), logFile = logFile)
+    write_tsv(HMMparams, file = logFile, append = TRUE)
+    
     updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tCalling nhmmer.'), logFile = logFile)
     
     comm <- paste0('nhmmer --dna --F1 1 --F2 1 --F3 1 -T -5 --incT -5 --nobias --popen 0.15 --pextend 0.05 --tblout ', 
-                   file.path(args$ramDisk, paste0(ts, '.tbl')), ' ', file.path(args$softwareRoot, 'data', 'hmms', as.character(chunk$data$leaderSeqHMM[1])), ' ', 
+                   file.path(args$ramDisk, paste0(ts, '.tbl')), ' ', file.path(args$softwareRoot, 'data', 'hmms', hmmName), ' ', 
                    file.path(args$ramDisk, ts), ' > ', file.path(args$ramDisk, paste0(ts, '.hmmSearch')))
     
     system(comm)
@@ -92,13 +144,11 @@ runModule <- function(){
     # Collapse duplicate hits.
     o <- group_by(o, targetName) %>% dplyr::slice_max(fullScore, n = 1, with_ties = FALSE) %>% ungroup()
     
-    # Read in HMM settings file from data/hmms/
-    infoFile <- sub('\\.hmm$', '.settings', file.path(args$softwareRoot, 'data', 'hmms', as.character(chunk$data$leaderSeqHMM[1])))
-    if(! file.exists(infoFile)) stop(paste0('Error - can not find HMM settings file: ', infoFile))
-    params <- yaml::read_yaml(infoFile)
-    
     # Subset the data based on user scoring thresholds.
-    o <- subset(o, targetStart <= params$prepReads_HMMmaxStartPos & fullScore >= as.numeric(params$prepReads_HMMminFullBitScore))
+    o <- subset(o, targetStart >= args$HMMminStartPos     & 
+                   targetStart <= args$HMMmaxStartPos     & 
+                   fullScore   >= args$HMMminFullBitScore &
+                   fullScore   <= args$HMMmaxFullBitScore)
     
     if(nrow(o) == 0){
       updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tNo nhmmer hits reamin after filtering on targetStart and fullScore.'), logFile = logFile)
@@ -111,7 +161,7 @@ runModule <- function(){
     hmmName <- unlist(strsplit(h[grepl('^NAME', h)], '\\s+'))[2]
     
     # If requested, limit HMM hits to those with alignments near the end of the HMM.
-    if(params$prepReads_HMMmatchEnd) o <- o[abs(hmmLength - o$hmmEnd) <= params$prepReads_HMMmatchEndRadius,]
+    if(args$HMMmatchEnd) o <- o[abs(hmmLength - o$hmmEnd) <= args$HMMmatchEndRadius,]
     
     if(nrow(o) == 0){
       updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tNo nhmmer hits reamin after requiring a match to the full HMM.'), logFile = logFile)
@@ -125,19 +175,19 @@ runModule <- function(){
     
     chunk$data <- left_join(chunk$data, dplyr::select(o, targetName, targetStart, targetEnd), by = c('readID' = 'targetName'))
     
-    if(! grepl('none', params$prepReads_HMMmatchTerminalSeq, ignore.case = TRUE)){
-       updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tSearching for requested terminal sequence match for "', params$prepReads_HMMmatchTerminalSeq, '"'), logFile = logFile)
+    if(! grepl('none', args$HMMmatchTerminalSeq, ignore.case = TRUE)){
+       updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tSearching for requested terminal sequence match for "', args$HMMmatchTerminalSeq, '"'), logFile = logFile)
        chunk$data$anchorReadSeq <- toupper(chunk$data$anchorReadSeq)
-       params$prepReads_HMMmatchTerminalSeq <- toupper(params$prepReads_HMMmatchTerminalSeq)
+       args$HMMmatchTerminalSeq <- toupper(args$HMMmatchTerminalSeq)
       
-       terminal_matchSeq <- substr(chunk$data$anchorReadSeq,  (chunk$data$targetEnd - (nchar(params$prepReads_HMMmatchTerminalSeq) - 1) - params$prepReads_HMMmatchEndRadius), (chunk$data$targetEnd + params$prepReads_HMMmatchEndRadius))
-       ends <- stringr::str_locate(terminal_matchSeq, params$prepReads_HMMmatchTerminalSeq)[, 2]
+       terminal_matchSeq <- substr(chunk$data$anchorReadSeq,  (chunk$data$targetEnd - (nchar(args$HMMmatchTerminalSeq) - 1) - args$HMMmatchEndRadius), (chunk$data$targetEnd + args$HMMmatchEndRadius))
+       ends <- stringr::str_locate(terminal_matchSeq, args$HMMmatchTerminalSeq)[, 2]
        
        i <- ! is.na(ends)
        chunk$data <- chunk$data[i]
        ends <- ends[i]
        
-       chunk$data$targetEnd <- chunk$data$targetEnd - (nchar(params$prepReads_HMMmatchTerminalSeq) + params$prepReads_HMMmatchEndRadius) + ends
+       chunk$data$targetEnd <- chunk$data$targetEnd - (nchar(args$HMMmatchTerminalSeq) + args$HMMmatchEndRadius) + ends
        updateLog(paste0('<data chunk #', chunk$chunk_num, '>\t', ppNum(nrow(chunk$data)), ' data rows remain after requiring a terminal sequence match.'), logFile = logFile)
     }
     
@@ -154,7 +204,7 @@ runModule <- function(){
     
          my_iter <- make_dt_iterator(x, chunk_size = ceiling(nrow(x)/args$threads), chunk_num_start = chunk_start_num)
     
-         ### param <- SerialParam(stop.on.error = TRUE) # Use SerialParam() for browser() statements.
+         ###param <- SerialParam(stop.on.error = TRUE) # Use SerialParam() for browser() statements.
          param <- MulticoreParam(workers = args$threads)
     
          results <- bpiterate(ITER = my_iter, FUN = hmm_worker, BPPARAM = param)

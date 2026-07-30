@@ -12,12 +12,25 @@ subparsers <- parser$add_subparsers(dest = "module", help = "inspiired2 modules"
 # Define parameters for each module.
 # The parameters must match the parameters defined at the top of each module except that --softwareRoot flags should be excluded here.
 
+testHMM_parser <- subparsers$add_parser("testHMMs", help = "Test the performance of HMMs on anchor reads.")
+testHMM_parser$add_argument("--outputDir",                    type = "character",     required = TRUE,                help = "Directory for output files")
+testHMM_parser$add_argument("--sampleData",                   type = "character",     required = TRUE,                help = "Sample definition file")
+testHMM_parser$add_argument("--anchorReads",                  type = "character",     required = TRUE,                help = "Path to the Reverse read FASTQ file")
+testHMM_parser$add_argument("--threads",                      type = "integer",       default = 50,                   help = "Number of threads to use.")
+testHMM_parser$add_argument("--fileTag",                      type = "character",     default = "testHMMs",           help = "String appended to output files in the outpt directory.")
+testHMM_parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",           help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+testHMM_parser$add_argument("--vectorDir",                    type = "character",     default = 'none',               help = "Path to custom vector files.")
+testHMM_parser$add_argument("--hmmDir",                       type = "character",     default = 'none',               help = "Path to custom hmm files.")
+testHMM_parser$add_argument("--HMMmatchEnd",                  action = "store_true",  default = FALSE,                help = "Require a match to the end of the HMM.")
+testHMM_parser$add_argument("--HMMmatchTerminalSeq",          type = "character",     default = 'none',               help = "Path to custom hmm files.")
+testHMM_parser$add_argument("--HMMmatchEndRadius",            type = "integer",       default = 2,                    help = "Search radisuf for HMMmatchTerminalSeq")
+
 demux_parser <- subparsers$add_parser("demultiplex", help = "Separate reads by barcode")
 demux_parser$add_argument("--outputDir",                    type = "character",     required = TRUE,                  help = "Directory for output files")
 demux_parser$add_argument("--sampleData",                   type = "character",     required = TRUE,                  help = "Sample definition file")
-demux_parser$add_argument("--I1",                           type = "character",     required = TRUE,                  help = "Path to the Index1 read FASTQ file")
-demux_parser$add_argument("--R1",                           type = "character",     required = TRUE,                  help = "Path to the Forward read FASTQ file")
-demux_parser$add_argument("--R2",                           type = "character",     required = TRUE,                  help = "Path to the Reverse read FASTQ file")
+demux_parser$add_argument("--indexReads",                   type = "character",     required = TRUE,                  help = "Path to the Index1 read FASTQ file")
+demux_parser$add_argument("--adriftReads",                  type = "character",     required = TRUE,                  help = "Path to the Forward read FASTQ file")
+demux_parser$add_argument("--anchorReads",                  type = "character",     required = TRUE,                  help = "Path to the Reverse read FASTQ file")
 demux_parser$add_argument("--threads",                      type = "integer",       default = 50,                     help = "Number of threads to use.")
 demux_parser$add_argument("--fileTag",                      type  = "character",    default = "demultiplex",          help = "String appended to output files in the outpt directory.")
 demux_parser$add_argument("--index1ReadMaxMismatch",        type = "integer",       default = 1,                      help = "Number of allowed mismatches to the I1 barcode sequence.")
@@ -53,6 +66,7 @@ prp_parser$add_argument("--vectorTestMinPercentID",  type  = "double",       def
 prp_parser$add_argument("--vectorTestMinCoverage",   type = "double",        default = 90,             help = "Min. test sequence converage (0 .. 100) to accept a vector alignment.")
 prp_parser$add_argument("--vectorDir",               type = "character",     default = 'none',         help = "Path to custom vector files.")
 prp_parser$add_argument("--hmmDir",                  type = "character",     default = 'none',         help = "Path to custom hmm files.")
+prp_parser$add_argument("--HMMparams",               type = "character",     default = 'none',         help = "Comma delimited shorthand containing HMM parmaters.")
 
 alr_parser <- subparsers$add_parser("alignReads", help = "Align reads to a reference genome.")
 alr_parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")
