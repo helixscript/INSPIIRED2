@@ -41,7 +41,7 @@ Databasing is only available for the buildFragments module and is implimented by
 The [sample configuration file](sampleData.tsv) provides INSPIIRED2 information about sequencing library. Sequenced amplicons are expected to have the structure defined in the [2016 INSPIIRED paper](https://pubmed.ncbi.nlm.nih.gov/28344990). Reads originating from within LTR sequences and transverse genomic junctures are referred to as *anchor reads* because they anchor sequencing reads to integration positions. Reads originating from within ligated linkers at the opposite ends of fragments are referred to as *adrift reads* because their alignment positions drift due to the genome being sheared during library preparation. For each sample replicate, the sample configuration file will need the sequence of the adrift linker (eg. GTTAAAGGTGTTCCCTGCCGNNNNNNNNNNNNCTCCGCTTAAGGGACT) and I1 barcode (eg. ACCTAAGTCCGT).
 
 <p align="center">
-  <img src="figures/fragmentStructure.png", style="width:75%;" />
+  <img src="figures/fragmentStructure.png" />
 </p>
 
 In addition to this sequence information, the sample configuration file needs information about the reference genome against which to align your data (refGenome), information about your vector (vectorFastaFile), information about how to recognize the ends of LTR sequences (leaderSeqHMM), and processing details (mode).
@@ -112,5 +112,11 @@ The best approach for processing data with potentially varied LTR sequences is t
 ```
 inspiired2 testHMMs --outputDir out  --sampleData sampleData.tsv --anchorReads  Undetermined_S0_R2_001.fastq.gz --HMMmatchEnd --HMMmatchTerminalSeq CA --HMMmatchEndRadius 2
 ```
+This module tests sequencing data using the HMM profiles found in the sample data file and provided a graphical output useful for tuning HMM paramaters:
+
+<p align="center">
+  <img src="figures/HMM_scoring.png" />
+</p>
+
 
 
