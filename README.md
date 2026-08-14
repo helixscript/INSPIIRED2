@@ -2,11 +2,11 @@
 #### Download the INSPIIRED Docker image.
 ```wget https://bushmanlab.org/export/inspiired2_latest.tar.gz```
 
-#### Load the image.
+#### Load the image
 ```docker load -i inspiired2_latest.tar.gz```
 
-#### Prepare your run.
-Place your sequencing data and processing script (run.sh) in a directory, eg. ~/workspace, and include the directory in the Docker call. 
+#### Prepare your run
+Place your sequencing data and processing script (run.sh) in a directory, eg. /home/everett, and include the directory in the Docker call. 
 Example run.sh script:
 
 ```
@@ -26,15 +26,40 @@ inspiired2 buildSites        --outputDir out  --inputData out/buildStdFragments.
 inspiired2 nearestGenes      --outputDir out  --inputData out/buildSites.rds
 inspiired2 annotateRepeats   --outputDir out  --inputData out/nearestGenes.rds
 ```
-  
-```docker run --rm --shm-size=30g -v ~/workspace:/workspace -w /workspace inspiired2 bash run.sh```
 
-#### Processing with databasing.  
+## Start processing in Docker
+```docker run --rm --shm-size=10g -v /home/everett:/workspace -w /workspace inspiired2 bash run.sh```
 
-To include databasing features in your processing, additional parameters need to be passed to Docker.
-Databasing is only available for the buildFragments module and is implimented by including the --dbConfigFile --dbConfigID flags.   
+
+#### Processing with databasing
+
+To include databasing features in your processing, additional parameters need to be passed to Docker. Databasing is only available for the buildFragments module and is implimented by including the --dbConfigFile --dbConfigID flags. When databasing is used, fragment records are written both to the the output directory and to a data warehouse. The data warehouse includes two parts:
+  1. A SQL database that holds sample data and a pointers to a local parquet file.
+  2. A collection of parquet files containing fragment details.
+
+In order for the files to be written to the data warehouse, this flag must be included in your Docker call:
+
+```--user $(id -u):$(id -g)```
+
+The path to your data warehouse must also be included:
+
+```-v /media/md0/data/inspiired:/data ```
+
+The final Docker call for a run including databasing would be:
   
-```docker run --rm --shm-size=30g --user $(id -u):$(id -g) -v /media/md0/data/inspiired:/data -v ~/workspace:/workspace -w /workspace inspiired2 bash run.sh```
+```docker run --rm --shm-size=10g --user $(id -u):$(id -g) -v /media/md0/data/inspiired:/data -v /home/everett:/workspace -w /workspace inspiired2 bash run.sh```
+
+#### Pulling data from the data warehouse
+
+The pullDBrecords module retrieves fragment records based on trial, subject, and sample indentifiers. Rather than starting the pipeline with the typical calls to the demultiplex, prepReads, alignReads, and buildFragments modules, the pipeline can start with a the pullDBrecords module:
+
+```
+inspiired2 pullDBrecords     --outputDir out  --outputFile fragments.rds --dbConfigFile my.cnf --dbConfigID inspiired2 --dataPath  /media/md0/data/inspiired --trials Penn_CART --subjects "p432,p663,p215"
+inspiired2 buildStdFragments --outputDir out  --inputData out/buildFragments.rds
+inspiired2 buildSites        --outputDir out  --inputData out/buildStdFragments.rds
+```
+Specific fragment records can be pulled using the --trials,  --subjects, and --samples flags which accept comma delimited lists of identifiers. One or more trial identifier must be provided. The module will treat all other flags as 'all' unless identifiers are provided.
+
   
 #### Setting up the sample configuration file
 
