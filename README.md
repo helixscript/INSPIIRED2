@@ -13,7 +13,7 @@ docker run --rm -it --shm-size=5g inspiired2 bash
 ```
 
 # Preparing your data for analysis 
-Place your sequencing data and processing script (run.sh) in a directory, eg. /home/everett, and include the directory in the Docker call. 
+Place your sequencing data, sample data file, and processing script (run.sh) in a directory, eg. /home/everett, and include the directory in the Docker call. 
 Example run.sh script:
 
 ```
@@ -34,6 +34,11 @@ inspiired2 nearestGenes      --outputDir out  --inputData out/buildSites.rds
 inspiired2 annotateRepeats   --outputDir out  --inputData out/nearestGenes.rds
 ```
 
+### Start processing in Docker
+
+The pipeline reads intermediate results directly to memory. The maximum amount of allowed memory for this scratch space is defined within the Docker call ```--shm-size=10g```. Larger data sets may require the allocation of more memory. In the following Docker call, the -v flag is binding where your data is located on your server ```/home/everett``` to the directory ```/workspace``` within the Docker container. The -w flag tells Docker that reference file paths will be relative to /workspace within the container.
+
+```docker run --rm --shm-size=10g -v /home/everett:/workspace -w /workspace inspiired2 bash run.sh```
 
 
 
@@ -46,7 +51,7 @@ The [sample configuration file](sampleData.tsv) provides INSPIIRED2 information 
   <img src="figures/fragmentStructure.png" />
 </p>
 
-In addition to this sequence information, the sample configuration file needs information about the reference genome against which to align your data (refGenome), information about your vector (vectorFastaFile), information about how to recognize the ends of LTR sequences (leaderSeqHMM), and processing details (mode).
+In addition to this sequence information, the sample configuration file needs information about the reference genome against which to align your data (refGenome), information about your vector (vectorFastaFile), information about how to recognize the ends of LTR sequences (leaderSeqHMM), and processing details (mode). Importantly, leaderSeqHMM is the name of a file stored within the pipeline's ```data/hmms``` folder. The software is provided with HMMs that recognize HIV-1 3' and 5' LTR sequences. Custom vector sequences and HMM profiles can be imported at run time using the prepReads module and --vectorDir and --hmmDir flags. The design of HMMs that match your vectors is discussed in the 'Working with HMMs' section below. 
 
 # Working with HMMs
 Anchor reads containing the ends of vector LTR sequences are recognized using vector specific HMMs. HMMs are used because them are particularly adept at recognizing mismatches and minor indels that can occur due to natural variation and sequencing error.  Vector HMMs are created with the HMMER software package for each vector used in your analysis. To create a vector HMM, first create a FASTA file for the expected vector sequence you expect to observe in your R2 read sequences. This will be the expected sequence observed before transitioning into genomic DNA, eg.
@@ -121,8 +126,7 @@ This module tests sequencing data using the HMM profiles found in the sample dat
 </p>
 
 
-## Start processing in Docker
-```docker run --rm --shm-size=10g -v /home/everett:/workspace -w /workspace inspiired2 bash run.sh```
+
 
 
 
