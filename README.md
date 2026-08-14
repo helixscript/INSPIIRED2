@@ -1,11 +1,18 @@
 # Quick Start  
-#### Download the INSPIIRED Docker image.
+## Download the INSPIIRED Docker image.
 ```wget https://bushmanlab.org/export/inspiired2_latest.tar.gz```
 
-#### Load the image
+## Load the image
 ```docker load -i inspiired2_latest.tar.gz```
 
-#### Prepare your run
+## Process a small 50 site synthetic data set
+```
+docker run --rm -it --shm-size=5g inspiired2 bash
+%> cd /opt/INSPIIRED2/tests/synTests/U5_50sites_seed1
+%> ./run.sh
+```
+
+# Preparing your data for analysis 
 Place your sequencing data and processing script (run.sh) in a directory, eg. /home/everett, and include the directory in the Docker call. 
 Example run.sh script:
 
@@ -27,12 +34,11 @@ inspiired2 nearestGenes      --outputDir out  --inputData out/buildSites.rds
 inspiired2 annotateRepeats   --outputDir out  --inputData out/nearestGenes.rds
 ```
 
-## Start processing in Docker
-```docker run --rm --shm-size=10g -v /home/everett:/workspace -w /workspace inspiired2 bash run.sh```
 
 
 
-#### Setting up the sample configuration file
+
+### Setting up the sample configuration file
 
 The [sample configuration file](sampleData.tsv) provides INSPIIRED2 information about sequencing library. Sequenced amplicons are expected to have the structure defined in the [2016 INSPIIRED paper](https://pubmed.ncbi.nlm.nih.gov/28344990). Reads originating from within LTR sequences and transverse genomic junctures are referred to as *anchor reads* because they anchor sequencing reads to integration positions. Reads originating from within ligated linkers at the opposite ends of fragments are referred to as *adrift reads* because their alignment positions drift due to the genome being sheared during library preparation. For each sample replicate, the sample configuration file will need the sequence of the adrift linker (eg. GTTAAAGGTGTTCCCTGCCGNNNNNNNNNNNNCTCCGCTTAAGGGACT) and I1 barcode (eg. ACCTAAGTCCGT).
 
@@ -113,6 +119,11 @@ This module tests sequencing data using the HMM profiles found in the sample dat
 <p align="center">
   <img src="figures/HMM_scoring.png" />
 </p>
+
+
+## Start processing in Docker
+```docker run --rm --shm-size=10g -v /home/everett:/workspace -w /workspace inspiired2 bash run.sh```
+
 
 
 #Processing with databasing
