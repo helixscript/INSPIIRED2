@@ -1,11 +1,11 @@
 # Quick Start  
-## Download the INSPIIRED Docker image.
+### Download the INSPIIRED Docker image.
 ```wget https://bushmanlab.org/export/inspiired2_latest.tar.gz```
 
-## Load the image
+### Load the image
 ```docker load -i inspiired2_latest.tar.gz```
 
-## Process a small 50 site synthetic data set
+### Process a small 50 site synthetic data set
 ```
 docker run --rm -it --shm-size=5g inspiired2 bash
 %> cd /opt/INSPIIRED2/tests/synTests/U5_50sites_seed1
