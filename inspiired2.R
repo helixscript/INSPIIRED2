@@ -12,6 +12,23 @@ subparsers <- parser$add_subparsers(dest = "module", help = "inspiired2 modules"
 # Define parameters for each module.
 # The parameters must match the parameters defined at the top of each module except that --softwareRoot flags should be excluded here.
 
+testDB_parser <- subparsers$add_parser("testDBconn", help = "Test the connection to the database.")
+testDB_parser$add_argument("--dbConfigFile", type = "character", default = 'none', help = "Path to db credential file.")
+testDB_parser$add_argument("--dbConfigID",   type = "character", default = 'none', help = "DB credential block identifier in db credential file.")
+
+
+pullDBrecords_parser <- subparsers$add_parser("pullDBrecords", help = "Pull fragment records from the database.")
+pullDBrecords_parser$add_argument("--dbConfigFile", type = "character", default = 'none', help = "Path to db credential file.")
+pullDBrecords_parser$add_argument("--dbConfigID",   type = "character", default = 'none', help = "DB credential block identifier in db credential file.")
+pullDBrecords_parser$add_argument("--outputFile",   type = "character", default = 'buildFragments.rds', help = "Path to export final rds file.")
+pullDBrecords_parser$add_argument("--dataPath",     type = "character", default = 'none', help = "Path to INSPIIRED2 parquet file collection.")
+pullDBrecords_parser$add_argument("--trials",       type = "character", default = 'none', help = "Comma delimited list of trial identifiers.")
+pullDBrecords_parser$add_argument("--subjects",     type = "character", default = 'none', help = "Comma delimited list of subject identifiers.")
+pullDBrecords_parser$add_argument("--samples",      type = "character", default = 'none', help = "Comma delimited list of sample identifiers.")
+pullDBrecords_parser$add_argument("--refGenomes",   type = "character", default = 'none', help = "Comma delimited list of reference genome identifiers.")
+pullDBrecords_parser$add_argument("--modes",        type = "character", default = 'none', help = "Comma delimited list of mode identifiers.")
+
+
 testHMM_parser <- subparsers$add_parser("testHMMs", help = "Test the performance of HMMs on anchor reads.")
 testHMM_parser$add_argument("--outputDir",                    type = "character",     required = TRUE,                help = "Directory for output files")
 testHMM_parser$add_argument("--sampleData",                   type = "character",     required = TRUE,                help = "Sample definition file")
@@ -49,6 +66,7 @@ demux_parser$add_argument("--ramDiskPath",                  type = "character", 
 demux_parser$add_argument("--disableSequenceCollapse",      action = "store_true",  default = FALSE,                  help = "Disable the collapse of duplicate sequences.")
 demux_parser$add_argument("--vectorDir",                    type = "character",     default = 'none',                 help = "Path to custom vector files.")
 demux_parser$add_argument("--hmmDir",                       type = "character",     default = 'none',                 help = "Path to custom hmm files.")
+demux_parser$add_argument("--captureUMIs",                  action = "store_true",  default = FALSE,                  help = "Capture and use UMIs in abundance calculations.")
 
 prp_parser <- subparsers$add_parser("prepReads", help = "Prepare demultiplexed reads for alignment to a reference genome.")
 prp_parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")
@@ -96,6 +114,7 @@ bdf_parser$add_argument("--minFrgamentLength",       type = "integer",       def
 bdf_parser$add_argument("--maxFrgamentLength",       type = "integer",       default = 100000L,          help = "Max. Fragment length.")
 bdf_parser$add_argument("--dbConfigFile",            type = "character",     default = 'none',           help = "Path to db credential file.")
 bdf_parser$add_argument("--dbConfigID",              type = "character",     default = 'none',           help = "DB credential block identifier in db credential file.")
+bdf_parser$add_argument("--overwriteDBrecords",      action = "store_true",  default  = FALSE,           help = "Allow existing database records to be overwritten.") 
 
 bsf_parser <- subparsers$add_parser("buildStdFragments",   help = "Standardize genomic fragments.")
 bsf_parser$add_argument("--outputDir",                         type = "character",     required = TRUE,                help = "Directory for output files")
@@ -121,6 +140,9 @@ bsf_parser$add_argument("--breakPoint_sp_sd_shrink",           type = "double", 
 bsf_parser$add_argument("--leaderSeqClusteringParams",         type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -aS 0.80",                              help = 'Clustering params for clustering leader sequences.')
 bsf_parser$add_argument("--multiHitclusteringParams",          type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
 bsf_parser$add_argument("--anchorReadClusterParams",           type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
+bsf_parser$add_argument("--disableDominantUMIs",               action = "store_true",  default  = FALSE,               help = 'Disable the removal of spurious, likley rearranged UMIs')  
+bsf_parser$add_argument("--UMIprocessingMinSortReads",         type = "integer",       default  = 10,                  help = 'Min. number of reads to attempt isolating dominant UMIs.')  
+bsf_parser$add_argument("--UMIprocessingMinPercentTotal",      type = "double",        default  = 20,                  help = 'Min. percentage (0-100) that an UMI needs to reach within a replicate to be considered dominant.')  
 
 bst_parser <- subparsers$add_parser("buildSites",   help = "Assemble standardized fragments into integration events.")
 bst_parser$add_argument("--outputDir",                    type = "character",     required = TRUE,         help = "Directory for output files")

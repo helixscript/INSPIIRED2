@@ -19,7 +19,7 @@ parser.add_argument('-f', '--nFrags', type=int, default = 5, help='Number of fra
 parser.add_argument('-p', '--nReadsPerFrag', type=int, default = 25, help='Number of reads per fragment. Default (25).', metavar='')
 parser.add_argument('-d', '--distBetweenFragEnds', type=int, default = 25, help='Distance (NT) between fragment break points. Default (25).', metavar='')
 parser.add_argument('-s', '--seed', type=int, default = 1, help='Random seed. Default (1).', metavar='')
-parser.add_argument('-r', '--refGenomePath', type=str, default = '../../data/referenceGenomes/hg38.2bit', help='Path to 2bit reference genome. Default (../../data/referenceGenomes/hg38.2bit).', metavar='')
+parser.add_argument('-r', '--refGenomePath', type=str, default = '../../../data/referenceGenomes/hg38.2bit', help='Path to 2bit reference genome. Default (../../../data/referenceGenomes/hg38.2bit).', metavar='')
 parser.add_argument('-g', '--refGenomeID', type=str, default = 'hg38', help='Reference genome ID for sample data table. Default (hg38).', metavar='')
 parser.add_argument('-i', '--integraseHMM', type=str, default = 'validation.hmm', help='Name of AAVengeR HMM to use (integrase mode only).  Default (validation.hmm).', metavar='')
 parser.add_argument('-t', '--anchorReadStartSeq', type=str, default = 'TCTGCGCGCT', help='Anchor read start sequence filter (AAV mode only). Default (TCTGCGCGCT).', metavar='')

@@ -222,9 +222,6 @@ runModule <- function(){
                               vector = x$vectorFastaFile[1]), r)
            })) %>% arrange(desc(sonicLengths))
   
-  # Drop UMIs since we set them to poly-A in the demultiplexing module.
-  sites$UMIs <- NULL
-  
   # Set nRepsObs to NA for dual detections since these have values of 1 after moving dual detection to rep-0.
   sites[sites$mode == 'dual detect',]$nRepsObs <- NA
   

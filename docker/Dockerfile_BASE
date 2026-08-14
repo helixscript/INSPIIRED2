@@ -1,4 +1,4 @@
-FROM ubuntu:26.04
+FROM ubuntu:26.04@sha256:678c6550cc43645e08669028bc177f50be4e7c5b8cca677067b1914d4afc7a03
 
 ENV R_VERSION=4.6.0 \
     DEBIAN_FRONTEND=noninteractive
@@ -151,6 +151,12 @@ RUN R -e "install.packages('openxlsx', repos='http://cran.case.edu')" && R -e "s
 RUN R -e "install.packages('yaml', repos='http://cran.case.edu')" && R -e "stopifnot(require('yaml'))"
 RUN R -e "install.packages('data.table', repos='http://cran.case.edu')" && R -e "stopifnot(require('data.table'))"
 RUN R -e "install.packages('RMariaDB', repos='http://cran.case.edu')" && R -e "stopifnot(require('RMariaDB'))"
+
+# RcppParallel >= 6.x requires cmake
+RUN apt-get update -qq \
+    && apt-get -y install --no-install-recommends cmake \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN R -e "install.packages('reldist', repos='http://cran.case.edu')" && R -e "stopifnot(require('reldist'))"
 RUN R -e "install.packages('wordcloud', repos='http://cran.case.edu')" && R -e "stopifnot(require('wordcloud'))"
 RUN R -e "install.packages('kableExtra', repos='http://cran.case.edu')" && R -e "stopifnot(require('kableExtra'))"
@@ -166,8 +172,3 @@ RUN R -e "library('BiocManager'); BiocManager::install('ShortRead')" && R -e "st
 RUN R -e "library('BiocManager'); BiocManager::install('rtracklayer')" && R -e "stopifnot(require('rtracklayer'))"
 RUN R -e "library('BiocManager'); BiocManager::install('BiocParallel')" && R -e "stopifnot(require('BiocParallel'))"
 RUN R -e "library('BiocManager'); BiocManager::install('GenomeInfoDb')" && R -e "stopifnot(require('GenomeInfoDb'))"
-
-# --- COPY SOFTWARE ---
-COPY INSPIIRED2 /opt/INSPIIRED2
-RUN chmod +x /opt/INSPIIRED2/inspiired2.R
-RUN ln -s /opt/INSPIIRED2/inspiired2.R /usr/bin/inspiired2

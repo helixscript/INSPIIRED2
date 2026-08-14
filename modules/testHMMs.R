@@ -66,6 +66,9 @@ runModule <- function(){
   clean_ids <- BStringSet(gsub('^[^:]+:[^:]+:[^:]+:|\\s.+$', '', as.character(R2@id)))
   R2@id <- clean_ids
   
+  readIDlist <- readLines('out/targetReadIDs.txt')
+  R2 <- R2[R2@id %in% readIDlist]
+  
   writeFasta(R2, file.path(args$tmpDir, 'R2.fasta'))
   
   plots <- lapply(unique(sampleData$leaderSeqHMM), function(hmm){

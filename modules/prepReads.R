@@ -40,6 +40,8 @@ runModule <- function(){
   vector_hmm_copy()
   
   d <- readRDS(args$inputData)
+  if(nrow(d) == 0) stop('Error -- input data had zero rows of data.')
+  
   d$leaderSeqHMM <- as.character(d$leaderSeqHMM)
   d$vectorFastaFile <- as.character(d$vectorFastaFile)
   
@@ -143,6 +145,9 @@ runModule <- function(){
     
     # Collapse duplicate hits.
     o <- group_by(o, targetName) %>% dplyr::slice_max(fullScore, n = 1, with_ties = FALSE) %>% ungroup()
+    
+    # Save these results to a separate files for diagnostic purposes before filtering...
+    
     
     # Subset the data based on user scoring thresholds.
     o <- subset(o, targetStart >= args$HMMminStartPos     & 

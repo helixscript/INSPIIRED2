@@ -1,6 +1,5 @@
 tmpString <- function() paste0(Sys.getpid(), '___', stringi::stri_rand_strings(1, 30, '[A-Za-z0-9]'))
 
-
 ppNum <- function(n) format(n, big.mark = ",", scientific = FALSE, trim = TRUE)
 
 parse_bool <- function(x) {

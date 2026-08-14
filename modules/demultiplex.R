@@ -26,6 +26,7 @@ parser$add_argument("--adriftReadLinkerMaxMismatch",  type = "integer",       de
 parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",             help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
 parser$add_argument("--vectorDir",                    type = "character",     default = 'none',                 help = "Path to custom vector files.")
 parser$add_argument("--hmmDir",                       type = "character",     default = 'none',                 help = "Path to custom hmm files.")
+parser$add_argument("--captureUMIs",                  action = "store_true",  default = FALSE,                  help = "Capture and use UMIs in abundance calculations.")
 
 runModule <- function(){
   startModule()
@@ -376,8 +377,10 @@ runModule <- function(){
   # Here are are discarding recovered sequences and setting to poly-A.
   # They can be re-introduced in later versions once the wet-side has greatly suppressed rearrangements.
   
-  o$UMI <- "AAAAAAAAAAAA"
-  o$UMI <- as.factor(o$UMI)
+  if(! args$captureUMIs){
+    o$UMI <- "AAAAAAAAAAAA"
+    o$UMI <- as.factor(o$UMI)
+  }
   
   updateLog(paste0('Writing ', ppNum(n_distinct(o$readID)), ' reads.'))
   saveRDS(o, file.path(args$outputDir, paste0(args$fileTag, '.rds')), compress = FALSE)

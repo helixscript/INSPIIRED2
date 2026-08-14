@@ -1,0 +1,5 @@
+
+FROM inspiired2_base
+COPY INSPIIRED2 /opt/INSPIIRED2
+RUN chmod +x /opt/INSPIIRED2/inspiired2.R
+RUN ln -s /opt/INSPIIRED2/inspiired2.R /usr/bin/inspiired2

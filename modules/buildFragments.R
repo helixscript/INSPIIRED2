@@ -13,6 +13,8 @@ parser$add_argument("--minFrgamentLength",       type = "integer",       default
 parser$add_argument("--maxFrgamentLength",       type = "integer",       default = 100000L,          help = "Max. Fragment length.")
 parser$add_argument("--dbConfigFile",            type = "character",     default = 'none',           help = "Path to db credential file.")
 parser$add_argument("--dbConfigID",              type = "character",     default = 'none',           help = "DB credential block identifier in db credential file.")
+parser$add_argument("--overwriteDBrecords",      action = "store_true",  default  = FALSE,           help = "Allow existing database records to be overwritten.") 
+
 
 runModule <- function(){
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
@@ -94,31 +96,76 @@ runModule <- function(){
       record_tag <- paste(common_params, collapse = '|')
       updateLog(paste0('Processing data entry: ', record_tag))
       
-      check_query <- "SELECT 1 FROM fragments WHERE trial = ?trial AND subject = ?subject AND sample = ?sample AND replicate = ?rep AND ref_genome = ?genome AND mode = ?mode LIMIT 1;"
+      check_query <- "SELECT data_file_name FROM fragments WHERE trial = ?trial AND subject = ?subject AND sample = ?sample AND replicate = ?rep AND ref_genome = ?genome AND mode = ?mode LIMIT 1;"
       record_exists <- dbGetQuery(args$dbConn, DBI::sqlInterpolate(args$dbConn, check_query, .dots = common_params))
       
       if(nrow(record_exists) > 0){
-        msg <- "Error - this entry is already in the database. In order to run the buildFragments module with databasing enabled, either remove the previously uploaded entry from the database or remove it from the module's input data object."
-        updateLog(msg)
-        stop(msg)
+        
+        if(isTRUE(args$overwriteDBrecords)){
+          
+          old_file <- as.character(record_exists$data_file_name[1])
+          old_path <- file.path('/data', old_file)
+          
+          updateLog(paste0('Overwrite enabled - removing existing parquet file (', old_file, ').'))
+          
+          if(file.exists(old_path)){
+            if(! file.remove(old_path)){
+              stop(paste0('Error - failed to remove existing parquet file: ', old_path))
+            }
+          } else {
+            updateLog(paste0('Warning - existing parquet file was not found: ', old_path))
+          }
+          
+          delete_query <- "DELETE FROM fragments WHERE trial = ?trial AND subject = ?subject AND sample = ?sample AND replicate = ?rep AND ref_genome = ?genome AND mode = ?mode;"
+          
+          rows_deleted <- dbExecute(
+            args$dbConn,
+            DBI::sqlInterpolate(args$dbConn, delete_query, .dots = common_params)
+          )
+          
+          if(rows_deleted < 1){
+            stop(paste0('Error - failed to remove existing database record for record tag: ', record_tag))
+          }
+          
+          updateLog(paste0('Existing database record removed: ', record_tag))
+          
+        } else {
+          
+          msg <- "Error - this entry is already in the database. In order to run the buildFragments module with databasing enabled, either remove the previously uploaded entry from the database, remove it from the module's input data object, or enable overwrite."
+          updateLog(msg)
+          stop(msg)
+        }
       }
       
       ts <- tmpString()
+      x$g <- NULL
       arrow::write_parquet(x, file.path(args$outputDir, paste0(ts, '.parquet')))
       md5sum <- unname(tools::md5sum(file.path(args$outputDir, paste0(ts, '.parquet'))))
       file.rename(file.path(args$outputDir, paste0(ts, '.parquet')), file.path(args$outputDir, paste0(md5sum, '.parquet')))
       
       updateLog(paste0('Copying parquet file to data lake (', paste0(md5sum, '.parquet'), ').'))
       
-      copyResult <- file.copy(file.path(args$outputDir, paste0(md5sum, '.parquet')),  file.path('/data', paste0(md5sum, '.parquet')), overwrite = TRUE)
-      if(! copyResult) stop(paste0('Error - failed to copy ', file.path(args$outputDir, paste0(md5sum, '.parquet')), ' to ',  file.path('/data', paste0(md5sum, '.parquet'))))
+      copyResult <- file.copy(
+        file.path(args$outputDir, paste0(md5sum, '.parquet')),
+        file.path('/data', paste0(md5sum, '.parquet')),
+        overwrite = TRUE
+      )
+      
+      if(! copyResult){
+        stop(paste0(
+          'Error - failed to copy ',
+          file.path(args$outputDir, paste0(md5sum, '.parquet')),
+          ' to ',
+          file.path('/data', paste0(md5sum, '.parquet'))
+        ))
+      }
       
       invisible(file.remove(file.path(args$outputDir, paste0(md5sum, '.parquet'))))
       
       updateLog('Inserting record into database.')
       
       insert_query <- "INSERT INTO fragments (trial, subject, sample, replicate, ref_genome, mode, total_fragments, data_file_name) 
-                       VALUES (?trial, ?subject, ?sample, ?rep, ?genome, ?mode, ?total, ?file);"
+                     VALUES (?trial, ?subject, ?sample, ?rep, ?genome, ?mode, ?total, ?file);"
       
       insert_params <- c(common_params, list(
         total = as.integer(x$totalFrags[1]),
@@ -126,8 +173,12 @@ runModule <- function(){
       ))
       
       database_error <- NA
+      
       insert_success <- tryCatch({
-        rows_affected <- dbExecute(args$dbConn, DBI::sqlInterpolate(args$dbConn, insert_query, .dots = insert_params))
+        rows_affected <- dbExecute(
+          args$dbConn,
+          DBI::sqlInterpolate(args$dbConn, insert_query, .dots = insert_params)
+        )
         rows_affected == 1
       }, error = function(cond) {
         message(paste("Database Error:", cond$message))
@@ -135,11 +186,19 @@ runModule <- function(){
         return(FALSE)
       })
       
-      if (! insert_success) stop(paste0('Database error caught: ', database_error, ' for record tag: ', record_tag))
+      if(! insert_success){
+        stop(paste0(
+          'Database error caught: ',
+          database_error,
+          ' for record tag: ',
+          record_tag
+        ))
+      }
       
       updateLog('Entry successfully processed.')
     }
   }
+  
   
   updateLog('buildFragments module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))

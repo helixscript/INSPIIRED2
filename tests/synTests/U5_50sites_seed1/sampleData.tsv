@@ -1,0 +1,5 @@
+replicate	subject	sample	trial	index1Seq	adriftReadLinkerSeq	refGenome	leaderSeqHMM	mode	vectorFastaFile
+1	subjectA	sample1	test	GATTCTATCGTT	GAACGAGCACTAGTAAGCCCNNNNNNNNNNNNCTCCGCTTAAGGGACT	hg38	validation.hmm	IN_u5	synDataTest.fasta
+2	subjectA	sample1	test	TGCCTTCATAGT	GAACGAGCACTAGTAAGCCCNNNNNNNNNNNNCTCCGCTTAAGGGACT	hg38	validation.hmm	IN_u5	synDataTest.fasta
+3	subjectA	sample1	test	TGTTCTAAACGA	GAACGAGCACTAGTAAGCCCNNNNNNNNNNNNCTCCGCTTAAGGGACT	hg38	validation.hmm	IN_u5	synDataTest.fasta
+4	subjectA	sample1	test	TCCAGGAATGGC	GAACGAGCACTAGTAAGCCCNNNNNNNNNNNNCTCCGCTTAAGGGACT	hg38	validation.hmm	IN_u5	synDataTest.fasta

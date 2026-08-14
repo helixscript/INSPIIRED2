@@ -26,6 +26,9 @@ parser$add_argument("--breakPoint_sp_sd_shrink",           type = "double",     
 parser$add_argument("--leaderSeqClusteringParams",         type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -aS 0.80",                              help = 'Clustering params for clustering leader sequences.')
 parser$add_argument("--multiHitclusteringParams",          type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
 parser$add_argument("--anchorReadClusterParams",           type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
+parser$add_argument("--disableDominantUMIs",               action = "store_true",  default  = FALSE,               help = 'Disable the removal of spurious, likley rearranged UMIs')  
+parser$add_argument("--UMIprocessingMinSortReads",         type = "integer",       default  = 10,                  help = 'Min. number of reads to attempt isolating dominant UMIs.')  
+parser$add_argument("--UMIprocessingMinPercentTotal",      type = "double",        default  = 20,                  help = 'Min. percentage (0-100) that an UMI needs to reach within a replicate to be considered dominant.')  
 
 runModule <- function(){
   startModule()
@@ -51,6 +54,11 @@ runModule <- function(){
   frags$sample    <- as.character(frags$sample)
   frags$UMI       <- as.character(frags$UMI)
   frags$replicate <- as.integer(as.character(frags$replicate))
+  
+  
+  frags$real_UMI <- frags$UMI 
+  frags$UMI <- "AAAAAAAAAAAA" 
+
  
   
   # leaderSeq clustering
@@ -183,6 +191,9 @@ runModule <- function(){
   if(nrow(posFrags) > 0) posRepFrags <- split(posSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   if(nrow(negFrags) > 0) negRepFrags <- split(negSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
 
+  
+
+  
   # Standardize break point positions.
   #-----------------------------------------------------------------------------
   if(! args$disableBreakPointPosStd){
@@ -192,7 +203,9 @@ runModule <- function(){
                         strand = fragStrand, 
                         start = fragStart, 
                         end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end, start, reads)
+        
         tab2 <- standardize_positions(tab, side = 'right', window = args$breakPoint_sp_window, local_radius = args$breakPoint_sp_local_radius, sd_shrink = args$breakPoint_sp_sd_shrink)
+        
         update <- unique(data.table(fragEnd = tab$end, newFragEnd = tab2$end))
         preJoinRows <- nrow(x)
         x <- left_join(x, update, by = 'fragEnd')
@@ -204,6 +217,9 @@ runModule <- function(){
     
     if(length(negRepFrags) > 0){
       negRepFrags <- lapply(negRepFrags, function(x){
+        
+        
+        
         tab <- group_by(x, seqnames = fragChromosome, 
                         strand = fragStrand, 
                         start = fragStart, 
@@ -450,6 +466,43 @@ runModule <- function(){
     frags_uniqPosIDs$anchorReadCluster <- NA
   }
   
+  if(! args$disableDominantUMIs){
+    updateLog('Identifying dominant UMIs in the data.')
+    updateLog(paste0('Total UMIs in data set before isolating dominant UMIs: ',  ppNum(n_distinct(frags_uniqPosIDs$real_UMI))))
+    
+    frags_uniqPosIDs <- bind_rows(lapply(split(frags_uniqPosIDs, frags_uniqPosIDs$fragID), function(x){
+      if(n_distinct(x$real_UMI) == 1){
+        x$UMI <- x$real_UMI
+      } else {
+        o <- data.frame(sort(table(x$real_UMI), decreasing = TRUE))
+        o$p <- (o$Freq / nrow(x))*100
+        topUMI <- as.character(o[1,1])
+        o <- o[o$p >= args$UMIprocessingMinPercentTotal,]
+        
+        if(n_distinct(x$readID) < args$UMIprocessingMinSortReads){
+          x$UMI <- topUMI
+        } else {
+          if(nrow(o) <= 1){
+            x$UMI <- topUMI
+          } else {
+            o$p2 <- o$p + (100 - sum(o$p)) / nrow(o)
+            nRows <- nrow(x)
+            
+            n <- floor(nRows * o$p2 / 100)
+            n[1] <- n[1] + nRows - sum(n)
+            o <- o[rep(seq_len(nrow(o)), n), ]
+            
+            x$UMI <- o$Var1
+          }
+        }
+      }
+      
+      x
+    }))
+    
+    updateLog(paste0('Total UMIs in data set after isolating dominant UMIs: ',  ppNum(n_distinct(frags_uniqPosIDs$UMI))))
+  }
+  
   
   # Count the number of reads associated with each fragment.
   # fragments with more than one read, i > 1, need additional processing.
@@ -518,7 +571,7 @@ runModule <- function(){
 }
 
 args <- parser$parse_args()
-# args <- yaml::read_yaml('output/buildStdFragments.yml'); args$softwareRoot <- '/home/everett/scratch/INSPIIRED2'
+# args <- yaml::read_yaml('output/buildStdFragments.yml'); args$softwareRoot <- '/home/everett/scratch/INSPIIRED2_dev/INSPIIRED2'
 
 source(file.path(args$softwareRoot, 'lib.R'))
 
