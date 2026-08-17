@@ -3,6 +3,8 @@ INSPIIRED2 is designed to run on mid- to large- scale computational servers with
 
 ```docker run --rm --shm-size=10g -v /home/everett:/workspace -w /workspace inspiired2 bash run.sh``` 
 
+<br>
+
 # Quick Start  
 #### Download the INSPIIRED Docker image.
 ```wget https://bushmanlab.org/export/inspiired2_latest.tar.gz```
@@ -64,6 +66,8 @@ The software is provided with the following reference genomes:
  - macFas5 (crab-eating macaque) 
  - chlSab2 (green monkey)
  - sacCer3 (Brewer's yeast)
+ 
+ <br>
 
 # Working with HMMs
 Anchor reads containing the ends of vector LTR sequences are recognized using vector specific HMMs. HMMs are used because them are particularly adept at recognizing mismatches and minor indels that can occur due to natural variation and sequencing error.  Vector HMMs are created with the HMMER software package for each vector used in your analysis. 
@@ -151,10 +155,11 @@ This module tests sequencing data using the HMM profiles found in the sample dat
   <img src="figures/HMM_scoring.png" />
 </p>
 
+<br>
 
 # Processing with databasing
 
-To include databasing features in your processing, additional parameters need to be passed to Docker. Databasing is only available for the buildFragments module and is implimented by including the --dbConfigFile --dbConfigID flags. When databasing is used, fragment records are written both to the the output directory and to a data warehouse. The data warehouse includes two parts:
+To include databasing features in your processing, additional parameters need to be passed to Docker. Databasing is only available for the buildFragments module and is implemented by including the ```--dbConfigFile``` ```--dbConfigID``` flags. When databasing is used, fragment records are written both to the the output directory and to a local data warehouse. The data warehouse includes two parts:
   1. A SQL database that holds sample data and a pointers to a local parquet file.
   2. A collection of parquet files containing fragment details.
 
