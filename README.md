@@ -69,7 +69,7 @@ The software is provided with the following reference genomes:
 Anchor reads containing the ends of vector LTR sequences are recognized using vector specific HMMs. HMMs are used because them are particularly adept at recognizing mismatches and minor indels that can occur due to natural variation and sequencing error.  Vector HMMs are created with the HMMER software package for each vector used in your analysis. 
 
 Developing HMMs for analyses that expect a fixed length, unchanging LTR sequence before genomic junctures is straight forward. HMMs can be created with a single expected sequence and the range of acceptable HMM scores simply depends on how much sequencing or alignment error should be accepted.  Developing HMMs designed to recognize multiple LTR variants with variable lengths (e.g. capturing wild HIV from patients) is possible as well. 
-
+<br>
 #### Creating HMMs to capture a single LTR sequence
 Creating a HMM for a single  expected LTR sequence, typically the DNA sequence between where your sequencing primer binds the LTR to the terminal CA preceding genomic junctures, is straight forward. First create a FASTA file for the expected LTR sequence you expect to observe in your anchor reads sequences. 
 
@@ -134,24 +134,25 @@ Alternatively, for each HMM defined in your sampelData.tsv file, you can provide
 ```
 inspiired2 prepReads --outputDir out --inputData out/demultiplex.rds --HMMparam 'HIV1_1-100_U5.hmm,1,5,10,30,TRUE,CA,2|HIV1_1-100_U3_RC.hmm,1,5,30,60,TRUE,CA,2'
 ```
+<br>
 
-The best approach for processing data with potentially varied LTR sequences is to run the HMMs on raw sequencing data using the testHMMs module:
+#### Creating HMMs to capture multiple LTR sequences
+
+In order to create an HMM that can capture multiple LTR sequences, rather than starting with a single sequence as shown above, start with a FASTA formatted multiple sequence alignment (MSA) of varied LTR sequences. If the sequences contain required elements such as the terminal CA sequence found int retroviral LTR sequences, these elements should be fixed in MSAs.
+
+The same approach for determine a range of acceptable HMM scores used with a single expected sequence can be used here. Alternatively, the testHMMs module can be used to test how HMMs score real anchor reads:
 
 ```
 inspiired2 testHMMs --outputDir out  --sampleData sampleData.tsv --anchorReads  Undetermined_S0_R2_001.fastq.gz --HMMmatchEnd --HMMmatchTerminalSeq CA --HMMmatchEndRadius 2
 ```
-This module tests sequencing data using the HMM profiles found in the sample data file and provided a graphical output useful for tuning HMM paramaters:
+This module tests sequencing data using the HMM profiles found in the sample data file and provided a graphical output useful for tuning HMM parameters:
 
 <p align="center">
   <img src="figures/HMM_scoring.png" />
 </p>
 
 
-
-
-
-
-#Processing with databasing
+# Processing with databasing
 
 To include databasing features in your processing, additional parameters need to be passed to Docker. Databasing is only available for the buildFragments module and is implimented by including the --dbConfigFile --dbConfigID flags. When databasing is used, fragment records are written both to the the output directory and to a data warehouse. The data warehouse includes two parts:
   1. A SQL database that holds sample data and a pointers to a local parquet file.
