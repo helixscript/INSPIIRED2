@@ -571,9 +571,8 @@ runModule <- function(){
 }
 
 args <- parser$parse_args()
-# args <- yaml::read_yaml('output/buildStdFragments.yml'); args$softwareRoot <- '/home/everett/scratch/INSPIIRED2_dev/INSPIIRED2'
-
-source(file.path(args$softwareRoot, 'lib.R'))
+source(file.path(args$softwareRoot, 'lib', 'common.R'))
+source(file.path(args$softwareRoot, 'lib', 'buildStdFragments.R'))
 
 tryCatch({
   runModule()

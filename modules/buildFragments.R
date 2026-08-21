@@ -15,7 +15,6 @@ parser$add_argument("--dbConfigFile",            type = "character",     default
 parser$add_argument("--dbConfigID",              type = "character",     default = 'none',           help = "DB credential block identifier in db credential file.")
 parser$add_argument("--overwriteDBrecords",      action = "store_true",  default  = FALSE,           help = "Allow existing database records to be overwritten.") 
 
-
 runModule <- function(){
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   
@@ -205,7 +204,7 @@ runModule <- function(){
 }
 
 args <- parser$parse_args()
-source(file.path(args$softwareRoot, 'lib.R'))
+source(file.path(args$softwareRoot, 'lib', 'common.R'))
 
 tryCatch({
   runModule()

@@ -145,6 +145,7 @@ runModule <- function(){
     
     if(! dir.exists(file.path(args$logDir, paste0('chunk_', chunk_num)))) dir.create(file.path(args$logDir, paste0('chunk_', chunk_num)))
     logFile <- file.path(args$logDir, paste0('chunk_', chunk_num), 'log')
+  
       
     if(args$reverseComplementI1) cI1 <- reverseComplement(cI1)
     
@@ -367,11 +368,13 @@ runModule <- function(){
   ), by = .(trial, subject, sample, replicate)]
   
   invisible(gc(verbose = FALSE))
+
   
   o$trial     <- as.factor(o$trial)
   o$subject   <- as.factor(o$subject)
   o$sample    <- as.factor(o$sample)
   o$replicate <- as.factor(o$replicate)
+
   
   # UMIs have been shown to be too problematic to track reliably.
   # Here are are discarding recovered sequences and setting to poly-A.
@@ -411,7 +414,7 @@ runModule <- function(){
 
 args <- parser$parse_args()
 args$qualTrimCode <- rawToChar(as.raw(args$qualTrimScore + 33))
-source(file.path(args$softwareRoot, 'lib.R'))
+source(file.path(args$softwareRoot, 'lib', 'common.R'))
 
 tryCatch({
   runModule()
