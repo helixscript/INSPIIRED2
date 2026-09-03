@@ -58,8 +58,8 @@ runModule <- function(){
   
   frags$real_UMI <- frags$UMI 
   frags$UMI <- "AAAAAAAAAAAA" 
-
- 
+  
+  
   
   # leaderSeq clustering
   #-----------------------------------------------------------------------------
@@ -86,7 +86,7 @@ runModule <- function(){
     r <- left_join(r, k, by = 'cluster_id')
     o <- left_join(o, r[, c('readID', 'newClusterID')], by = 'readID')
     frags <- left_join(frags, o[, c('Var1', 'newClusterID')], by = c('leaderSeq' = 'Var1'))
-
+    
     # Use re-named cluster ids to determine leader sequencing group numbers.
     frags$leaderSeqGroupNum <-  as.integer(str_extract(frags$newClusterID, '\\d+'))
     frags$newClusterID <- NULL
@@ -106,6 +106,11 @@ runModule <- function(){
   negFrags <- frags[frags$fragStrand == '-']
   rm(frags)
   
+  if(args$disableIntSitePosStd){
+    if(nrow(posFrags) > 0) posFrags$newFragStart <- posFrags$fragStart
+    if(nrow(negFrags) > 0) negFrags$newFragEnd   <- negFrags$fragEnd
+  }
+  
   posSubjectFrags <- list()
   negSubjectFrags <- list()
   
@@ -117,30 +122,30 @@ runModule <- function(){
   if(! args$disableIntSitePosStd){
     if(length(posSubjectFrags) > 0){
       posSubjectFrags <- lapply(posSubjectFrags, function(x){
-               tab <- group_by(x, seqnames = fragChromosome, 
-                                  strand = fragStrand, 
-                                  start = fragStart, 
-                                  end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(start, end, reads)
-
-               tab2 <- standardize_positions(tab, side = 'left', window = args$intSite_sp_window, local_radius = args$intSite_sp_local_radius, sd_shrink = args$intSite_sp_sd_shrink)
-               update <- unique(data.table(fragStart = tab$start, newFragStart = tab2$start))
-               
-               preJoinRows <- nrow(x)
-               x <- left_join(x, update, by = 'fragStart')
-               if(nrow(x) != preJoinRows) stop('intSite posRepFrags join Error')
-               if(any(is.na(x$newFragStart))) stop('intSite posRepFrags NA Error')
-               x
+        tab <- group_by(x, seqnames = fragChromosome, 
+                        strand = fragStrand, 
+                        start = fragStart, 
+                        end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(start, end, reads)
+        
+        tab2 <- standardize_positions(tab, side = 'left', window = args$intSite_sp_window, local_radius = args$intSite_sp_local_radius, sd_shrink = args$intSite_sp_sd_shrink)
+        update <- unique(data.table(fragStart = tab$start, newFragStart = tab2$start))
+        
+        preJoinRows <- nrow(x)
+        x <- left_join(x, update, by = 'fragStart')
+        if(nrow(x) != preJoinRows) stop('intSite posRepFrags join Error')
+        if(any(is.na(x$newFragStart))) stop('intSite posRepFrags NA Error')
+        x
       })
     }
     
     if(length(negSubjectFrags) > 0){
       negSubjectFrags <- lapply(negSubjectFrags, function(x){
         tab <- group_by(x, seqnames = fragChromosome, 
-                           strand = fragStrand, 
-                           start = fragStart, 
-                           end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end, start, reads)
+                        strand = fragStrand, 
+                        start = fragStart, 
+                        end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end, start, reads)
         tab2 <- standardize_positions(tab, side = 'right', window = args$intSite_sp_window, local_radius = args$intSite_sp_local_radius, sd_shrink = args$intSite_sp_sd_shrink)
-
+        
         update <- unique(data.table(fragEnd = tab$end, newFragEnd = tab2$end))
         
         preJoinRows <- nrow(x)
@@ -156,7 +161,7 @@ runModule <- function(){
   
   posMaxUpdatedDist <- NA
   posPercentUpdated <- NA
-
+  
   if(nrow(posSubjectFrags) > 0){  
     posMaxUpdatedDist <- abs(max(posSubjectFrags$newFragStart - posSubjectFrags$fragStart))
     posPercentUpdated <- sprintf("%.2f%%", (sum(posSubjectFrags$fragStart != posSubjectFrags$newFragStart) / nrow(posSubjectFrags))*100)
@@ -188,11 +193,16 @@ runModule <- function(){
   posRepFrags <- list()
   negRepFrags <- list()
   
+  if(args$disableBreakPointPosStd){
+    if(nrow(posSubjectFrags) > 0) posSubjectFrags$newFragEnd   <- posSubjectFrags$fragEnd
+    if(nrow(negSubjectFrags) > 0) negSubjectFrags$newFragStart <- negSubjectFrags$fragStart
+  }
+  
   if(nrow(posFrags) > 0) posRepFrags <- split(posSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   if(nrow(negFrags) > 0) negRepFrags <- split(negSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
-
   
-
+  
+  
   
   # Standardize break point positions.
   #-----------------------------------------------------------------------------
@@ -266,7 +276,7 @@ runModule <- function(){
   
   # Create position ids.
   frags$posid <- paste0(frags$fragChromosome, frags$fragStrand, ifelse(frags$fragStrand == '+', frags$fragStart, frags$fragEnd))
-
+  
   
   # Identify uniquely called reads.
   #-----------------------------------------------------------------------------
@@ -274,9 +284,9 @@ runModule <- function(){
   updateLog('Identifying uniquely called positions.')
   
   u <- group_by(frags, readID) %>% 
-       mutate(nPosIDs = n_distinct(posid)) %>% 
-       ungroup() %>% filter(nPosIDs == 1)  %>% 
-       pull(readID)
+    mutate(nPosIDs = n_distinct(posid)) %>% 
+    ungroup() %>% filter(nPosIDs == 1)  %>% 
+    pull(readID)
   
   frags_uniqPosIDs <- frags[frags$readID %in% u,] 
   frags_multPosIDs <- frags[! frags$readID %in% u,]
@@ -354,8 +364,8 @@ runModule <- function(){
   updateLog('Building multi-hit clusters.')
   multiHit_clusters <- rbindlist(lapply(split(frags_multPosIDs, by = c('trial', 'subject'), flatten = TRUE, sorted = TRUE), build_multiHit_clusters))
   saveRDS(multiHit_clusters, file = file.path(args$outputDir, paste0(args$fileTag, '_multiHitClusters.rds')))
-
-
+  
+  
   
   # Anchor read cluster filter
   #-----------------------------------------------------------------------------
@@ -375,14 +385,14 @@ runModule <- function(){
       
       # Sort fragment records so that fragments likely to contribute to high abund / high read count fragments apart first.
       s <- dplyr::group_by(s, posid) %>%
-           dplyr::mutate(potentialAbund = n_distinct(abs(fragEnd - fragStart))) %>%
-           dplyr::ungroup() %>%
-           dplyr::group_by(anchor_seq) %>%
-           dplyr::mutate(anchorReadSeqReads = n()) %>%
-           dplyr::ungroup() %>%
-           dplyr::mutate(anchorReadSeqLen = nchar(anchor_seq)) %>%
-           dplyr::arrange(desc(potentialAbund), desc(anchorReadSeqReads), desc(anchorReadSeqLen)) %>%
-           dplyr::select(-potentialAbund, -anchorReadSeqReads, -anchorReadSeqLen)
+        dplyr::mutate(potentialAbund = n_distinct(abs(fragEnd - fragStart))) %>%
+        dplyr::ungroup() %>%
+        dplyr::group_by(anchor_seq) %>%
+        dplyr::mutate(anchorReadSeqReads = n()) %>%
+        dplyr::ungroup() %>%
+        dplyr::mutate(anchorReadSeqLen = nchar(anchor_seq)) %>%
+        dplyr::arrange(desc(potentialAbund), desc(anchorReadSeqReads), desc(anchorReadSeqLen)) %>%
+        dplyr::select(-potentialAbund, -anchorReadSeqReads, -anchorReadSeqLen)
       
       # Determine anchor read test sequences, write to disk, cluster, and parse.
       s$testSeq <- substr(s$anchor_seq, 1, args$anchorReadClusterLen)
@@ -410,14 +420,14 @@ runModule <- function(){
           x$anchorReadCluster <- TRUE
           
           z <- dplyr::group_by(x, trial, subject, sample, posid) %>% 
-               dplyr::summarise(frags = n_distinct(fragEnd - fragStart + 1), reads = n(), readIDs = list(readID), .groups = "drop") %>% 
-               dplyr::ungroup() %>% 
-               dplyr::arrange(desc(frags), desc(reads)) %>%
-               dplyr::mutate(clusterNum = clusterNum - 1,
-                             clusterRepSeq = repSeq,
-                             selected = FALSE,
-                             remove = TRUE,
-                             criteria = NA)
+            dplyr::summarise(frags = n_distinct(fragEnd - fragStart + 1), reads = n(), readIDs = list(readID), .groups = "drop") %>% 
+            dplyr::ungroup() %>% 
+            dplyr::arrange(desc(frags), desc(reads)) %>%
+            dplyr::mutate(clusterNum = clusterNum - 1,
+                          clusterRepSeq = repSeq,
+                          selected = FALSE,
+                          remove = TRUE,
+                          criteria = NA)
           
           z2 <- arrange(z, desc(reads), desc(frags)) # Re-sort table for read based decisions.
           
@@ -451,7 +461,7 @@ runModule <- function(){
     }))
     
     if(nrow(frags_uniqPosIDs) != frags_uniqPosIDs_rowCount) stop('Error -- the number of fragment data rows was changed while clustering anchor read start sequences.')
-  
+    
     saveRDS(anchorReadClusterDecisionTable, file.path(args$outputDir, paste0(args$fileTag, '_anchorReadClusters.rds')))
     
     updateLog(paste0('Anchor read filter - removing ', 
@@ -513,10 +523,10 @@ runModule <- function(){
   
   commonLeaderSeq <- function(x){
     dplyr::group_by(x, leaderSeq) %>% 
-    dplyr::summarise(nReads = n()) %>% 
-    dplyr::ungroup() %>%
-    dplyr::slice_max(nReads, with_ties = FALSE) %>%
-    dplyr::pull(leaderSeq)
+      dplyr::summarise(nReads = n()) %>% 
+      dplyr::ungroup() %>%
+      dplyr::slice_max(nReads, with_ties = FALSE) %>%
+      dplyr::pull(leaderSeq)
   }
   
   if(nrow(b) > 0){
@@ -543,14 +553,14 @@ runModule <- function(){
   
   if(nrow(a) > 0){
     a2 <- dplyr::group_by(a, fragID) %>%
-          dplyr::mutate(repLeaderSeq = leaderSeq[1],
-                        reads = nReads, 
-                        readIDs = list(sort(readID)),
-                        UMIs = list(sort(UMI))) %>%
-         dplyr::slice(1) %>%
-         dplyr::ungroup() %>%
-         dplyr::filter(reads >= args$minReadsPerFrag) %>%
-         as.data.table()
+      dplyr::mutate(repLeaderSeq = leaderSeq[1],
+                    reads = nReads, 
+                    readIDs = list(sort(readID)),
+                    UMIs = list(sort(UMI))) %>%
+      dplyr::slice(1) %>%
+      dplyr::ungroup() %>%
+      dplyr::filter(reads >= args$minReadsPerFrag) %>%
+      as.data.table()
   } else {
     a2 <- data.table()
   } 
@@ -564,7 +574,7 @@ runModule <- function(){
   frags <- frags[, .(mode, refGenome, trial, subject, sample, replicate, UMI, posid, reads, repLeaderSeq, fragChromosome, fragStrand, fragStart, fragEnd, anchorReadCluster, readIDs, UMIs, leaderSeqGroupNum)]
   
   frags$clusterLeaderSeqs <- as.factor(args$clusterLeaderSeqs)
-    
+  
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('buildStdFragments module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))

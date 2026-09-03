@@ -55,6 +55,6 @@ samples$index1Seq <- gsub(',', '', unlist(str_extract_all(o, ',[ATCG]{12},')))
 samples$refGenome <- gsub(',', '', unlist(str_match_all(o, ',[A-Za-z]+\\d+,?')))
 samples$vectorFastaFile <- 'Exuma.fasta'
 samples$leaderSeqHMM <- 'genericCART19.hmm'
-samples$mode <- 'IN_u5'
+samples$mode <- 'U5'
 
 readr::write_tsv(samples, 'sampleData.tsv')

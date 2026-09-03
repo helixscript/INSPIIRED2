@@ -4,7 +4,7 @@ for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'Bio
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")
 parser$add_argument("--inputData",               type = "character",     required = TRUE,          help = "Path to demultiplex module's rds output file.")
-parser$add_argument("--softwareRoot",            type = "character",     required = TRUE,          help = "Path to INSPIIRED installation.")
+parser$add_argument("--softwareRoot",            type = "character",     required = TRUE,          help = "Path to INSPIIRED2 installation.")
 parser$add_argument("--threads",                 type = "integer",       default = 50,             help = "Number of threads to use.")
 parser$add_argument("--fileTag",                 type  = "character",    default = "prepReads",    help = "String appended to output files in the outpt directory.")
 parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",     help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -217,6 +217,12 @@ runModule <- function(){
     
         rbindlist(results)
     }))
+  
+  if(nrow(d) == 0){
+    msg <- 'Error -- no reads remain after selecting for reads with significant HMM signatures.'
+    updateLog(msg)
+    stop(msg)
+  }
   
   collated_logs <- unlist(lapply(list.files(args$logDir, full.names = TRUE, recursive = TRUE, pattern = '^log$'), readLines))
   unlink(list.files(args$logDir, full.names = TRUE), recursive = TRUE)

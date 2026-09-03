@@ -7,7 +7,7 @@ parser$add_argument("--sampleData",                   type = "character",     re
 parser$add_argument("--indexReads",                   type = "character",     required = TRUE,                  help = "Path to the Index1 read FASTQ file")
 parser$add_argument("--adriftReads",                  type = "character",     required = TRUE,                  help = "Path to the Forward read FASTQ file")
 parser$add_argument("--anchorReads",                  type = "character",     required = TRUE,                  help = "Path to the Reverse read FASTQ file")
-parser$add_argument("--softwareRoot",                 type = "character",     required = TRUE,                  help = "Path to AAVengeR installation.")
+parser$add_argument("--softwareRoot",                 type = "character",     required = TRUE,                  help = "Path to INSPIIRED2 installation.")
 parser$add_argument("--threads",                      type = "integer",       default = 50,                     help = "Number of threads to use.")
 parser$add_argument("--fileTag",                      type = "character",     default = "demultiplex",          help = "String appended to output files in the outpt directory.")
 parser$add_argument("--index1ReadMaxMismatch",        type = "integer",       default = 1,                      help = "Number of allowed mismatches to the I1 barcode sequence.")
@@ -130,7 +130,7 @@ runModule <- function(){
   chunk_num <- 0
   total_reads <- 0
   
-  aav_iterator <- function() {
+  demux_iterator <- function() {
     chunk_I1 <- yield(stream_I1)
     if (length(chunk_I1) == 0) return(NULL)
     chunk_num <<- chunk_num + 1
@@ -146,7 +146,7 @@ runModule <- function(){
     list(I1 = chunk_I1, R1 = chunk_R1, R2 = chunk_R2, chunk_num = chunk_num)
   }
   
-  aav_worker <- function(chunk_data, sampleData, args) {
+  demux_worker <- function(chunk_data, sampleData, args) {
     for (p in c('dplyr', 'ShortRead', 'data.table', 'stringi', 'fst')) suppressPackageStartupMessages(library(p, character.only = TRUE))
     
     ppNum <- function(n) format(n, big.mark = ",", scientific = FALSE, trim = TRUE)
@@ -172,6 +172,14 @@ runModule <- function(){
     cI1@id <- clean_ids
     cR1@id <- clean_ids
     cR2@id <- clean_ids
+    
+    # Golay correction
+    if(args$correctGolayIndexReads){
+      updateLog('Applying Golay I1 correction.')
+      source(file.path(args$softwareRoot, 'lib', 'demultiplex.R'))
+      g <- correctGolay12(cI1@sread)
+      cI1 <- ShortRead(sread = DNAStringSet(ifelse(g$uncorrectable, g$input, g$corrected)), id = clean_ids)
+    }
     
     updateLog(paste0('<data chunk #', chunk_num, '>\tQuality trimming reads. Qual code: ', args$qualTrimCode, ' half width: ', args$qualTrimHalfWidth, ' events: ', args$qualTrimEvents), logFile = logFile)
     
@@ -316,8 +324,8 @@ runModule <- function(){
   updateLog(paste0('Demultiplexing data across ', args$threads, ' CPUs.'))
   updateLog(paste0('Starting asynchronous calculations. Data chunk logs can be found in ', args$logDir, '/'))
   
-  x <- bpiterate(ITER = aav_iterator, 
-                 FUN = aav_worker, 
+  x <- bpiterate(ITER = demux_iterator, 
+                 FUN = demux_worker, 
                  BPPARAM = param,
                  sampleData = sampleData, 
                  args = args)

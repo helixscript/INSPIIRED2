@@ -41,10 +41,10 @@ runModule <- function(){
   # Define fragment IDs.
   frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, fragStrand, fragStart, fragEnd, sep = ":")]
   
-  if(! args$disableDualDetect & 'IN_u5' %in% frags$mode & 'IN_u3' %in% frags$mode){
+  if(! args$disableDualDetect & 'U5' %in% frags$mode & 'U3' %in% frags$mode){
     updateLog('Searching for dual detections.')
     
-    # Loop through IN_u3 fragments and search for close by IN_u5 fragments oriented in the opposite direction. 
+    # Loop through U3 fragments and search for close by U5 fragments oriented in the opposite direction. 
     # For each identified pair, switch mode to 'dual detect', assign all fragments the U3 strand,
     # and assign a common posid which will be centered between the U3 and U5 posids.
     # Track which fragments have been merged so that closely spaced fragments are not merged more than once.
@@ -52,9 +52,9 @@ runModule <- function(){
     invisible(lapply(split(frags, paste(frags$trial, frags$subject, frags$sample)), function(x){
       processed_fragments <- data.table()
       
-      if('IN_u5' %in% x$mode & 'IN_u3' %in% x$mode){
-        u3 <- x[x$mode == 'IN_u3']
-        u5 <- x[x$mode == 'IN_u5']
+      if('U5' %in% x$mode & 'U3' %in% x$mode){
+        u3 <- x[x$mode == 'U3']
+        u5 <- x[x$mode == 'U5']
       
         invisible(lapply(unique(u3$posid), function(u3_posid){
           parts  <- unlist(strsplit(u3_posid, '[\\+\\-]'))
@@ -113,7 +113,7 @@ runModule <- function(){
     }))
   }
     
-  if(! args$disableOrientationCorrection & ('IN_u5' %in% frags$mode | 'IN_u3' %in% frags$mode)){
+  if(! args$disableOrientationCorrection & ('U5' %in% frags$mode | 'U3' %in% frags$mode)){
     updateLog('Updating strandedness of U5 and U3 intSite calls.')
     
     frags <- bind_rows(lapply(split(frags, paste(frags$trial, frags$subject, frags$sample)), function(x){
@@ -138,10 +138,10 @@ runModule <- function(){
         }
         
         # Change strand to reflect orientation. 
-        b1 <- subset(b, fragStrand == '+' & grepl('IN_u3', b$mode))
-        b2 <- subset(b, fragStrand == '-' & grepl('IN_u3', b$mode))
-        b3 <- subset(b, fragStrand == '+' & grepl('IN_u5', b$mode))
-        b4 <- subset(b, fragStrand == '-' & grepl('IN_u5', b$mode))
+        b1 <- subset(b, fragStrand == '+' & grepl('U3', b$mode))
+        b2 <- subset(b, fragStrand == '-' & grepl('U3', b$mode))
+        b3 <- subset(b, fragStrand == '+' & grepl('U5', b$mode))
+        b4 <- subset(b, fragStrand == '-' & grepl('U5', b$mode))
         
         if(nrow(b1) > 0) b1$posid <- sapply(b1$posid, updatePosIdStrand, '-')
         if(nrow(b2) > 0) b2$posid <- sapply(b2$posid, updatePosIdStrand, '+')
@@ -227,12 +227,14 @@ runModule <- function(){
   
   updateLog('Collapsing replicate level sites into sample level records.')
   sites <- group_by(sites, trial, subject, sample) %>%
-           mutate(sampleAbund = sum(sonicLengths)) %>%
-           ungroup() %>%
-           group_by(posid) %>%
-           mutate(percentSampleRelAbund = round((sonicLengths/sampleAbund[1]) * 100, 2), .after = 'nRepsObs') %>%
-           ungroup() %>%
-           select(-sampleAbund)
+    mutate(
+      sampleAbund = sum(sonicLengths),
+      percentSampleRelAbund =
+        round((sonicLengths / sampleAbund) * 100, 2),
+      .after = nRepsObs
+    ) %>%
+    ungroup() %>%
+    select(-sampleAbund)
   
   updateLog('Sample level site summary:')
   ts <- paste0(base::format(Sys.time(), "%m.%d.%Y"), ' [', timeElapsedString(), "]")
