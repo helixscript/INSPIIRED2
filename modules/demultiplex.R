@@ -24,8 +24,6 @@ parser$add_argument("--disableAdriftReadLinkers",     action = "store_true",  de
 parser$add_argument("--disableSequenceCollapse",      action = "store_true",  default = FALSE,                  help = "Disable the collapse of duplicate sequences.")
 parser$add_argument("--adriftReadLinkerMaxMismatch",  type = "integer",       default = 1,                      help = "Number of allowed mismatches to the linker sequence.")
 parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",             help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-parser$add_argument("--vectorDir",                    type = "character",     default = 'none',                 help = "Path to custom vector files.")
-parser$add_argument("--hmmDir",                       type = "character",     default = 'none',                 help = "Path to custom hmm files.")
 parser$add_argument("--captureUMIs",                  action = "store_true",  default = FALSE,                  help = "Capture and use UMIs in abundance calculations.")
 
 runModule <- function(){
@@ -41,52 +39,67 @@ runModule <- function(){
   
   updateLog('Starting demultiplex module.')
   
+  resource_overlay()
+  
   # Sanity checks...
   
   if(! file.exists(args$sampleData)){
-    updateLog(paste0('Error - sampleData file does not exits. Provided path: ', args$sampleData)) 
-    quit(status = 1)
+    msg <- paste0('Error - sampleData file does not exits. Provided path: ', args$sampleData)
+    updateLog(msg) 
+    stop(msg)
   }
-  
-  vector_hmm_copy()
   
   sampleData <- read_tsv(args$sampleData, show_col_types = FALSE)
   
   knownVectors <- list.files(file.path(args$softwareRoot, 'data', 'vectors'))
   knownHMMs <- list.files(file.path(args$softwareRoot, 'data', 'hmms'))
+  knownRefGenomes <- sub('\\.2bit$', '', list.files(file.path(args$softwareRoot, 'data', 'referenceGenomes')))
   
   if(! file.exists(args$indexReads)){
-    updateLog(paste0('Error - I1 sequencing file does not exits. Provided path: ', args$indexReads)) 
-    quit(status = 1)
+    msg <- paste0('Error - I1 sequencing file does not exits. Provided path: ', args$indexReads)
+    updateLog(msg)
+    stop(msg)
   }
   
   if(! file.exists(args$adriftReads)){
-    updateLog(paste0('Error - R1 sequencing file does not exits. Provided path: ', args$adriftReads)) 
-    quit(status = 1)
+    msg <- paste0('Error - R1 sequencing file does not exits. Provided path: ', args$adriftReads)
+    updateLog(msg)
+    stop(msg)
   }
   
   if(! file.exists(args$anchorReads)){
-    updateLog(paste0('Error - R2 sequencing file does not exits. Provided path: ', args$anchorReads)) 
-    quit(status = 1)
+    msg <- paste0('Error - R2 sequencing file does not exits. Provided path: ', args$anchorReads)
+    updateLog(msg)
+    stop(msg)
   }
   
   requiredFields <- c('trial', 'subject', 'sample', 'replicate', 'adriftReadLinkerSeq', 'index1Seq', 'refGenome', 'vectorFastaFile', 'leaderSeqHMM', 'mode')
   
   if(! all(requiredFields %in% names(sampleData))){
-    updateLog(paste0('Error - these required fields are missing from the sample data file: ', paste0(sQuote(requiredFields[! requiredFields %in% names(sampleData)]), collapse = ', ')))
-    quit(status = 1)
+    msg <- paste0('Error - these required fields are missing from the sample data file: ', paste0(sQuote(requiredFields[! requiredFields %in% names(sampleData)]), collapse = ', '))
+    updateLog(msg)
+    stop(msg)
   }
  
   if(! all(sampleData$vectorFastaFile %in% knownVectors)){
     missingVectors <- paste0(unique(sampleData$vectorFastaFile)[! unique(sampleData$vectorFastaFile) %in% knownVectors], collapse = ', ')
-    updateLog(paste0('Error - These vector file names in the sample data file were not found in ', file.path(args$softwareRoot, 'data', 'vectors'), ': ', missingVectors)) 
-    quit(status = 1)
+    msg <- paste0('Error - These vector file names in the sample data file were not found in ', file.path(args$softwareRoot, 'data', 'vectors'), ': ', missingVectors)
+    updateLog(msg)
+    stop(msg)
   }
   
   if(! all(sampleData$leaderSeqHMM %in% knownHMMs)){
     missingHMMs <- paste0(unique(sampleData$leaderSeqHMM)[! unique(sampleData$leaderSeqHMM) %in% knownHMMs], collapse = ', ')
-    updateLog(paste0('Error - These hmm file names in the sample data file were not found in ', file.path(args$softwareRoot, 'data', 'hmms'), ': ', missingHMMs)) 
-    quit(status = 1)
+    msg <- paste0('Error - These hmm file names in the sample data file were not found in ', file.path(args$softwareRoot, 'data', 'hmms'), ': ', missingHMMs)
+    updateLog(msg)
+    stop(msg)
+  }
+  
+  if(! all(sampleData$refGenome %in% knownRefGenomes)){
+    missingGenomes <- paste0(unique(sampleData$refGenome)[! unique(sampleData$refGenome) %in% knownRefGenomes], collapse = ', ')
+    msg <- paste0('Error - These reference genomes in the sample data file were not found in ', file.path(args$softwareRoot, 'data', 'referenceGenomes'), ': ', missingGenomes)
+    updateLog(msg)
+    stop(msg)
   }
   
   args$reverseComplementI1 <- FALSE
@@ -326,6 +339,12 @@ runModule <- function(){
          read_fst(x, as.data.table = TRUE)
        }), use.names = TRUE, fill = TRUE)
   
+  if(nrow(o) == 0){
+    msg <- 'Error - no reads demultiplexed.'
+    updateLog(msg)
+    stop(msg)
+  }
+  
   group_vars <- c("trial", "subject", "sample", "replicate")
   
   if (! args$disableSequenceCollapse) {
@@ -418,8 +437,8 @@ source(file.path(args$softwareRoot, 'lib', 'common.R'))
 
 tryCatch({
   runModule()
-  q(status = 0)
 }, error = function(e) {
-  message("Caught error: ", e$message)
-  q(status = 1)
+  cat("ERROR: ", conditionMessage(e), "\n", sep = "", file = stderr())
+  flush(stderr())
+  quit(save = "no", status = 1, runLast = FALSE)
 })

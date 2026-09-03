@@ -31,6 +31,8 @@ runModule <- function(){
   }, add = TRUE)
   
   updateLog('Starting alignReads module.')
+
+  resource_overlay()
   
   if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
@@ -172,8 +174,8 @@ source(file.path(args$softwareRoot, 'lib', 'common.R'))
 
 tryCatch({
   runModule()
-  q(status = 0)
 }, error = function(e) {
-  message("Caught error: ", e$message)
-  q(status = 1)
+  cat("ERROR: ", conditionMessage(e), "\n", sep = "", file = stderr())
+  flush(stderr())
+  quit(save = "no", status = 1, runLast = FALSE)
 })

@@ -22,6 +22,8 @@ runModule <- function(){
   
   updateLog('Starting annotateRepeats module.')
   
+  resource_overlay()
+
   if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
   
@@ -46,19 +48,22 @@ runModule <- function(){
     
     g$posid <- paste0(seqnames(g), strand(g), start(g))
     
-    o <- data.frame(suppressWarnings(GenomicRanges::distanceToNearest(g, tab, select='all', ignore.strand=TRUE)))
+    o <- data.frame(IRanges::findOverlaps(g, tab, ignore.strand=TRUE))
     
     r <- unlist(GenomicRanges::GRangesList(lapply(1:length(g), function(xx){
            gg <- g[xx]
-           oo <- unique(o[o$queryHits == xx,]) %>% dplyr::filter(distance == 0)
+          
+           oo <- unique(o[o$queryHits == xx,])
            
-           gg$repeat_name  <- NA
-           gg$repeat_class <- NA
+           gg$repeat_name  <- NA_character_
+           gg$repeat_class <- NA_character_
            
-           hits <- distinct(data.frame(tab[oo$subjectHits,])[, c('repeat_name', 'repeat_class')])
+           if(nrow(oo)){
+             hits <- distinct(data.frame(tab[oo$subjectHits,])[, c('repeat_name', 'repeat_class')])
+             gg$repeat_name  <- paste0(hits$repeat_name, collapse = ',')
+             gg$repeat_class <- paste0(hits$repeat_class, collapse = ',')
+           }
            
-           gg$repeat_name <- paste0(hits$repeat_name, collapse = ',')
-           gg$repeat_class <- paste0(hits$repeat_class, collapse = ',')
            gg
          })))
     
@@ -69,9 +74,6 @@ runModule <- function(){
   d <- dplyr::relocate(d, repeat_name, .after = posid)
   d <- dplyr::relocate(d, repeat_class, .after = repeat_name)
   
-  d[nchar(d$repeat_name) == 0,]$repeat_name   <- NA
-  d[nchar(d$repeat_class) == 0,]$repeat_class <- NA
-
   saveRDS(d, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
   updateLog('Completed annotateRepeats module.')
@@ -82,8 +84,8 @@ source(file.path(args$softwareRoot, 'lib', 'common.R'))
 
 tryCatch({
   runModule()
-  q(status = 0)
 }, error = function(e) {
-  message("Caught error: ", e$message)
-  q(status = 1)
+  cat("ERROR: ", conditionMessage(e), "\n", sep = "", file = stderr())
+  flush(stderr())
+  quit(save = "no", status = 1, runLast = FALSE)
 })

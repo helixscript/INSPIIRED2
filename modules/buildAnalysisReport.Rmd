@@ -1,0 +1,255 @@
+---
+fontsize: 12pt
+geometry: margin=0.50in
+subparagraph: yes
+params: 
+    title: "title"
+    date:  "0000-00-00"
+title: "`r params$title`"
+
+date:  "`r params$date`"
+header-includes:
+   - \usepackage{titlesec}
+   - \usepackage{titling}
+   - \setlength{\droptitle}{-0.85in}
+   - \posttitle{\par\end{center}\vspace{0.3cm}}
+   - \postdate{\par\end{center}\vspace{-1.0em}}
+   - \usepackage{array}
+   - \usepackage{makecell}
+   - \usepackage{booktabs}
+   - \usepackage{float}
+   - \usepackage{pdflscape}
+   - \newcommand{\blandscape}{\begin{landscape}}
+   - \newcommand{\elandscape}{\end{landscape}}
+output:
+  pdf_document:
+    toc: false
+    keep_tex: no
+    latex_engine: xelatex
+---
+
+\titleformat{\section}{       \fontsize{26pt}{10pt}\selectfont}{}{0em}{}
+\titleformat{\subsection}{    \fontsize{16pt}{10pt}\selectfont}{}{0em}{}
+\titleformat{\subsubsection}{ \fontsize{12pt}{10pt}\selectfont}{}{0em}{}
+\titleformat{\paragraph}{     \fontsize{ 8pt}{ 8pt}\selectfont}{}{0em}{}
+\titleformat{\subparagraph}{  \fontsize{ 6pt}{ 6pt}\selectfont}{}{0em}{}
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(png)
+library(grid)
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+options(stringsAsFactors = FALSE)
+```
+
+This report provides an initial overview of the performance of the run specified in the title. In the first
+table, the report specifies the most prevalent bar codes detected as well as the most prevalent barcode - sample linker pairings. 
+The displays on the following page show examples of the sequences detected. Following the sequence heat maps,
+an attrition table showing the progression of sequencing reads through the different stages of the pipeline. Poly-G barcodes arise from non-indexed PhiX reads.
+
+
+```{r, echo=FALSE, results='asis'}
+if(nrow(seqsTab) > 0){
+  cat('\n\\vspace{0.5cm}\n')
+  x <- as.data.frame(seqsTab, check.names = FALSE)
+  
+  names(x)[names(x) == "subject"] <- "patient"
+  
+  x[[2]] <- format(x[[2]], big.mark = ",", scientific = FALSE, trim = TRUE)
+  x[[4]] <- format(x[[4]], big.mark = ",", scientific = FALSE, trim = TRUE)
+  
+  x[] <- lapply(x, \(z) cell_spec(z, "latex", monospace = TRUE))
+  
+  cat(
+    kable(x, "latex", linesep = "", booktabs = TRUE, escape = FALSE, align = rep("c", ncol(x))) %>%
+      kable_styling(font_size = 11, latex_options = "HOLD_position")
+  )
+}
+```
+
+\newpage
+
+The plots below highlight the structure of recovered sequences. The first 100 NTs of sequencing reads were distributed across 5,000 bins and the consensus call for each position within bins is colored. 
+
+\vspace{0.5cm}
+
+\begin{center}
+\textbf{Anchor reads}
+\end{center}
+
+```{r, echo=FALSE, fig.align='center', out.width='73%'}
+knitr::include_graphics(file.path(args$outputDir, 'anchorReadsMap.png'))
+```
+  
+\vspace{1cm}
+  
+\begin{center}
+\textbf{Adrift reads}
+\end{center}
+  
+```{r, echo=FALSE, fig.align='center', out.width='73%'}
+knitr::include_graphics(file.path(args$outputDir, 'adriftReadsMap.png'))
+```
+
+\newpage
+
+The table(s) below summarize how read data progressed through the INSPIIRED2 pipeline. Each reference genome analyzed will be shown with a separate table. Table headers: 1) subject – user provided subject identifier, 2) sample – user provided sample identified, 3) reads – the number of unique read pairs demultiplexed for each sample, 4) prepedReads – number of unique read pairs containing a recognizable LTR sequence and satisfying read length requirements, 5) alignments – number of read pairs with one or more significant alignments to reference genome, 6) fragments – number of reads pairs that can represent one or more rationale fragment, 7) stdFragments – number of unique fragments (reads collapsed) with standardized boundaries, 8) multiHitClusts – number of multi-hit clusters identified, 9) sites – number of unique integration sites identified. 
+
+\vspace{1cm}
+
+```{r, echo=FALSE, results='asis'}
+if(nrow(attTab) > 0){
+
+  refs <- unique(attTab$refGenome)
+
+  for(ref in refs){
+
+    x <- attTab[attTab$refGenome == ref, , drop = FALSE]
+
+    names(x)[names(x) == "subject"] <- "patient"
+
+    # refGenome will be used as the table heading instead
+    x$refGenome <- NULL
+    x <- as.data.frame(x, check.names = FALSE)
+
+    # Add commas to numeric columns
+    numCols <- vapply(x, is.numeric, logical(1))
+
+    x[numCols] <- lapply(
+      x[numCols],
+      \(z) format(z, big.mark = ",", scientific = FALSE, trim = TRUE)
+    )
+
+    # Format cell values
+    x[] <- lapply(
+      x,
+      \(z) cell_spec(z, "latex", monospace = FALSE)
+    )
+
+    cat('\n\\vspace{0.5cm}\n')
+
+    tab <- kable(
+      x,
+      "latex",
+      linesep = "",
+      booktabs = TRUE,
+      escape = FALSE,
+      align = rep("c", ncol(x))
+    ) %>%
+      add_header_above(
+        setNames(ncol(x), ref),
+        align = "c",
+        bold = TRUE
+      ) %>%
+      kable_styling(
+        font_size = 9,
+        latex_options = "HOLD_position"
+      )
+
+    # Remove outer horizontal rules
+    tab <- gsub("\\toprule", "", tab, fixed = TRUE)
+    tab <- gsub("\\bottomrule", "", tab, fixed = TRUE)
+
+    cat(tab)
+    cat('\n\\vspace{0.5cm}\n')
+  }
+}
+```
+
+
+```{r, echo=FALSE, results='asis'}
+
+if(nrow(sacCer_reads) > 0){
+
+  controlWindow <- 3L
+
+  controlTargets <- c(
+    "chrIX+406437",
+    "chrI+109182",
+    "chrV+85054"
+  )
+
+  parsePosid <- function(x){
+    data.frame(
+      chr    = sub("[+-][0-9]+$", "", x),
+      strand = sub("^.*([+-])[0-9]+$", "\\1", x),
+      pos    = as.integer(sub("^.*[+-]", "", x))
+    )
+  }
+
+  hits <- sacCer_sites[0, , drop = FALSE]
+
+  if(nrow(sacCer_sites) > 0){
+
+    obs     <- parsePosid(sacCer_sites$posid)
+    targets <- parsePosid(controlTargets)
+
+    keep <- vapply(seq_len(nrow(obs)), function(i){
+      any(
+        targets$chr == obs$chr[i] &
+        targets$strand == obs$strand[i] &
+        abs(targets$pos - obs$pos[i]) <= controlWindow
+      )
+    }, logical(1))
+
+    hits <- sacCer_sites[keep, , drop = FALSE]
+  }
+
+  if(nrow(hits) > 0){
+
+    x <- as.data.frame(hits, check.names = FALSE)
+
+    # Add commas to numeric columns
+    numCols <- vapply(x, is.numeric, logical(1))
+
+    x[numCols] <- lapply(
+      x[numCols],
+      \(z) format(z, big.mark = ",", scientific = FALSE, trim = TRUE)
+    )
+
+    # Format cell values
+    x[] <- lapply(
+      x,
+      \(z) cell_spec(z, "latex", monospace = FALSE)
+    )
+
+    cat("\n\\vspace{0.5cm}\n")
+
+    tab <- kable(
+      x,
+      "latex",
+      linesep = "",
+      booktabs = TRUE,
+      escape = FALSE,
+      align = rep("c", ncol(x))
+    ) %>%
+      add_header_above(
+        setNames(ncol(x), "Expected control sites"),
+        align = "c",
+        bold = TRUE
+      ) %>%
+      kable_styling(
+        font_size = 9,
+        latex_options = "HOLD_position"
+      )
+
+    tab <- gsub("\\toprule", "", tab, fixed = TRUE)
+    tab <- gsub("\\bottomrule", "", tab, fixed = TRUE)
+
+    cat(tab)
+
+  } else {
+
+    cat("\n\\vspace{0.5cm}\n")
+    cat("No sites near expected controls detected.\n")
+  }
+}
+```
+
+\vfill
+
+\begin{center}
+\footnotesize
+Report generated with INSPIIRED2 buildAnalysisReport module v. `r trimws(readLines(file.path(args$softwareRoot, "VERSION"), n = 1))`
+\end{center}

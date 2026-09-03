@@ -1,0 +1,17 @@
+09.02.2026 [0h 00min 00sec]	Starting buildStdFragment module.
+09.02.2026 [0h 00min 00sec]	Intsite positions updated for positive strand fragments. Max position shift: 2, percent fragments updated: 56.16%
+09.02.2026 [0h 00min 00sec]	Intsite positions updated for negative strand fragments. Max position shift: 2, percent fragments updated: 58.05%
+09.02.2026 [0h 00min 02sec]	Intsite break points updated for positive strand fragments. Max position shift: 2, percent fragments updated: 58.12%
+09.02.2026 [0h 00min 02sec]	Intsite break points updated for negative strand fragments. Max position shift: 2, percent fragments updated: 62.77%
+09.02.2026 [0h 00min 02sec]	Identifying uniquely called positions.
+09.02.2026 [0h 00min 02sec]	94.65% of fragment reads mapped uniquely to the genome.
+09.02.2026 [0h 00min 02sec]	Rescuing multihit reads using list on uniquely called positions.
+09.02.2026 [0h 00min 02sec]	7 reads rescued from multihit read table.
+09.02.2026 [0h 00min 02sec]	Building multi-hit clusters.
+09.02.2026 [0h 00min 02sec]	Cluster the beginnings of anchor read sequences.
+09.02.2026 [0h 00min 02sec]	Anchor read filter - removing 0 reads, 0 fragments, associated with 0 position ids due to not being the clear choice.
+09.02.2026 [0h 00min 02sec]	See output/buildStdFragments_anchorReadClusters.rds for more details.
+09.02.2026 [0h 00min 02sec]	Identifying dominant UMIs in the data.
+09.02.2026 [0h 00min 02sec]	Total UMIs in data set before isolating dominant UMIs: 1
+09.02.2026 [0h 00min 03sec]	Total UMIs in data set after isolating dominant UMIs: 1
+09.02.2026 [0h 00min 03sec]	buildStdFragments module completed.

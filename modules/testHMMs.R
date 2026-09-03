@@ -15,7 +15,7 @@ parser$add_argument("--minScoreBinPct", type = "double", default = 1, help = "Mi
 parser$add_argument("--facetCols", type = "integer", default = 4, help = "Number of facet columns in the output plot.")
 parser$add_argument("--disableHorizontalGuides", action = "store_true",  default = FALSE,          help = "Disable horizontal grid lines.")
 parser$add_argument("--horizontalGuideEvery", type = "double", default = 6, help = "Number of HMM score points between horizontal grid lines.")
-parser$add_argument("--HMMparams", type = "character", required = FALSE, help = "HMM parameter string.")
+parser$add_argument("--HMMparams", type = "character", required = FALSE, default = 'none', help = "HMM parameter string.")
 
 runModule <- function() {
   startModule()
@@ -1114,16 +1114,17 @@ runModule <- function() {
       "No HMM hits remained after applying the configured HMM-end and terminal-sequence requirements."
     )
   
+  # JKE
   hmmAnalysis <- plotHMMStartHeatmap(
     hmmResults,
     hmmParameters,
-    maxStart = 50,
-    startBinWidth = 3,
-    scoreBinWidth = 3,
-    minScoreBinPct = 1,
-    facetCols = 4,
-    showHorizontalGuides = TRUE,
-    horizontalGuideEvery = 6,
+    maxStart = args$maxReadStartPos,
+    startBinWidth = args$startPosBinWidth,
+    scoreBinWidth = args$scoreBinWidth,
+    minScoreBinPct = args$minScoreBinPct,
+    facetCols = args$facetCols,
+    showHorizontalGuides = args$disableHorizontalGuides,
+    horizontalGuideEvery = args$horizontalGuideEvery,
     hitBorderColour = "grey70",
     hitBorderLinewidth = 0.10,
     parameterBoxColour = "blue3",
@@ -1165,8 +1166,8 @@ source(file.path(args$softwareRoot, 'lib', 'common.R'))
 
 tryCatch({
   runModule()
-  q(status = 0)
 }, error = function(e) {
-  message("Caught error: ", e$message)
-  q(status = 1)
+  cat("ERROR: ", conditionMessage(e), "\n", sep = "", file = stderr())
+  flush(stderr())
+  quit(save = "no", status = 1, runLast = FALSE)
 })

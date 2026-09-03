@@ -1,0 +1,21 @@
+09.02.2026 [0h 00min 00sec]	Starting alignReads module.
+09.02.2026 [0h 00min 00sec]	Starting asynchronous BLAT runs. Data chunk logs can be found in output/alignReads_log/
+09.02.2026 [0h 00min 00sec]	Collated data chunk logs will appear below when done.
+09.02.2026 [0h 00min 00sec]	Starting anchor read alignments.
+09.02.2026 [0h 01min 18sec]	Anchor read alignments completed.
+09.02.2026 [0h 01min 18sec]	153 anchor reads returned one or more alignments.
+09.02.2026 [0h 01min 19sec]	Limiting adrift reads to those with anchor read alignments.
+09.02.2026 [0h 01min 19sec]	Starting adrift read alignments.
+09.02.2026 [0h 03min 09sec]	Adrift read alignments completed.
+09.02.2026 [0h 03min 09sec]	422 adrift reads returned one or more alignments.
+09.02.2026 [0h 03min 09sec]	09.02.2026 [0h 00min 01sec]	<data chunk #1>	Starting alignment chunk with 153 data rows.
+09.02.2026 [0h 03min 09sec]	09.02.2026 [0h 00min 01sec]	<data chunk #1>	blat /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/data/referenceGenomes/hg38.2bit /dev/shm/INSPIIRED2/20260902_232431533309_2779647/2779822___PlfL4NoUJrh3DwuQhgNDXZGvt7Wm4k.fasta /dev/shm/INSPIIRED2/20260902_232431533309_2779647/2779822___PlfL4NoUJrh3DwuQhgNDXZGvt7Wm4k.psl -tileSize=11 -stepSize=5 -repMatch=3000 -out=psl -t=dna -q=dna -minScore=0 -minIdentity=0 -noHead -noTrimA
+09.02.2026 [0h 03min 09sec]	09.02.2026 [0h 01min 17sec]	<data chunk #1>	Parsing BLAT output.
+09.02.2026 [0h 03min 09sec]	09.02.2026 [0h 01min 17sec]	<data chunk #1>	35,264 data rows returned.
+09.02.2026 [0h 03min 09sec]	09.02.2026 [0h 01min 17sec]	<data chunk #1>	274 data rows remain after filtering.
+09.02.2026 [0h 03min 09sec]	09.02.2026 [0h 01min 19sec]	<data chunk #1>	Starting alignment chunk with 422 data rows.
+09.02.2026 [0h 03min 09sec]	09.02.2026 [0h 01min 19sec]	<data chunk #1>	blat /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/data/referenceGenomes/hg38.2bit /dev/shm/INSPIIRED2/20260902_232431533309_2779647/2785985___fL4NoUJrh3DwuQhgNDXZGvt7Wm4kA7.fasta /dev/shm/INSPIIRED2/20260902_232431533309_2779647/2785985___fL4NoUJrh3DwuQhgNDXZGvt7Wm4kA7.psl -tileSize=11 -stepSize=5 -repMatch=3000 -out=psl -t=dna -q=dna -minScore=0 -minIdentity=0 -noHead -noTrimA
+09.02.2026 [0h 03min 09sec]	09.02.2026 [0h 03min 07sec]	<data chunk #1>	Parsing BLAT output.
+09.02.2026 [0h 03min 09sec]	09.02.2026 [0h 03min 08sec]	<data chunk #1>	106,612 data rows returned.
+09.02.2026 [0h 03min 09sec]	09.02.2026 [0h 03min 08sec]	<data chunk #1>	953 data rows remain after filtering.
+09.02.2026 [0h 03min 09sec]	alignReads module completed.

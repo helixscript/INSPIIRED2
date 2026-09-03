@@ -1,0 +1,24 @@
+Genome: sacCer3
+Build date: 2026-08-28 14:14:11
+Chromosome selection: all reference sequences
+Sequences processed: 17
+Reference size: 12157105 bp
+RepeatMasker executable: /usr/local/RM424_install/RepeatMasker/RepeatMasker
+RepeatMasker version: RepeatMasker version 4.2.4
+Search engine: rmblast
+Sensitivity: standard
+Species: Saccharomyces cerevisiae
+Requested threads: 20
+Assumed RMBlast cores per -pa 1 job: 4
+Concurrent RepeatMasker jobs: 5
+Estimated peak RMBlast cores: 20
+Repeat records: 3588
+Elapsed hours: 0.028
+Command template: /usr/local/RM424_install/RepeatMasker/RepeatMasker -pa 1 -e rmblast -species "Saccharomyces cerevisiae" -dir <jobDir> <sequence.fa>
+
+RepeatMasker environment:
+RepeatMasker version 4.2.4
+Search Engine: NCBI/RMBLAST [ 2.14.1+ ]
+Using FamDB: /usr/local/RM424_install/FamDB
+Families : 30,659
+9/9 families in ancestor taxa; 0/0 lineage-specific families

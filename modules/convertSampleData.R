@@ -58,5 +58,3 @@ samples$leaderSeqHMM <- 'genericCART19.hmm'
 samples$mode <- 'IN_u5'
 
 readr::write_tsv(samples, 'sampleData.tsv')
-
-

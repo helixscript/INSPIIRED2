@@ -1,0 +1,21 @@
+09.02.2026 [0h 00min 00sec]	Starting demultiplex module.
+09.02.2026 [0h 00min 00sec]	Link created: /resources/referenceGenomes/x.2bit -> /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/data/referenceGenomes/x.2bit
+09.02.2026 [0h 00min 00sec]	Applied 1 user resource overlay(s) from /resources
+09.02.2026 [0h 00min 00sec]	Determining if I1 barcodes need to be reverse-complimented.
+09.02.2026 [0h 00min 01sec]	Demultiplexing data across 10 CPUs.
+09.02.2026 [0h 00min 01sec]	Starting asynchronous calculations. Data chunk logs can be found in output/demultiplex_log/
+09.02.2026 [0h 00min 02sec]	Demultiplexing calculations completed.
+09.02.2026 [0h 00min 02sec]	<data chunk #1>	Separated reads into groups (2,250 reads).
+09.02.2026 [0h 00min 02sec]	<data chunk #1>	Quality trimming reads. Qual code: + half width: 3 events: 2
+09.02.2026 [0h 00min 02sec]	<data chunk #1>	Ranges kept after trimming: 2250
+09.02.2026 [0h 00min 02sec]	<data chunk #1>	Processing sample table.
+09.02.2026 [0h 00min 02sec]	<data chunk #1>	(row #1) Subsetting reads for sample row using 570 indices.
+09.02.2026 [0h 00min 02sec]	<data chunk #1>	(row #2) Subsetting reads for sample row using 570 indices.
+09.02.2026 [0h 00min 02sec]	<data chunk #1>	(row #3) Subsetting reads for sample row using 555 indices.
+09.02.2026 [0h 00min 02sec]	<data chunk #1>	(row #4) Subsetting reads for sample row using 555 indices.
+09.02.2026 [0h 00min 02sec]	<data chunk #1>	2,250 reads demultiplexed.
+09.02.2026 [0h 00min 03sec]	Collating 1 data files from output/demultiplex_tmp/
+09.02.2026 [0h 00min 03sec]	   Loading output/demultiplex_tmp/1.fst ...
+09.02.2026 [0h 00min 03sec]	Collapsing duplicate reads.
+09.02.2026 [0h 00min 03sec]	Writing 841 reads.
+09.02.2026 [0h 00min 03sec]	Demultiplex module completed.

@@ -576,8 +576,8 @@ source(file.path(args$softwareRoot, 'lib', 'buildStdFragments.R'))
 
 tryCatch({
   runModule()
-  q(status = 0)
 }, error = function(e) {
-  message("Caught error: ", e$message)
-  q(status = 1)
+  cat("ERROR: ", conditionMessage(e), "\n", sep = "", file = stderr())
+  flush(stderr())
+  quit(save = "no", status = 1, runLast = FALSE)
 })

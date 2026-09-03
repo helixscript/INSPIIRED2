@@ -1,0 +1,53 @@
+2026-08-28 14:28:07  Genome: hg38 
+2026-08-28 14:28:07  2bit source: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.2bit 
+2026-08-28 14:28:08  Downloading: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.2bit 
+2026-08-28 14:28:47  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hg38_output/.hg38_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hg38_output/.hg38_build/source.chromInfo.txt' 
+2026-08-28 14:28:47  Sequences in source genome: 455 
+2026-08-28 14:28:47  Chromosome selection: regex 
+2026-08-28 14:28:47  Chromosome filter: ^chr([1-9][0-9]*|X|Y)$ 
+2026-08-28 14:28:47  Sequences retained: 24 
+2026-08-28 14:28:47  Sequences excluded: 431 
+2026-08-28 14:28:47  Reference size: 3,088,269,832 bp 
+2026-08-28 14:28:47  Sequences: chr1, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr2, chr20, chr21, chr22, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chrX, chrY 
+2026-08-28 14:28:47  Checking annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 14:28:49  Annotation source selected: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 14:28:49  Reading annotation. 
+2026-08-28 14:28:50  Annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 14:28:50  Annotation source type: UCSC ncbiRefSeqCurated 
+2026-08-28 14:28:50  Annotation format: UCSC bin + genePredExt (16 columns) 
+2026-08-28 14:28:53  Source transcript records: 105,019 
+2026-08-28 14:28:53  Retained transcript records: 93,442 
+2026-08-28 14:28:53  Source gene symbols: 30,002 
+2026-08-28 14:28:53  Retained gene symbols: 29,909 
+2026-08-28 14:28:53  Genome and annotation preflight passed. 
+2026-08-28 14:28:53  RepeatMasker: RepeatMasker version 4.2.4 
+2026-08-28 14:28:53  Running RepeatMasker preflight. 
+2026-08-28 14:29:02  RepeatMasker version 4.2.4 
+2026-08-28 14:29:02  Search Engine: NCBI/RMBLAST [ 2.14.1+ ] 
+2026-08-28 14:29:02  Using FamDB: /usr/local/RM424_install/FamDB 
+2026-08-28 14:29:02  Families : 30,659 
+2026-08-28 14:29:02  1387/1387 families in ancestor taxa; 52/52 lineage-specific families 
+2026-08-28 14:29:02  RepeatMasker preflight passed. 
+2026-08-28 14:29:02  Extracting retained chromosomes. 
+2026-08-28 14:29:02  Running: twoBitToFa '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hg38_output/.hg38_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hg38_output/.hg38_build/hg38.fa' '-seqList=/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hg38_output/.hg38_build/chromosomes.txt' 
+2026-08-28 14:29:10  Building filtered 2bit. 
+2026-08-28 14:29:10  Running: faToTwoBit '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hg38_output/.hg38_build/hg38.fa' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hg38_output/.hg38_build/hg38.2bit' 
+2026-08-28 14:29:29  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hg38_output/.hg38_build/hg38.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hg38_output/.hg38_build/final.chromInfo.txt' 
+2026-08-28 14:29:29  Final 2bit verified. 
+2026-08-28 14:29:29  RepeatMasker species: Homo sapiens 
+2026-08-28 14:29:29  RepeatMasker sensitivity: standard 
+2026-08-28 14:29:29  RepeatMasker engine: rmblast 
+2026-08-28 14:29:29  Requested threads: 150 
+2026-08-28 14:29:29  Assumed cores per RepeatMasker -pa 1 job: 5 
+2026-08-28 14:29:29  Concurrent RepeatMasker jobs: 24 
+2026-08-28 14:29:29  Estimated peak RMBlast cores: 120 
+2026-08-28 14:29:29  Starting 24 chromosome/scaffold-level RepeatMasker jobs, largest sequences first. 
+2026-08-28 22:29:47  Reading RepeatMasker outputs. 
+2026-08-28 22:30:50  RepeatMasker records: 5,405,252 
+2026-08-28 22:31:42  Building transcript GRanges. 
+2026-08-28 22:31:43  Transcript GRanges: 93,442 ranges 
+2026-08-28 22:31:43  Building exon GRanges. 
+2026-08-28 22:31:46  Exon GRanges: 1,007,648 ranges 
+2026-08-28 22:31:46  Publishing completed genome build. 
+2026-08-28 22:31:48  Done. 
+2026-08-28 22:31:48  Output directory: /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hg38_output 

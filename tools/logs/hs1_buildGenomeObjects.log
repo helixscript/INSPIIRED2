@@ -1,0 +1,56 @@
+2026-08-28 14:41:08  Genome: hs1 
+2026-08-28 14:41:08  2bit source: https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.2bit 
+2026-08-28 14:41:08  Downloading: https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.2bit 
+2026-08-28 14:41:38  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hs1_output/.hs1_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hs1_output/.hs1_build/source.chromInfo.txt' 
+2026-08-28 14:41:38  Sequences in source genome: 25 
+2026-08-28 14:41:38  Chromosome selection: regex 
+2026-08-28 14:41:38  Chromosome filter: ^chr([1-9][0-9]*|X|Y)$ 
+2026-08-28 14:41:38  Sequences retained: 24 
+2026-08-28 14:41:38  Sequences excluded: 1 
+2026-08-28 14:41:38  Reference size: 3,117,275,501 bp 
+2026-08-28 14:41:38  Sequences: chr1, chr2, chr3, chr4, chr5, chr6, chr7, chrX, chr9, chr8, chr11, chr10, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr20, chrY, chr19, chr22, chr21 
+2026-08-28 14:41:38  Checking annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/hs1/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 14:41:38  Annotation source not available: https://hgdownload.soe.ucsc.edu/goldenPath/hs1/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 14:41:38  Checking annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/genes/hs1.ncbiRefSeq.gp.gz 
+2026-08-28 14:41:39  Preferred ncbiRefSeqCurated annotation unavailable; using UCSC ncbiRefSeq genePred fallback. 
+2026-08-28 14:41:39  Annotation source selected: https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/genes/hs1.ncbiRefSeq.gp.gz 
+2026-08-28 14:41:39  Reading annotation. 
+2026-08-28 14:41:42  Annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/genes/hs1.ncbiRefSeq.gp.gz 
+2026-08-28 14:41:42  Annotation source type: UCSC ncbiRefSeq genePred 
+2026-08-28 14:41:42  Annotation format: genePredExt (15 columns) 
+2026-08-28 14:41:46  Source transcript records: 178,178 
+2026-08-28 14:41:46  Retained transcript records: 178,178 
+2026-08-28 14:41:46  Source gene symbols: 41,566 
+2026-08-28 14:41:46  Retained gene symbols: 41,566 
+2026-08-28 14:41:46  Genome and annotation preflight passed. 
+2026-08-28 14:41:46  RepeatMasker: RepeatMasker version 4.2.4 
+2026-08-28 14:41:46  Running RepeatMasker preflight. 
+2026-08-28 14:41:56  RepeatMasker version 4.2.4 
+2026-08-28 14:41:56  Search Engine: NCBI/RMBLAST [ 2.14.1+ ] 
+2026-08-28 14:41:56  Using FamDB: /usr/local/RM424_install/FamDB 
+2026-08-28 14:41:56  Families : 30,659 
+2026-08-28 14:41:56  1387/1387 families in ancestor taxa; 52/52 lineage-specific families 
+2026-08-28 14:41:56  RepeatMasker preflight passed. 
+2026-08-28 14:41:56  Extracting retained chromosomes. 
+2026-08-28 14:41:56  Running: twoBitToFa '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hs1_output/.hs1_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hs1_output/.hs1_build/hs1.fa' '-seqList=/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hs1_output/.hs1_build/chromosomes.txt' 
+2026-08-28 14:42:04  Building filtered 2bit. 
+2026-08-28 14:42:04  Running: faToTwoBit '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hs1_output/.hs1_build/hs1.fa' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hs1_output/.hs1_build/hs1.2bit' 
+2026-08-28 14:42:21  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hs1_output/.hs1_build/hs1.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hs1_output/.hs1_build/final.chromInfo.txt' 
+2026-08-28 14:42:21  Final 2bit verified. 
+2026-08-28 14:42:21  RepeatMasker species: Homo sapiens 
+2026-08-28 14:42:21  RepeatMasker sensitivity: standard 
+2026-08-28 14:42:21  RepeatMasker engine: rmblast 
+2026-08-28 14:42:21  Requested threads: 130 
+2026-08-28 14:42:21  Assumed cores per RepeatMasker -pa 1 job: 5 
+2026-08-28 14:42:21  Concurrent RepeatMasker jobs: 24 
+2026-08-28 14:42:21  Estimated peak RMBlast cores: 120 
+2026-08-28 14:42:21  Starting 24 chromosome/scaffold-level RepeatMasker jobs, largest sequences first. 
+2026-08-29 00:42:08  Reading RepeatMasker outputs. 
+2026-08-29 00:43:12  RepeatMasker records: 5,565,635 
+2026-08-29 00:44:04  Building transcript GRanges. 
+2026-08-29 00:44:06  Transcript GRanges: 178,178 ranges 
+2026-08-29 00:44:06  Building exon GRanges. 
+2026-08-29 00:44:12  Exon GRanges: 2,117,078 ranges 
+2026-08-29 00:44:12  Publishing completed genome build. 
+2026-08-29 00:44:14  Done. 
+2026-08-29 00:44:14  Output directory: /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/hs1_output 

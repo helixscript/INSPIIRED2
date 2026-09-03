@@ -1,0 +1,53 @@
+2026-09-01 23:01:16  Genome: canFam4 
+2026-09-01 23:01:16  2bit source: https://hgdownload.soe.ucsc.edu/goldenPath/canFam4/bigZips/canFam4.2bit 
+2026-09-01 23:01:16  Downloading: https://hgdownload.soe.ucsc.edu/goldenPath/canFam4/bigZips/canFam4.2bit 
+2026-09-01 23:01:41  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/canFam4_output/.canFam4_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/canFam4_output/.canFam4_build/source.chromInfo.txt' 
+2026-09-01 23:01:41  Sequences in source genome: 2,198 
+2026-09-01 23:01:41  Chromosome selection: regex 
+2026-09-01 23:01:41  Chromosome filter: ^chr([1-9][0-9]*|X|Y)$ 
+2026-09-01 23:01:41  Sequences retained: 39 
+2026-09-01 23:01:41  Sequences excluded: 2,159 
+2026-09-01 23:01:41  Reference size: 2,353,542,698 bp 
+2026-09-01 23:01:41  Sequences: chr1, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr2, chr20, chr21, chr22, chr23, chr24, chr25, chr26, chr27, chr28, chr29, chr3, chr30, chr31, chr32, chr33, chr34, chr35, chr36, chr37, chr38, chr4, chr5, chr6, chr7, chr8, chr9, chrX 
+2026-09-01 23:01:41  Checking annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/canFam4/database/ncbiRefSeqCurated.txt.gz 
+2026-09-01 23:01:41  Annotation source selected: https://hgdownload.soe.ucsc.edu/goldenPath/canFam4/database/ncbiRefSeqCurated.txt.gz 
+2026-09-01 23:01:41  Reading annotation. 
+2026-09-01 23:01:41  Annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/canFam4/database/ncbiRefSeqCurated.txt.gz 
+2026-09-01 23:01:41  Annotation source type: UCSC ncbiRefSeqCurated 
+2026-09-01 23:01:41  Annotation format: UCSC bin + genePredExt (16 columns) 
+2026-09-01 23:01:41  Source transcript records: 2,692 
+2026-09-01 23:01:41  Retained transcript records: 2,672 
+2026-09-01 23:01:41  Source gene symbols: 2,628 
+2026-09-01 23:01:41  Retained gene symbols: 2,608 
+2026-09-01 23:01:41  Genome and annotation preflight passed. 
+2026-09-01 23:01:41  RepeatMasker: RepeatMasker version 4.2.4 
+2026-09-01 23:01:41  Running RepeatMasker preflight. 
+2026-09-01 23:02:04  RepeatMasker version 4.2.4 
+2026-09-01 23:02:04  Search Engine: NCBI/RMBLAST [ 2.14.1+ ] 
+2026-09-01 23:02:04  Using FamDB: /usr/local/RM424_install/FamDB 
+2026-09-01 23:02:04  Families : 30,659 
+2026-09-01 23:02:04  780/780 families in ancestor taxa; 0/0 lineage-specific families 
+2026-09-01 23:02:04  RepeatMasker preflight passed. 
+2026-09-01 23:02:04  Extracting retained chromosomes. 
+2026-09-01 23:02:04  Running: twoBitToFa '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/canFam4_output/.canFam4_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/canFam4_output/.canFam4_build/canFam4.fa' '-seqList=/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/canFam4_output/.canFam4_build/chromosomes.txt' 
+2026-09-01 23:02:10  Building filtered 2bit. 
+2026-09-01 23:02:10  Running: faToTwoBit '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/canFam4_output/.canFam4_build/canFam4.fa' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/canFam4_output/.canFam4_build/canFam4.2bit' 
+2026-09-01 23:02:25  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/canFam4_output/.canFam4_build/canFam4.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/canFam4_output/.canFam4_build/final.chromInfo.txt' 
+2026-09-01 23:02:25  Final 2bit verified. 
+2026-09-01 23:02:25  RepeatMasker species: Canis lupus familiaris 
+2026-09-01 23:02:25  RepeatMasker sensitivity: standard 
+2026-09-01 23:02:25  RepeatMasker engine: rmblast 
+2026-09-01 23:02:25  Requested threads: 200 
+2026-09-01 23:02:25  Assumed cores per RepeatMasker -pa 1 job: 5 
+2026-09-01 23:02:25  Concurrent RepeatMasker jobs: 39 
+2026-09-01 23:02:25  Estimated peak RMBlast cores: 195 
+2026-09-01 23:02:25  Starting 39 chromosome/scaffold-level RepeatMasker jobs, largest sequences first. 
+2026-09-02 01:55:16  Reading RepeatMasker outputs. 
+2026-09-02 01:56:08  RepeatMasker records: 4,507,215 
+2026-09-02 01:56:48  Building transcript GRanges. 
+2026-09-02 01:56:48  Transcript GRanges: 2,672 ranges 
+2026-09-02 01:56:48  Building exon GRanges. 
+2026-09-02 01:56:48  Exon GRanges: 16,353 ranges 
+2026-09-02 01:56:48  Publishing completed genome build. 
+2026-09-02 01:56:50  Done. 
+2026-09-02 01:56:50  Output directory: /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/canFam4_output 

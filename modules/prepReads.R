@@ -16,8 +16,6 @@ parser$add_argument("--minReadLength",           type = "integer",       default
 parser$add_argument("--vectorTestWidth",         type = "integer",       default = 25,             help = "Number of NTs at the end of reads to use to test for vector homology.")
 parser$add_argument("--vectorTestMinPercentID",  type  = "double",       default = 90,             help = "Min. perecent ID (0 .. 100) to accept a vector alignment.")
 parser$add_argument("--vectorTestMinCoverage",   type = "double",        default = 90,             help = "Min. test sequence converage (0 .. 100) to accept a vector alignment.")
-parser$add_argument("--vectorDir",               type = "character",     default = 'none',         help = "Path to custom vector files.")
-parser$add_argument("--hmmDir",                  type = "character",     default = 'none',         help = "Path to custom hmm files.")
 parser$add_argument("--HMMparams",               type = "character",     default = 'none',         help = "Comma delimited shorthand containing HMM parmaters.")
 
 
@@ -33,11 +31,11 @@ runModule <- function(){
   }, add = TRUE)
   
   updateLog('Starting prepReads module.')
+
+  resource_overlay()
   
   if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
-  
-  vector_hmm_copy()
   
   d <- readRDS(args$inputData)
   if(nrow(d) == 0) stop('Error -- input data had zero rows of data.')
@@ -336,8 +334,8 @@ source(file.path(args$softwareRoot, 'lib', 'common.R'))
 
 tryCatch({
   runModule()
-  q(status = 0)
 }, error = function(e) {
-  message("Caught error: ", e$message)
-  q(status = 1)
+  cat("ERROR: ", conditionMessage(e), "\n", sep = "", file = stderr())
+  flush(stderr())
+  quit(save = "no", status = 1, runLast = FALSE)
 })

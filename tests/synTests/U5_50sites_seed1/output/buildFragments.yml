@@ -1,0 +1,12 @@
+dataRowChunkSize: 5000
+dbConfigFile: none
+dbConfigID: none
+fileTag: buildFragments
+inputData: output/alignReads.rds
+maxFrgamentLength: 100000
+minFrgamentLength: 50
+outputDir: output
+overwriteDBrecords: no
+ramDiskPath: /dev/shm
+softwareRoot: /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2
+threads: 10

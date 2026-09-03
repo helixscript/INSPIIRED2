@@ -1,0 +1,29 @@
+blatMaxqBaseInsert: 1
+blatMaxqNumInsert: 1
+blatMaxtBaseInsert: 1
+blatMaxtNumInsert: 1
+blatRepMatch: 3000
+blatStepSize: 5
+blatTileSize: 11
+dataRowChunkSize: 2500
+fileTag: alignReads
+inputData: output/prepReads.rds
+minAlignmentCoverage: 95.0
+minPercentID: 95.0
+outputDir: output
+ramDiskPath: /dev/shm
+softwareRoot: /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2
+threads: 10
+command: /usr/lib/R/bin/exec/R --no-echo --no-restore --vanilla --file=/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/modules/alignReads.R
+  --args --blatMaxqBaseInsert 1 --blatMaxqNumInsert 1 --blatMaxtBaseInsert 1 --blatMaxtNumInsert
+  1 --blatRepMatch 3000 --blatStepSize 5 --blatTileSize 11 --dataRowChunkSize 2500
+  --fileTag alignReads --inputData output/prepReads.rds --minAlignmentCoverage 95
+  --minPercentID 95 --outputDir output --ramDiskPath /dev/shm --threads 10 --softwareRoot
+  /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2
+version: INSPIIRED2 1.4.0
+logFile: output/alignReads.log
+tmpDir: output/alignReads_tmp
+logDir: output/alignReads_log
+defaultDelim: ___
+ramDisk: /dev/shm/INSPIIRED2/20260902_232431533309_2779647
+startTime: 1.7883915e+09

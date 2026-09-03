@@ -1,0 +1,24 @@
+Genome: canFam4
+Build date: 2026-09-02 01:56:47
+Chromosome selection: regex: ^chr([1-9][0-9]*|X|Y)$
+Sequences processed: 39
+Reference size: 2353542698 bp
+RepeatMasker executable: /usr/local/RM424_install/RepeatMasker/RepeatMasker
+RepeatMasker version: RepeatMasker version 4.2.4
+Search engine: rmblast
+Sensitivity: standard
+Species: Canis lupus familiaris
+Requested threads: 200
+Assumed RMBlast cores per -pa 1 job: 5
+Concurrent RepeatMasker jobs: 39
+Estimated peak RMBlast cores: 195
+Repeat records: 4507215
+Elapsed hours: 2.906
+Command template: /usr/local/RM424_install/RepeatMasker/RepeatMasker -pa 1 -e rmblast -species "Canis lupus familiaris" -dir <jobDir> <sequence.fa>
+
+RepeatMasker environment:
+RepeatMasker version 4.2.4
+Search Engine: NCBI/RMBLAST [ 2.14.1+ ]
+Using FamDB: /usr/local/RM424_install/FamDB
+Families : 30,659
+780/780 families in ancestor taxa; 0/0 lineage-specific families

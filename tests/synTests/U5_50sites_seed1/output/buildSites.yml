@@ -1,0 +1,24 @@
+disableDualDetect: no
+disableOrientationCorrection: no
+dualDetectWidth: 6
+fileTag: buildSites
+inputData: output/buildStdFragments.rds
+integraseCorrectionDist: 2
+leadSeqClusteringParms: -c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0
+outputDir: output
+ramDiskPath: /dev/shm
+softwareRoot: /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2
+sumSonicBreaksWithin: replicates
+threads: 10
+command: /usr/lib/R/bin/exec/R --no-echo --no-restore --vanilla --file=/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/modules/buildSites.R
+  --args --dualDetectWidth 6 --fileTag buildSites --inputData output/buildStdFragments.rds
+  --integraseCorrectionDist 2 --leadSeqClusteringParms -c 0.90 -n 5 -G 0 -aS 0.95
+  -gap -2 -gap-ext -1 -d 0 -M 0 --outputDir output --ramDiskPath /dev/shm --sumSonicBreaksWithin
+  replicates --threads 10 --softwareRoot /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2
+version: INSPIIRED2 1.4.0
+logFile: output/buildSites.log
+tmpDir: output/buildSites_tmp
+logDir: output/buildSites_log
+defaultDelim: ___
+ramDisk: /dev/shm/INSPIIRED2/20260902_232756494954_3070859
+startTime: 1.7883917e+09

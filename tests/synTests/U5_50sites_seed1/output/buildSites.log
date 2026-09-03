@@ -1,0 +1,8 @@
+09.02.2026 [0h 00min 00sec]	Starting buildSites module.
+09.02.2026 [0h 00min 00sec]	Updating strandedness of U5 and U3 intSite calls.
+09.02.2026 [0h 00min 00sec]	Gather fragments into intSite events.
+09.02.2026 [0h 00min 01sec]	Collapsing replicate level sites into sample level records.
+09.02.2026 [0h 00min 01sec]	Sample level site summary:
+09.02.2026 [0h 00min 01sec]	trial	subject	sample	nSites
+09.02.2026 [0h 00min 01sec]	test	subjectA	sample1	47
+09.02.2026 [0h 00min 01sec]	buildSites module completed.

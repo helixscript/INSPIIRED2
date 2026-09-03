@@ -1,0 +1,177 @@
+09.02.2026 [0h 00min 00sec]	Starting prepReads module.
+09.02.2026 [0h 00min 00sec]	Starting asynchronous HMM calculations. Data chunk logs can be found in output/prepReads_log/
+09.02.2026 [0h 00min 00sec]	Collated data chunk logs will appear below when done.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #1>	Starting HMM chunk with 85 data rows.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #1>	HMM file: validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	--HMMparams was not provided, processing default HMM settings from file validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMM paramters for validation.hmm:
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminStartPos	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxStartPos	3
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminFullBitScore	-0.5
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxFullBitScore	10
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEnd	TRUE
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchTerminalSeq	CA
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEndRadius	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #1>	Calling nhmmer.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #1>	nhmmer completed
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #1>	Parsing nhmmer output.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #1>	85 data rows remain after removing those with a significant HMM hit.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #1>	Searching for requested terminal sequence match for "CA"
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #1>	85 data rows remain after requiring a terminal sequence match.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #10>	Starting HMM chunk with 76 data rows.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #10>	HMM file: validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	--HMMparams was not provided, processing default HMM settings from file validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMM paramters for validation.hmm:
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminStartPos	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxStartPos	3
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminFullBitScore	-0.5
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxFullBitScore	10
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEnd	TRUE
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchTerminalSeq	CA
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEndRadius	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #10>	Calling nhmmer.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #10>	nhmmer completed
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #10>	Parsing nhmmer output.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #10>	76 data rows remain after removing those with a significant HMM hit.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #10>	Searching for requested terminal sequence match for "CA"
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #10>	76 data rows remain after requiring a terminal sequence match.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #2>	Starting HMM chunk with 85 data rows.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #2>	HMM file: validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	--HMMparams was not provided, processing default HMM settings from file validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMM paramters for validation.hmm:
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminStartPos	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxStartPos	3
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminFullBitScore	-0.5
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxFullBitScore	10
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEnd	TRUE
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchTerminalSeq	CA
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEndRadius	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #2>	Calling nhmmer.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #2>	nhmmer completed
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #2>	Parsing nhmmer output.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #2>	85 data rows remain after removing those with a significant HMM hit.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #2>	Searching for requested terminal sequence match for "CA"
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #2>	85 data rows remain after requiring a terminal sequence match.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #3>	Starting HMM chunk with 85 data rows.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #3>	HMM file: validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	--HMMparams was not provided, processing default HMM settings from file validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMM paramters for validation.hmm:
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminStartPos	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxStartPos	3
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminFullBitScore	-0.5
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxFullBitScore	10
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEnd	TRUE
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchTerminalSeq	CA
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEndRadius	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #3>	Calling nhmmer.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #3>	nhmmer completed
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #3>	Parsing nhmmer output.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #3>	85 data rows remain after removing those with a significant HMM hit.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #3>	Searching for requested terminal sequence match for "CA"
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #3>	85 data rows remain after requiring a terminal sequence match.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #4>	Starting HMM chunk with 85 data rows.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #4>	HMM file: validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	--HMMparams was not provided, processing default HMM settings from file validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMM paramters for validation.hmm:
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminStartPos	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxStartPos	3
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminFullBitScore	-0.5
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxFullBitScore	10
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEnd	TRUE
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchTerminalSeq	CA
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEndRadius	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #4>	Calling nhmmer.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #4>	nhmmer completed
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #4>	Parsing nhmmer output.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #4>	85 data rows remain after removing those with a significant HMM hit.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #4>	Searching for requested terminal sequence match for "CA"
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #4>	85 data rows remain after requiring a terminal sequence match.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #5>	Starting HMM chunk with 85 data rows.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #5>	HMM file: validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	--HMMparams was not provided, processing default HMM settings from file validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMM paramters for validation.hmm:
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminStartPos	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxStartPos	3
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminFullBitScore	-0.5
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxFullBitScore	10
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEnd	TRUE
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchTerminalSeq	CA
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEndRadius	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #5>	Calling nhmmer.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #5>	nhmmer completed
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #5>	Parsing nhmmer output.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #5>	85 data rows remain after removing those with a significant HMM hit.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #5>	Searching for requested terminal sequence match for "CA"
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #5>	85 data rows remain after requiring a terminal sequence match.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #6>	Starting HMM chunk with 85 data rows.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #6>	HMM file: validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	--HMMparams was not provided, processing default HMM settings from file validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMM paramters for validation.hmm:
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminStartPos	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxStartPos	3
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminFullBitScore	-0.5
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxFullBitScore	10
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEnd	TRUE
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchTerminalSeq	CA
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEndRadius	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #6>	Calling nhmmer.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #6>	nhmmer completed
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #6>	Parsing nhmmer output.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #6>	85 data rows remain after removing those with a significant HMM hit.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #6>	Searching for requested terminal sequence match for "CA"
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #6>	85 data rows remain after requiring a terminal sequence match.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #7>	Starting HMM chunk with 85 data rows.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #7>	HMM file: validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	--HMMparams was not provided, processing default HMM settings from file validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMM paramters for validation.hmm:
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminStartPos	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxStartPos	3
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminFullBitScore	-0.5
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxFullBitScore	10
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEnd	TRUE
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchTerminalSeq	CA
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEndRadius	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #7>	Calling nhmmer.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #7>	nhmmer completed
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #7>	Parsing nhmmer output.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #7>	85 data rows remain after removing those with a significant HMM hit.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #7>	Searching for requested terminal sequence match for "CA"
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #7>	85 data rows remain after requiring a terminal sequence match.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #8>	Starting HMM chunk with 85 data rows.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #8>	HMM file: validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	--HMMparams was not provided, processing default HMM settings from file validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMM paramters for validation.hmm:
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminStartPos	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxStartPos	3
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminFullBitScore	-0.5
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxFullBitScore	10
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEnd	TRUE
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchTerminalSeq	CA
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEndRadius	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #8>	Calling nhmmer.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #8>	nhmmer completed
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #8>	Parsing nhmmer output.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #8>	85 data rows remain after removing those with a significant HMM hit.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #8>	Searching for requested terminal sequence match for "CA"
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #8>	85 data rows remain after requiring a terminal sequence match.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #9>	Starting HMM chunk with 85 data rows.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #9>	HMM file: validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	--HMMparams was not provided, processing default HMM settings from file validation.hmm
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMM paramters for validation.hmm:
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminStartPos	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxStartPos	3
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMminFullBitScore	-0.5
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmaxFullBitScore	10
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEnd	TRUE
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchTerminalSeq	CA
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	HMMmatchEndRadius	1
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #9>	Calling nhmmer.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #9>	nhmmer completed
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #9>	Parsing nhmmer output.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #9>	85 data rows remain after removing those with a significant HMM hit.
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #9>	Searching for requested terminal sequence match for "CA"
+09.02.2026 [0h 00min 02sec]	09.02.2026 [0h 00min 01sec]	<data chunk #9>	85 data rows remain after requiring a terminal sequence match.
+09.02.2026 [0h 00min 02sec]	Trimming over reading.
+09.02.2026 [0h 00min 02sec]	0.0% anchorRead ends matched the vector sequences.
+09.02.2026 [0h 00min 02sec]	Writing output.
+09.02.2026 [0h 00min 03sec]	prepReads module completed.

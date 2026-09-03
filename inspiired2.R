@@ -44,6 +44,18 @@ testHMM_parser$add_argument("--disableHorizontalGuides", action = "store_true", 
 testHMM_parser$add_argument("--horizontalGuideEvery", type = "double", default = 6, help = "Number of HMM score points between horizontal grid lines.")
 
 
+bsdm_parser <- subparsers$add_parser("buildSeqDataMap", help = "Build a sequencing heatmap from a FASTQ result.")
+bsdm_parser$add_argument("--outputDir",        type = "character", required = TRUE,       help = "Directory for output files.")
+bsdm_parser$add_argument("--inputData",        type = "character", required = TRUE,       help = "Path to sequencing data.")
+bsdm_parser$add_argument("--threads",          type = "integer",   default  = 50,         help = "Number of threads to use.")
+bsdm_parser$add_argument("--fileTag",          type = "character", default  = "testHMMs", help = "String appended to output files in the output directory.")
+bsdm_parser$add_argument("--ramDiskPath",      type = "character", default  = "/dev/shm", help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+bsdm_parser$add_argument("--mapWidth",         type = "integer",   default  = 100,        help = "Width of map in NT.")
+bsdm_parser$add_argument("--startPosBinWidth", type = "integer",   default  = 3,          help = "Bin size of alignment start positions before overflow bin.")
+bsdm_parser$add_argument("--nBinRows",         type = "integer",   default  = 5000,       help = "Number of heat map rows.")
+bsdm_parser$add_argument("--outputImgHeight",  type = "double",    default  = 5,          help = "Height, in inches, of outpout image.")
+
+
 demux_parser <- subparsers$add_parser("demultiplex", help = "Separate reads by barcode")
 demux_parser$add_argument("--outputDir",                    type = "character",     required = TRUE,                  help = "Directory for output files")
 demux_parser$add_argument("--sampleData",                   type = "character",     required = TRUE,                  help = "Sample definition file")
@@ -66,8 +78,6 @@ demux_parser$add_argument("--disableAdriftReadLinkers",     action = "store_true
 demux_parser$add_argument("--adriftReadLinkerMaxMismatch",  type = "integer",       default = 1,                      help = "Number of allowed mismatches to the linker sequence.")
 demux_parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",             help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
 demux_parser$add_argument("--disableSequenceCollapse",      action = "store_true",  default = FALSE,                  help = "Disable the collapse of duplicate sequences.")
-demux_parser$add_argument("--vectorDir",                    type = "character",     default = 'none',                 help = "Path to custom vector files.")
-demux_parser$add_argument("--hmmDir",                       type = "character",     default = 'none',                 help = "Path to custom hmm files.")
 demux_parser$add_argument("--captureUMIs",                  action = "store_true",  default = FALSE,                  help = "Capture and use UMIs in abundance calculations.")
 
 prp_parser <- subparsers$add_parser("prepReads", help = "Prepare demultiplexed reads for alignment to a reference genome.")
@@ -84,8 +94,6 @@ prp_parser$add_argument("--minReadLength",           type = "integer",       def
 prp_parser$add_argument("--vectorTestWidth",         type = "integer",       default = 25,             help = "Number of NTs at the end of reads to use to test for vector homology.")
 prp_parser$add_argument("--vectorTestMinPercentID",  type  = "double",       default = 90,             help = "Min. perecent ID (0 .. 100) to accept a vector alignment.")
 prp_parser$add_argument("--vectorTestMinCoverage",   type = "double",        default = 90,             help = "Min. test sequence converage (0 .. 100) to accept a vector alignment.")
-prp_parser$add_argument("--vectorDir",               type = "character",     default = 'none',         help = "Path to custom vector files.")
-prp_parser$add_argument("--hmmDir",                  type = "character",     default = 'none',         help = "Path to custom hmm files.")
 prp_parser$add_argument("--HMMparams",               type = "character",     default = 'none',         help = "Comma delimited shorthand containing HMM parmaters.")
 
 alr_parser <- subparsers$add_parser("alignReads", help = "Align reads to a reference genome.")
@@ -203,5 +211,5 @@ cmd_args <- sapply(names(clean_args), function(n) {
 
 final_cmd <- paste(cmd_args[cmd_args != ""], collapse = " ")
 
-system2("Rscript", args = c("--vanilla", module_script, final_cmd, "--softwareRoot", shQuote(pipeline_root)))
-quit(status = 0)
+status <- system2("Rscript", args = c("--vanilla", module_script, final_cmd, "--softwareRoot", shQuote(pipeline_root)))
+quit(status = status)

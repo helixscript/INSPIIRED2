@@ -77,30 +77,54 @@ startModule <- function(){
 }
 
 
-vector_hmm_copy <- function(){
-  # If vector directory exists, copy its contents into INSPIIRED.
-  if('vectorDir' %in% names(args)){
-    if(dir.exists(args$vectorDir)){
-      all_items <- list.files(args$vectorDir, full.names = TRUE)
-      if(length(all_items) > 0){
-        updateLog(paste0('Copying ', length(all_items), ' files from ', args$vectorDir, ' to ', file.path(args$softwareRoot, 'data', 'vectors')))
-        files_only <- all_items[!file.info(all_items)$isdir]
-        file.copy(from = files_only, to = file.path(args$softwareRoot, 'data', 'vectors'), overwrite = TRUE)
-      }
+
+resource_overlay <- function(){
+  resourceRoot <- '/resources'
+  dataRoot <- file.path(args$softwareRoot, 'data')
+  
+  if(!dir.exists(resourceRoot)) return(invisible(NULL))
+  
+  files <- list.files(resourceRoot, recursive=TRUE, full.names=TRUE, all.files=TRUE, no..=TRUE)
+  files <- files[file.exists(files) & !file.info(files)$isdir]
+  
+  if(!length(files)) return(invisible(NULL))
+  
+  resourceRoot <- normalizePath(resourceRoot)
+  rel <- substring(files, nchar(resourceRoot) + 2L)
+  destinations <- file.path(dataRoot, rel)
+  
+  nLinked <- 0L
+  
+  for(i in seq_along(files)){
+    source <- normalizePath(files[i])
+    destination <- destinations[i]
+    
+    dir.create(dirname(destination), recursive=TRUE, showWarnings=FALSE)
+    
+    currentLink <- Sys.readlink(destination)
+    
+    # Already correctly overlaid.
+    if(nzchar(currentLink)){
+      currentTarget <- tryCatch(normalizePath(currentLink, mustWork=FALSE), error=function(e) currentLink)
+      if(identical(currentTarget, source)) next
     }
+    
+    # Remove bundled file, old symlink, or other existing destination.
+    if(file.exists(destination) || nzchar(currentLink)) unlink(destination)
+    
+    if(!file.symlink(source, destination)){
+      stop('Could not overlay resource: ', source, ' -> ', destination)
+    } else {
+      updateLog(paste0('Link created: ', source, ' -> ', destination))
+    }
+    
+    nLinked <- nLinked + 1L
   }
   
-  # If hmm directory exists, copy its contents into INSPIIRED.
-  if('hmmDir' %in% names(args)){
-    if(dir.exists(args$hmmDir)){
-      all_items <- list.files(args$hmmDir, full.names = TRUE)
-      if(length(all_items) > 0){
-        updateLog(paste0('Copying ', length(all_items), ' files from ', args$hmmDir, ' to ', file.path(args$softwareRoot, 'data', 'hmms')))
-        files_only <- all_items[!file.info(all_items)$isdir]
-        file.copy(from = files_only, to = file.path(args$softwareRoot, 'data', 'hmms'), overwrite = TRUE)
-      }
-    }
-  }
+  if(nLinked)
+    updateLog(paste0('Applied ', nLinked, ' user resource overlay(s) from ', resourceRoot))
+  
+  invisible(NULL)
 }
 
 
@@ -180,21 +204,29 @@ run_blastn <- function(fastaFile, dbPath, params, threads = 1){
 
 
 parseBLAToutput <- function(f){
-  if(! file.exists(f) | file.info(f)$size == 0) return(tibble::tibble())
-  b <- readr::read_delim(f, delim = '\t', col_names = FALSE, col_types = 'iiiiiiiicciiiciiiiccc')
+  if(!file.exists(f) || file.info(f)$size == 0) return(tibble::tibble())
   
-  x <- read.table(textConnection(system(paste(file.path(args$softwareRoot, 'bin', 'pslScore.pl') ,  f), intern = TRUE)), sep = '\t')
-  names(x) <- c('tName', 'tStart', 'tEnd', 'hit', 'pslScore', 'percentIdentity')
+  b <- readr::read_delim(f, delim='\t', col_names=FALSE, col_types='iiiiiiiicciiiciiiiccc')
+  names(b) <- c('matches','misMatches','repMatches','nCount','qNumInsert','qBaseInsert','tNumInsert','tBaseInsert',
+                'strand','qName','qSize','qStart','qEnd','tName','tSize','tStart','tEnd','blockCount',
+                'blockSizes','qStarts','tStarts')
   
-  names(b) <- c('matches', 'misMatches', 'repMatches', 'nCount', 'qNumInsert', 'qBaseInsert', 'tNumInsert', 'tBaseInsert', 'strand',
-                'qName', 'qSize', 'qStart', 'qEnd', 'tName', 'tSize', 'tStart', 'tEnd', 'blockCount', 'blockSizes', 'qStarts', 'tStarts')
+  x <- read.table(textConnection(system(paste(file.path(args$softwareRoot, 'bin', 'pslScore.pl'), f), intern=TRUE)), sep='\t')
+  names(x) <- c('tName','tStart','tEnd','hit','pslScore','percentIdentity')
+  
+  if(nrow(x) != nrow(b)) stop('pslScore.pl output does not match PSL record count')
   
   b$queryPercentID <- as.numeric(x$percentIdentity)
   b$pslScore <- as.numeric(x$pslScore)
-  b$tStart   <- as.integer(x$tStart + 1)
-  b$tEnd     <- as.integer(x$tEnd)
-  b$qWidth   <- as.integer(b$qEnd - b$qStart + 1)
-  b$tWidth   <- as.integer(b$tEnd - b$tStart + 1)
   
-  dplyr::select(b, qName, matches, strand, qSize, qStart, qEnd, tName, tNumInsert, qNumInsert, tBaseInsert, qBaseInsert, tStart, tEnd, queryPercentID, pslScore, qWidth, tWidth)
+  b$qStart <- as.integer(b$qStart + 1L)
+  b$qEnd   <- as.integer(b$qEnd)
+  b$tStart <- as.integer(b$tStart + 1L)
+  b$tEnd   <- as.integer(b$tEnd)
+  
+  b$qWidth <- as.integer(b$qEnd - b$qStart + 1L)
+  b$tWidth <- as.integer(b$tEnd - b$tStart + 1L)
+  
+  dplyr::select(b, qName, matches, strand, qSize, qStart, qEnd, tName, tNumInsert, qNumInsert,
+                tBaseInsert, qBaseInsert, tStart, tEnd, queryPercentID, pslScore, qWidth, tWidth)
 }

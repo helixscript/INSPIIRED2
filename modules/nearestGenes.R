@@ -21,6 +21,8 @@ runModule <- function(){
   }, add = TRUE)
   
   updateLog('Starting nearestGenes module.')
+
+  resource_overlay()
   
   if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
@@ -51,11 +53,16 @@ runModule <- function(){
            hits <- distinct(data.frame(tu[oo$subjectHits,])[, c('name2', 'strand')])
            
            gg$nearestGene <- paste0(hits$name2, collapse = ',')
-           gg$nearestGeneDist <- min(oo$distance)
            gg$nearestGeneStrand <- paste0(hits$strand, collapse = ',')
+           
+           inGene <- IRanges::overlapsAny(gg, tu, ignore.strand=TRUE)
+           inExon <- IRanges::overlapsAny(gg, ex, ignore.strand=TRUE)
+           
+           gg$nearestGeneDist <- min(oo$distance) + as.integer(!inGene)
            gg$beforeNearestGene <- start(gg) < min(start(tu[oo$subjectHits,]))
-           gg$inExon <- min(ee$distance) == 0
-           gg$inGene <- min(oo$distance) == 0
+           gg$inExon <- inExon
+           gg$inGene <- inGene
+           
            gg
          })))
     
@@ -68,6 +75,7 @@ runModule <- function(){
   d <- dplyr::relocate(d, nearestGene, .after = inExon)
   d <- dplyr::relocate(d, nearestGeneDist, .after = nearestGene)
   d <- dplyr::relocate(d, nearestGeneStrand, .after = nearestGeneDist)
+  d <- dplyr::relocate(d, beforeNearestGene, .after = nearestGeneStrand)
 
   saveRDS(d, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
@@ -79,8 +87,8 @@ source(file.path(args$softwareRoot, 'lib', 'common.R'))
 
 tryCatch({
   runModule()
-  q(status = 0)
 }, error = function(e) {
-  message("Caught error: ", e$message)
-  q(status = 1)
+  cat("ERROR: ", conditionMessage(e), "\n", sep = "", file = stderr())
+  flush(stderr())
+  quit(save = "no", status = 1, runLast = FALSE)
 })
