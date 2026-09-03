@@ -14,8 +14,8 @@ parser$add_argument("--index1ReadMaxMismatch",        type = "integer",       de
 parser$add_argument("--disableAutoBarcodeOrt",        action = "store_true",  default = FALSE,                  help = "Subsample the data an automatically determine if I1 barcodes need to be reverse complimented.")
 parser$add_argument("--disablePostUmiLinker",         action = "store_true",  default = FALSE,                  help = "Disable the requirement to match the post-UMI linker sequence.")
 parser$add_argument("--postUmiLinkerMaxMismatch",     type = "integer",       default = 1,                      help = "Number of allowed mismatches to the linker sequence following the UMI sequence.")
-parser$add_argument("--qualTrimHalfWidth",            type = "integer",       default = 2,                      help = "Half width of NT window slid along sequence during quality trimming.")
-parser$add_argument("--qualTrimEvents",               type = "integer",       default = 3,                      help = "Number of failing events within a window to trigger trimming.")
+parser$add_argument("--qualTrimHalfWidth",            type = "integer",       default = 3,                      help = "Half width of NT window slid along sequence during quality trimming.")
+parser$add_argument("--qualTrimEvents",               type = "integer",       default = 2,                      help = "Number of failing events within a window to trigger trimming.")
 parser$add_argument("--qualTrimScore",                type = "integer",       default = 10,                     help = "Qual code afterwhich NTs are trimmed.")
 parser$add_argument("--polyGfilterPattern",           type = "character",     default = "G{5,}[ATCN]?G{5,}.*$", help = "Pattern to recognize poly-G tail NTs.")
 parser$add_argument("--disablePolyGfilter",           action = "store_true",  default = FALSE,                  help = "Disable poly-G filter.")
@@ -50,6 +50,14 @@ runModule <- function(){
   }
   
   sampleData <- read_tsv(args$sampleData, show_col_types = FALSE)
+  
+  # Ensure that UMI positions are marked with Ns in adriftReadLinkerSeq sequences.
+  valid <- ! is.na(sampleData$adriftReadLinkerSeq) & grepl("^[ACGT]{3,}N{5,}[ACGT]{3,}$", sampleData$adriftReadLinkerSeq, ignore.case = TRUE)
+  if(! all(valid)){
+    msg <- "Error - not all of the adriftReadLinkerSeq linker sequences have UMI sequences marked with Ns that satisfy the pattern ^[ACGT]{3,}N{5,}[ACGT]{3,}$"
+    updateLog(msg)
+    stop(msg)
+  }
   
   knownVectors <- list.files(file.path(args$softwareRoot, 'data', 'vectors'))
   knownHMMs <- list.files(file.path(args$softwareRoot, 'data', 'hmms'))

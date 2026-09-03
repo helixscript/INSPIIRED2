@@ -11,6 +11,7 @@ parser$add_argument("--anchorReads",                  type = "character",     re
 parser$add_argument("--fileTag",          type = "character", default  = "testHMMs", help = "String appended to output files in the output directory.")
 parser$add_argument("--ramDiskPath",      type = "character", default  = "/dev/shm", help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
 parser$add_argument("--topIndexRows", type = "integer", default = 50, help = "Number of top index rows to display")
+parser$add_argument("--sampleLinkerLen", type = "integer", default = 20, help = "Length of adrift linker sequence to consider in reports.")
 
 runModule <- function() {
   startModule()
@@ -96,7 +97,8 @@ runModule <- function() {
 
 args <- parser$parse_args()
 
-args <- list()
+# Testing params...
+# args <- list()
 # args$outputDir <- 'INSPIIRED2_U5_only_with_yeast_output/'
 # args$inputDir <- 'INSPIIRED2_U5_only_with_yeast_output'
 # args$softwareRoot <- '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2'

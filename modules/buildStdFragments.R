@@ -13,7 +13,7 @@ parser$add_argument("--disableBreakPointPosStd",           action = "store_true"
 parser$add_argument("--disableIntSitePosStd",              action = "store_true",  default  = FALSE,               help = 'Disable intSite position standardization.')
 parser$add_argument("--disableAnchorReadClusteringFilter", action = "store_true",  default  = FALSE,               help = 'Disable the anchor read clustering filter.')
 parser$add_argument("--anchorReadClusterLen",              type = "integer",       default  = 30,                  help = 'Length of anchor read sequences to test for rearrangments.')
-parser$add_argument("--anchorReadClusterGrouping",         type = "character",     default  = 'subject',           help = 'Grouping within which anchorRead sequences are clusteres. Must be trial, subject, or sample.')
+parser$add_argument("--anchorReadClusterGrouping",         type = "character",     default  = 'sample',           help = 'Grouping within which anchorRead sequences are clusteres. Must be trial, subject, or sample.')
 parser$add_argument("--anchorReadClusterMinAbundDiff",     type = "integer",       default  = 5,                   help = 'When clustering anchor read sequences, min. difference between 1st and 2nd most abundant sequence clusters to pick a winner.')
 parser$add_argument("--anchorReadClusterMinReadMult",      type = "integer",       default  = 10,                  help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
 parser$add_argument("--minReadsPerFrag",                   type = "integer",       default  = 1,                   help = 'Min. number of reads to accept a fragment.')
@@ -377,9 +377,9 @@ runModule <- function(){
     frags_uniqPosIDs_rowCount <- nrow(frags_uniqPosIDs)
     
     split_cols <- switch(args$anchorReadClusterGrouping ,
-                         "trial"   = c('trial'),
-                         "subject" = c('trial', 'subject'),
-                         "sample"  = c('trial', 'subject', 'sample'),
+                         "trial"   = c('trial', 'refGenome'),
+                         "subject" = c('trial', 'subject', 'refGenome'),
+                         "sample"  = c('trial', 'subject', 'sample', 'refGenome'),
                          stop(paste("Error: Invalid groupLevel '", args$anchorReadClusterGrouping, "'. Must be 'trial', 'subject', or 'sample'.")))
     
     frags_uniqPosIDs <- bind_rows(lapply(split(frags_uniqPosIDs, by = split_cols, flatten = TRUE, sorted = TRUE), function(s){ 
@@ -420,15 +420,13 @@ runModule <- function(){
           
           x$anchorReadCluster <- TRUE
           
-          z <- dplyr::group_by(x, trial, subject, sample, posid) %>% 
-            dplyr::summarise(frags = n_distinct(fragEnd - fragStart + 1), reads = n(), readIDs = list(readID), .groups = "drop") %>% 
-            dplyr::ungroup() %>% 
-            dplyr::arrange(desc(frags), desc(reads)) %>%
-            dplyr::mutate(clusterNum = clusterNum - 1,
-                          clusterRepSeq = repSeq,
-                          selected = FALSE,
-                          remove = TRUE,
-                          criteria = NA)
+          z <- x %>%
+            dplyr::group_by(trial, subject, sample, refGenome, posid) %>%
+            dplyr::summarise(frags = dplyr::n_distinct(fragStart, fragEnd), reads = dplyr::n(),
+                             readIDs = list(readID), .groups = "drop") %>%
+            dplyr::arrange(dplyr::desc(frags), dplyr::desc(reads)) %>%
+            dplyr::mutate(clusterNum = clusterNum - 1, clusterRepSeq = repSeq,
+                          selected = FALSE, remove = TRUE, criteria = NA_character_)
           
           z2 <- arrange(z, desc(reads), desc(frags)) # Re-sort table for read based decisions.
           

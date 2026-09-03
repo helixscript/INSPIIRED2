@@ -15,6 +15,9 @@ parser$add_argument("--integraseCorrectionDist",      type = "integer",       de
 parser$add_argument("--sumSonicBreaksWithin",         type = "character",     default = "replicates",  help = "Sum sonic breaks within either 'replicates' (default) or within sample 'samples'.") 
 parser$add_argument("--leadSeqClusteringParms",       type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
 
+# Dev notes.
+# --threads not implemented yet.
+
 runModule <- function(){
   startModule()
   
@@ -202,9 +205,6 @@ runModule <- function(){
   }
   
   
-  
-  
-  
   updateLog('Gather fragments into intSite events.')
   sites <- bind_rows(lapply(split(frags, frags$g), function(x){
              # Loop through replicates for this site defined by 'g'
@@ -217,7 +217,7 @@ runModule <- function(){
                     b$UMIs <- n_distinct(unlist(o$UMIs))
                     b$sonicLengths <- n_distinct(o$fragWidths)
                     b$reads <- sum(o$reads)
-                    b$repLeaderSeq <- consensusLeaderSeq(x)
+                    b$repLeaderSeq <- consensusLeaderSeq(o)
                 } 
       
                 names(b) <- paste0('rep', r, '-', names(b))
@@ -237,8 +237,7 @@ runModule <- function(){
                               reads = sum(x$reads),
                               repLeaderSeq = consensusLeaderSeq(x),
                               repLeaderSeqClusters = n_distinct(clusterSeqs(unique(x$repLeaderSeq))$cluster_id),
-                              nRepsObs = sum(! is.na(unlist(r[, which(grepl('reads', names(r)))]))),
-                              vector = x$vectorFastaFile[1]), r)
+                              nRepsObs = sum(! is.na(unlist(r[, which(grepl('reads', names(r)))])))), r)
            })) %>% arrange(desc(sonicLengths))
   
   # Set nRepsObs to NA for dual detections since these have values of 1 after moving dual detection to rep-0.

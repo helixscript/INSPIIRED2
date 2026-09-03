@@ -42,6 +42,7 @@ testHMM_parser$add_argument("--minScoreBinPct", type = "double", default = 1, he
 testHMM_parser$add_argument("--facetCols", type = "integer", default = 4, help = "Number of facet columns in the output plot.")
 testHMM_parser$add_argument("--disableHorizontalGuides", action = "store_true",  default = FALSE,          help = "Disable horizontal grid lines.")
 testHMM_parser$add_argument("--horizontalGuideEvery", type = "double", default = 6, help = "Number of HMM score points between horizontal grid lines.")
+testHMM_parser$add_argument("--HMMparams", type = "character", required = FALSE, default = 'none', help = "HMM parameter string.")
 
 
 bsdm_parser <- subparsers$add_parser("buildSeqDataMap", help = "Build a sequencing heatmap from a FASTQ result.")
@@ -137,7 +138,7 @@ bsf_parser$add_argument("--disableBreakPointPosStd",           action = "store_t
 bsf_parser$add_argument("--disableIntSitePosStd",              action = "store_true",  default  = FALSE,               help = 'Disable intSite position standardization.')
 bsf_parser$add_argument("--disableAnchorReadClusteringFilter", action = "store_true",  default  = FALSE,               help = 'Disable the anchor read clustering filter.')
 bsf_parser$add_argument("--anchorReadClusterLen",              type = "integer",       default  = 30,                  help = 'Length of anchor read sequences to test for rearrangments.')
-bsf_parser$add_argument("--anchorReadClusterGrouping",         type = "character",     default  = 'subject',           help = 'Grouping within which anchorRead sequences are clusteres. Must be trial, subject, or sample.')
+bsf_parser$add_argument("--anchorReadClusterGrouping",         type = "character",     default  = 'sample',            help = 'Grouping within which anchorRead sequences are clusteres. Must be trial, subject, or sample.')
 bsf_parser$add_argument("--anchorReadClusterMinAbundDiff",     type = "integer",       default  = 5,                   help = 'When clustering anchor read sequences, min. difference between 1st and 2nd most abundant sequence clusters to pick a winner.')
 bsf_parser$add_argument("--anchorReadClusterMinReadMult",      type = "integer",       default  = 10,                  help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
 bsf_parser$add_argument("--minReadsPerFrag",                   type = "integer",       default  = 1,                   help = 'Min. number of reads to accept a fragment.')
@@ -149,6 +150,7 @@ bsf_parser$add_argument("--breakPoint_sp_local_radius",        type = "integer",
 bsf_parser$add_argument("--breakPoint_sp_sd_shrink",           type = "double",        default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
 bsf_parser$add_argument("--leaderSeqClusteringParams",         type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -aS 0.80",                              help = 'Clustering params for clustering leader sequences.')
 bsf_parser$add_argument("--multiHitclusteringParams",          type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
+bsf_parser$add_argument("--multiHitclusteringNTlen",           type = "integer",       default = 30L,                 help = "Number of linker-adjacent adrift read nucleotides used for multi-hit clustering.")
 bsf_parser$add_argument("--anchorReadClusterParams",           type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
 bsf_parser$add_argument("--disableDominantUMIs",               action = "store_true",  default  = FALSE,               help = 'Disable the removal of spurious, likley rearranged UMIs')  
 bsf_parser$add_argument("--UMIprocessingMinSortReads",         type = "integer",       default  = 10,                  help = 'Min. number of reads to attempt isolating dominant UMIs.')  

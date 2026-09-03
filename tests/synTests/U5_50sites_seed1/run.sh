@@ -25,9 +25,11 @@ expected_md5=$(awk '{print $1}' "$md5_file")
 if [[ "$actual_md5" == "$expected_md5" ]]; then
     echo "PASS"
     echo "MD5 MATCH: $actual_md5"
+    exit 0
 else
     echo "FAILED"
     echo "MD5 MISMATCH"
     echo "  Expected: $expected_md5"
     echo "  Actual:   $actual_md5"
+    exit 1
 fi

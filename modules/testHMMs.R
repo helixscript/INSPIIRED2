@@ -1123,7 +1123,7 @@ runModule <- function() {
     scoreBinWidth = args$scoreBinWidth,
     minScoreBinPct = args$minScoreBinPct,
     facetCols = args$facetCols,
-    showHorizontalGuides = args$disableHorizontalGuides,
+    showHorizontalGuides = ! args$disableHorizontalGuides,
     horizontalGuideEvery = args$horizontalGuideEvery,
     hitBorderColour = "grey70",
     hitBorderLinewidth = 0.10,

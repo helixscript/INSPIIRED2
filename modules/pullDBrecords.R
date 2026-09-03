@@ -63,7 +63,7 @@ runModule <- function(){
   
   q5 <- 'x'
   if(args$modes != 'none'){
-    q4 <- paste0('mode in (', paste(sQuote(unlist(strsplit(args$modes, '\\s*,\\s*'))), collapse = ', '), ')')
+    q5 <- paste0('mode in (', paste(sQuote(unlist(strsplit(args$modes, '\\s*,\\s*'))), collapse = ', '), ')')
   }
   
   q <- paste('select data_file_name from fragments where', gsub('AND x', '', paste(q1, 'AND', q2, 'AND', q3, 'AND', q4, 'AND', q5)))
@@ -92,8 +92,6 @@ runModule <- function(){
   d[, (cols) := lapply(.SD, as.factor), .SDcols = cols]
   
   saveRDS(d, args$outputFile, compress = FALSE)
-  
-  dbDisconnect(conn)
 }
 
 args <- parser$parse_args()
