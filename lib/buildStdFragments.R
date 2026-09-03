@@ -125,113 +125,258 @@ build_multiHit_clusters <- function(frags_multPosIDs){
   # Ensure incoming data is treated as a data.table for maximum optimization
   setDT(frags_multPosIDs)
   
-  # 2. Vectorized Network Builder & Clonal Abundance Processor
+  if(length(args$multiHitclusteringNTlen) != 1L ||
+     is.na(args$multiHitclusteringNTlen) ||
+     args$multiHitclusteringNTlen < 1L){
+    stop("Error - multiHitclusteringNTlen must be a positive integer.")
+  }
+  
+  # Vectorized Network Builder & Clonal Abundance Processor
   # ------------------------------------------------------------------------------
   multiHitClusters <- data.table()
   
-  # Grouping columns (trial, subject, sample) are processed natively at the C-level
+  # Including refGenome prevents reads aligned to different references from
+  # entering the same network.
   multiHitClusters <- frags_multPosIDs[, {
     
-    # Filter out reads that only hit a single position (breakpoint-only variation)
-    valid_reads_dt <- .SD[, .(pos_count = uniqueN(posid)), by = readID][pos_count > 1]
+    # Filter out reads that only hit a single position
+    # (breakpoint-only variation).
+    valid_reads_dt <- .SD[
+      ,
+      .(pos_count = uniqueN(posid)),
+      by = readID
+    ][pos_count > 1]
     
-    if (nrow(valid_reads_dt) == 0) {
-      # Return empty schema mirroring your target output layout if no true multi-hits exist
+    if(nrow(valid_reads_dt) == 0){
+      # Return an empty schema if no true multi-hits exist.
       data.table(
-        clusterID = character(), nodes = integer(), reads = integer(), UMIs = integer(),
-        posids = list(), readIDs = list(), clusterSonicLengths = numeric(), nodeSonicLengths = list()
+        clusterID = character(),
+        nodes = integer(),
+        reads = integer(),
+        UMIs = integer(),
+        posids = list(),
+        readIDs = list(),
+        clusterSonicLengths = numeric(),
+        nodeSonicLengths = list()
       )
     } else {
-      # Isolate only the valid multi-hit data for processing
+      # Isolate valid multi-hit reads.
       sub_sd <- .SD[readID %in% valid_reads_dt$readID]
       
-      # Step A: Batch Execute CD-HIT (Once per sample grouping to kill disk I/O loops)
+      # Cluster linker-adjacent adrift-read sequences.
       # ------------------------------------------------------------------------
-      unique_seqs <- unique(sub_sd[, .(readID, adrift_seq)])
+      if(anyNA(sub_sd$adrift_seq) ||
+         any(nchar(as.character(sub_sd$adrift_seq)) <
+             args$multiHitclusteringNTlen)){
+        stop(
+          "Error - one or more adrift reads are shorter than ",
+          args$multiHitclusteringNTlen,
+          " nt or contain missing sequences."
+        )
+      }
       
-      # Establish clean path and safe prefix configuration
-      ts_id <- paste0("mhc_", sample[1], "_", data.table::frank(unique_seqs)[1])
+      # adrift_seq begins immediately after the linker removed during
+      # demultiplexing. Its first nucleotides therefore represent sequence
+      # adjacent to the sonic-shearing boundary.
+      unique_seqs <- unique(sub_sd[, .(
+        readID,
+        adrift_end_seq = substr(
+          as.character(adrift_seq),
+          1L,
+          args$multiHitclusteringNTlen
+        )
+      )])
+      
+      # Establish temporary file paths.
+      ts_id <- paste0(
+        "mhc_",
+        sample[1], "_",
+        refGenome[1], "_",
+        data.table::frank(unique_seqs)[1]
+      )
+      
       tmp_dir <- args$ramDisk
-      if(!dir.exists(tmp_dir)) dir.create(tmp_dir, recursive = TRUE, showWarnings = FALSE)
       
-      fasta_path <- file.path(tmp_dir, paste0(ts_id, '.fasta'))
-      out_prefix <- file.path(tmp_dir, paste0(ts_id, "_cdhit"))
+      if(!dir.exists(tmp_dir)){
+        dir.create(
+          tmp_dir,
+          recursive = TRUE,
+          showWarnings = FALSE
+        )
+      }
       
-      # Fast vectorized FASTA assembly (avoids memory-hogging string aggregations)
+      fasta_path <- file.path(
+        tmp_dir,
+        paste0(ts_id, ".fasta")
+      )
+      
+      out_prefix <- file.path(
+        tmp_dir,
+        paste0(ts_id, "_cdhit")
+      )
+      
+      # Write the extracted adrift-read ends to FASTA.
       fasta_lines <- character(nrow(unique_seqs) * 2)
-      fasta_lines[c(TRUE, FALSE)] <- paste0(">", unique_seqs$readID)
-      fasta_lines[c(FALSE, TRUE)] <- unique_seqs$adrift_seq
-      writeLines(fasta_lines, con = fasta_path)
+      fasta_lines[c(TRUE, FALSE)] <- paste0(
+        ">",
+        unique_seqs$readID
+      )
+      fasta_lines[c(FALSE, TRUE)] <- unique_seqs$adrift_end_seq
       
-      # Execute system call using your specified cluster parameters
-      cmd <- paste0("cd-hit-est ", args$anchorReadClusterParams, 
-                    " -T ", args$threads, 
-                    " -i ", fasta_path, " -o ", out_prefix)
-      system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
+      writeLines(
+        fasta_lines,
+        con = fasta_path
+      )
       
-      clstr_path <- paste0(out_prefix, ".clstr")
-      if(!file.exists(clstr_path)) stop('Error - cd-hit-est failed to return a clstr file.')
+      # Execute CD-HIT using the dedicated multi-hit clustering parameters.
+      cmd <- paste0(
+        "cd-hit-est ",
+        args$multiHitclusteringParams,
+        " -T ", args$threads,
+        " -i ", fasta_path,
+        " -o ", out_prefix
+      )
       
-      # Parse the file directly back using your custom text reader function
-      cdhit_lookup <- as.data.table(parse_cdhit_clstr(clstr_path))
-      setkey(cdhit_lookup, readID)
+      system(
+        cmd,
+        ignore.stdout = TRUE,
+        ignore.stderr = TRUE
+      )
       
-      # Instantly wipe temporary scratch disk files
-      unlink(c(fasta_path, out_prefix, clstr_path, paste0(out_prefix, ".bak")))
+      clstr_path <- paste0(
+        out_prefix,
+        ".clstr"
+      )
       
-      # Step B: Build Bipartite Graph Projection
+      if(!file.exists(clstr_path)){
+        stop(
+          "Error - cd-hit-est failed to return a clstr file."
+        )
+      }
+      
+      # Parse CD-HIT output.
+      cdhit_lookup <- as.data.table(
+        parse_cdhit_clstr(clstr_path)
+      )
+      
+      setkey(
+        cdhit_lookup,
+        readID
+      )
+      
+      # Remove temporary files.
+      unlink(c(
+        fasta_path,
+        out_prefix,
+        clstr_path,
+        paste0(out_prefix, ".bak")
+      ))
+      
+      # Build Bipartite Graph Projection
       # ------------------------------------------------------------------------
-      # Establish edge mappings exclusively from readID <-> genomic posid
-      bipartite_edges <- unique(sub_sd[, .(from = readID, to = posid)])
+      bipartite_edges <- unique(sub_sd[, .(
+        from = readID,
+        to = posid
+      )])
       
-      # Extract flat connected components instantly 
-      g <- graph_from_data_frame(bipartite_edges, directed = FALSE)
+      g <- graph_from_data_frame(
+        bipartite_edges,
+        directed = FALSE
+      )
+      
       comp <- components(g)
       
-      # Build mapping table of nodes to cluster configurations
-      mem_dt <- data.table(node_name = names(comp$membership), comp_num = comp$membership)
-      mem_dt[, clusterID := paste0("MHC.", comp_num)]
+      # Map graph vertices to network identifiers.
+      mem_dt <- data.table(
+        node_name = names(comp$membership),
+        comp_num = comp$membership
+      )
       
-      # Isolate positions and map back their cluster identifiers
-      pos_mem <- mem_dt[node_name %in% sub_sd$posid]
-      setnames(pos_mem, "node_name", "posid")
+      mem_dt[, clusterID := paste0(
+        "MHC.",
+        comp_num
+      )]
       
-      # Merge network clusters, original inputs, and CD-HIT group identifiers
-      dt_joined <- merge(sub_sd, pos_mem, by = "posid")
-      dt_joined <- merge(dt_joined, cdhit_lookup[, .(readID, cluster_id)], by = "readID", all.x = TRUE)
+      # Isolate position vertices.
+      pos_mem <- mem_dt[
+        node_name %in% sub_sd$posid
+      ]
       
-      # Step C: Aggregate Features Simultaneously
+      setnames(
+        pos_mem,
+        "node_name",
+        "posid"
+      )
+      
+      # Add network and sequence-cluster identifiers to each read-position
+      # association.
+      dt_joined <- merge(
+        sub_sd,
+        pos_mem,
+        by = "posid"
+      )
+      
+      dt_joined <- merge(
+        dt_joined,
+        cdhit_lookup[, .(
+          readID,
+          cluster_id
+        )],
+        by = "readID",
+        all.x = TRUE
+      )
+      
+      # Aggregate Network Features
       # ------------------------------------------------------------------------
       ans <- dt_joined[, {
-        u_posids   <- unique(posid)
-        u_reads    <- unique(readID)
-        u_umis     <- unique(UMI)
+        u_posids <- unique(posid)
+        u_reads  <- unique(readID)
+        u_umis   <- unique(UMI)
         
-        # Calculate cluster abundance via unique CD-HIT groups inside the network
-        tot_sonic  <- uniqueN(cluster_id)
+        # Estimate network abundance using unique clusters of linker-adjacent
+        # adrift-read sequences.
+        tot_sonic <- uniqueN(cluster_id)
         
-        # Calculate node-specific abundance breakdowns matching your layout format
-        node_table <- .SD[, .(sonicLengths = uniqueN(cluster_id)), by = .(posid = posid)][, .(posid, sonicLengths)]
+        # Estimate abundance separately for each candidate position.
+        node_table <- .SD[
+          ,
+          .(sonicLengths = uniqueN(cluster_id)),
+          by = .(posid)
+        ][, .(
+          posid,
+          sonicLengths
+        )]
         
         .(
-          nodes               = length(u_posids),
-          reads               = length(u_reads),
-          UMIs                = length(u_umis),
-          posids              = list(u_posids),
-          readIDs             = list(u_reads),
+          nodes = length(u_posids),
+          reads = length(u_reads),
+          UMIs = length(u_umis),
+          posids = list(u_posids),
+          readIDs = list(u_reads),
           clusterSonicLengths = tot_sonic,
-          nodeSonicLengths    = list(node_table)
+          nodeSonicLengths = list(node_table)
         )
       }, by = .(clusterID)]
       
       ans
     }
-  }, by = .(trial, subject, sample)]
+  }, by = .(
+    trial,
+    subject,
+    sample,
+    refGenome
+  )]
   
-  # Step 3: Global Serialization and Metadata Ingestion
-  # ------------------------------------------------------------------------------
-  saveRDS(multiHitClusters, file.path(args$outputDir, paste0(args$fileTag, '_multiHitClusters.rds')))
+  saveRDS(
+    multiHitClusters,
+    file.path(
+      args$outputDir,
+      paste0(
+        args$fileTag,
+        "_multiHitClusters.rds"
+      )
+    )
+  )
   
   multiHitClusters
 }
-

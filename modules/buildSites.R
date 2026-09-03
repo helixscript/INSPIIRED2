@@ -35,6 +35,8 @@ runModule <- function(){
   # Read in standardized fragments.
   frags <- readRDS(args$inputData)
   
+  frags$mode <- as.character(frags$mode)
+  
   # Define fragment widths.
   frags$fragWidths <- frags$fragEnd - frags$fragStart + 1
   
@@ -183,8 +185,25 @@ runModule <- function(){
     }
   }
   
-  # Create a sample + posid grouping vector.
-  frags <- group_by(frags, trial, subject, sample, posid) %>% mutate(g = cur_group_id()) %>% ungroup() %>% data.table()
+
+  # Create the site-grouping vector.
+  # When dual detection is disabled, keep U3 and U5 calls separate
+  # even when orientation correction gives them the same posid.
+  if(args$disableDualDetect){
+    frags <- group_by(frags, trial, subject, sample, mode, posid) %>%
+      mutate(g = cur_group_id()) %>%
+      ungroup() %>%
+      data.table()
+  } else {
+    frags <- group_by(frags, trial, subject, sample, posid) %>%
+      mutate(g = cur_group_id()) %>%
+      ungroup() %>%
+      data.table()
+  }
+  
+  
+  
+  
   
   updateLog('Gather fragments into intSite events.')
   sites <- bind_rows(lapply(split(frags, frags$g), function(x){

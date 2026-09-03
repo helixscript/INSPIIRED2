@@ -358,7 +358,7 @@ else:
 # Add mode specific columns.
 if(args.mode == 'integrase'):
   sampleData['leaderSeqHMM'] = args.integraseHMM
-  sampleData['mode'] = 'IN_u5'
+  sampleData['mode'] = 'U5'
   sampleData['vectorFastaFile'] = 'synDataTest.fasta'
 else:
   sampleData['anchorReadStartSeq'] = args.anchorReadStartSeq

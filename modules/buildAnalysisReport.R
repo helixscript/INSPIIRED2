@@ -3,8 +3,8 @@ for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table')) sup
 
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",        type = "character", required = TRUE,       help = "Directory for output files.")
-parser$add_argument("--inputtDir",        type = "character", required = TRUE,       help = "Directory for output files.")
-parser$add_argument("--softwareRoot",     type = "character", required = TRUE,       help = "Path to AAVengeR installation.")
+parser$add_argument("--inputDir",        type = "character", required = TRUE,       help = "Directory for output files.")
+parser$add_argument("--softwareRoot",     type = "character", required = TRUE,       help = "Path to INSPIIRED2 installation.")
 parser$add_argument("--indexReads",                   type = "character",     required = TRUE,                  help = "Path to the Index1 read FASTQ file")
 parser$add_argument("--adriftReads",                  type = "character",     required = TRUE,                  help = "Path to the Forward read FASTQ file")
 parser$add_argument("--anchorReads",                  type = "character",     required = TRUE,                  help = "Path to the Reverse read FASTQ file")
@@ -97,16 +97,16 @@ runModule <- function() {
 args <- parser$parse_args()
 
 args <- list()
-args$outputDir <- 'INSPIIRED2_U5_only_with_yeast_output/'
-args$inputDir <- 'INSPIIRED2_U5_only_with_yeast_output'
-args$softwareRoot <- '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2'
-args$indexReads <- 'Undetermined_S0_I1_001.fastq.gz'
-args$adriftReads <- 'Undetermined_S0_R1_001.fastq.gz'
-args$anchorReads <- 'Undetermined_S0_R2_001.fastq.gz'
-args$fileTag <- 'buildAnalysisReport'
-args$ramDiskPath <- '/dev/shm'
-args$topIndexRows <- 25
-args$sampleLinkerLen <- 20
+# args$outputDir <- 'INSPIIRED2_U5_only_with_yeast_output/'
+# args$inputDir <- 'INSPIIRED2_U5_only_with_yeast_output'
+# args$softwareRoot <- '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2'
+# args$indexReads <- 'Undetermined_S0_I1_001.fastq.gz'
+# args$adriftReads <- 'Undetermined_S0_R1_001.fastq.gz'
+# args$anchorReads <- 'Undetermined_S0_R2_001.fastq.gz'
+# args$fileTag <- 'buildAnalysisReport'
+# args$ramDiskPath <- '/dev/shm'
+# args$topIndexRows <- 25
+# args$sampleLinkerLen <- 20
 
 
 args$outputDir <- normalizePath(args$outputDir, mustWork = TRUE)

@@ -39,6 +39,7 @@ runModule <- function(){
   }
   
   conn <- createDBconnection()
+  on.exit(DBI::dbDisconnect(conn), add = TRUE)
   
   q1 <- 'x'
   if(args$trials != 'none'){
@@ -56,12 +57,12 @@ runModule <- function(){
   }
   
   q4 <- 'x'
-  if(args$samples != 'none'){
+  if(args$refGenomes != 'none'){
     q4 <- paste0('ref_genome in (', paste(sQuote(unlist(strsplit(args$refGenomes, '\\s*,\\s*'))), collapse = ', '), ')')
   }
   
   q5 <- 'x'
-  if(args$samples != 'none'){
+  if(args$modes != 'none'){
     q4 <- paste0('mode in (', paste(sQuote(unlist(strsplit(args$modes, '\\s*,\\s*'))), collapse = ', '), ')')
   }
   
@@ -69,9 +70,15 @@ runModule <- function(){
   q <- sub('\\s*$', '', q)
   q <- gsub('\\s*AND\\s*', ' AND ', q)
   
+  q <- paste(q, 'ORDER BY trial, subject, sample, replicate, ref_genome, mode')
+  
   message(paste('Constructed query:', q))
   
   o <- dbGetQuery(conn, q)
+  
+  if (nrow(o) == 0L) {
+    stop("No database records matched the requested filters.")
+  }
   
   f <- file.path(args$dataPath, o$data_file_name)
   
