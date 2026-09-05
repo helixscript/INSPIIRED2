@@ -38,6 +38,12 @@ runModule <- function(){
   # Read in standardized fragments.
   frags <- readRDS(args$inputData)
   
+  if(nrow(frags) == 0){
+    msg <- 'Error - fragment input data file has zero rows.'
+    updateLog(msg)
+    stop(msg)
+  }
+  
   frags$mode <- as.character(frags$mode)
   
   # Define fragment widths.

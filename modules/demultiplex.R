@@ -176,7 +176,7 @@ runModule <- function(){
     
     if(length(cI1) == 0) break
     
-    clean_ids <- BStringSet(gsub('^[^:]+:[^:]+:[^:]+:|\\s.+$', '', as.character(cI1@id)))
+    clean_ids <- BStringSet(gsub('\\s.+$', '', as.character(cI1@id)))
     cI1@id <- clean_ids
     cR1@id <- clean_ids
     cR2@id <- clean_ids
@@ -359,6 +359,13 @@ runModule <- function(){
     msg <- 'Error - no reads demultiplexed.'
     updateLog(msg)
     stop(msg)
+  }
+  
+  # Remove any reads that were demultiplexed more than once.
+  i <- duplicated(o$readID)
+  if(any(i)){
+    updateLog(paste0(ppNum(sum(n)), ' reads were demultiplexed to more than one sample replicate and will be removed.'))
+    o <- o[! i,]
   }
   
   group_vars <- c("trial", "subject", "sample", "replicate")

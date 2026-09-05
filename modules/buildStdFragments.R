@@ -25,6 +25,7 @@ parser$add_argument("--breakPoint_sp_local_radius",        type = "integer",    
 parser$add_argument("--breakPoint_sp_sd_shrink",           type = "double",        default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
 parser$add_argument("--leaderSeqClusteringParams",         type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -aS 0.80",                              help = 'Clustering params for clustering leader sequences.')
 parser$add_argument("--multiHitclusteringParams",          type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
+parser$add_argument("--saveMultiHitClusteringDetails", action = "store_true", default = FALSE, help = "Save per-read CD-HIT assignments for each multi-hit network.")
 parser$add_argument("--anchorReadClusterParams",           type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
 parser$add_argument("--multiHitclusteringNTlen",           type = "integer",       default = 30L,                 help = "Number of linker-adjacent adrift read nucleotides used for multi-hit clustering.")
 parser$add_argument("--disableDominantUMIs",               action = "store_true",  default  = FALSE,               help = 'Disable the removal of spurious, likley rearranged UMIs')  
@@ -279,6 +280,12 @@ runModule <- function(){
   frags$posid <- paste0(frags$fragChromosome, frags$fragStrand, ifelse(frags$fragStrand == '+', frags$fragStart, frags$fragEnd))
   
   
+  # Rebuild frag ids.
+  frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, 
+                          fragStrand, fragStart, fragEnd, leaderSeqGroupNum, 
+                          UMI, sep = ":")]
+  
+  
   # Identify uniquely called reads.
   #-----------------------------------------------------------------------------
   
@@ -295,7 +302,11 @@ runModule <- function(){
   updateLog(paste0(sprintf("%.2f%%", (n_distinct(frags_uniqPosIDs$readID) / n_distinct(frags$readID))*100), ' of fragment reads mapped uniquely to the genome.'))
   
   # Do not continue unless we have at least one uniquely called fragment.
-  if(nrow(frags_uniqPosIDs) == 0) quitOnErorr('Error - No unique position remain after filtering.')
+  if(nrow(frags_uniqPosIDs) == 0){
+    msg <- 'Error - No unique position remain after filtering.'
+    updateLog(msg)
+    stop(msg)
+  }
   
   
   # Correct for instances where a read maps to more than fragment but all fragments 
@@ -363,9 +374,39 @@ runModule <- function(){
   # Build multihit clusters
   #-----------------------------------------------------------------------------
   updateLog('Building multi-hit clusters.')
-  multiHit_clusters <- rbindlist(lapply(split(frags_multPosIDs, by = c('trial', 'subject'), flatten = TRUE, sorted = TRUE), build_multiHit_clusters))
-  saveRDS(multiHit_clusters, file = file.path(args$outputDir, paste0(args$fileTag, '_multiHitClusters.rds')))
   
+  multiHit_clusters <- rbindlist(
+    lapply(split(frags_multPosIDs, by = c("trial", "subject"),
+                 flatten = TRUE, sorted = TRUE), build_multiHit_clusters),
+    use.names = TRUE, fill = TRUE
+  )
+  
+  if(args$saveMultiHitClusteringDetails){
+    assignment_cols <- c("trial", "subject", "sample", "refGenome", "clusterID", "readID",
+                         "adriftSeqSegment", "cdhitClusterID", "isRep", "clusterSize")
+    
+    if(nrow(multiHit_clusters) > 0 && "cdhitAssignments" %in% names(multiHit_clusters)){
+      multiHit_assignments <- multiHit_clusters[, cdhitAssignments[[1]],
+                                                by = .(trial, subject, sample, refGenome, clusterID)]
+      setcolorder(multiHit_assignments, assignment_cols)
+    } else {
+      multiHit_assignments <- data.table(
+        trial = character(), subject = character(), sample = character(),
+        refGenome = character(), clusterID = character(), readID = character(),
+        adriftSeqSegment = character(), cdhitClusterID = character(),
+        isRep = logical(), clusterSize = integer()
+      )
+    }
+    
+    fwrite(multiHit_assignments,
+           file.path(args$outputDir, paste0(args$fileTag, "_multiHitClusterAssignments.tsv.gz")),
+           sep = "\t")
+    
+    if("cdhitAssignments" %in% names(multiHit_clusters))
+      multiHit_clusters[, cdhitAssignments := NULL]
+  }
+  
+  saveRDS(multiHit_clusters, file.path(args$outputDir, paste0(args$fileTag, "_multiHitClusters.rds")))
   
   
   # Anchor read cluster filter
@@ -470,6 +511,13 @@ runModule <- function(){
     updateLog(paste0('See ', file.path(args$outputDir, paste0(args$fileTag, '_anchorReadClusters.rds')), ' for more details.'))
     
     frags_uniqPosIDs <- subset(frags_uniqPosIDs, remove == FALSE)
+    
+    if(nrow(frags_uniqPosIDs) == 0){
+      msg <- 'Error - No fragment reads remain after anchor read filter.'
+      updateLog(msg)
+      stop(msg)
+    }
+    
     frags_uniqPosIDs <- setDT(dplyr::select(frags_uniqPosIDs, -testSeq, -cluster_id, -remove))
   } else {
     frags_uniqPosIDs$anchorReadCluster <- NA
@@ -567,6 +615,12 @@ runModule <- function(){
   } 
   
   frags <- rbindlist(list(a2, b2))
+  
+  if(nrow(frags) == 0){
+    msg <- 'Error - No final fragments could be created.'
+    updateLog(msg)
+    stop(msg)
+  }
   
   frags$replicate <- as.integer(frags$replicate)
   frags$fragStart <- as.integer(frags$fragStart)

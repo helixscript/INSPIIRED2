@@ -39,7 +39,8 @@ runModule <- function(){
                                     seqnames.field = 'query_seq', start.field = 'query_start', end.field = 'query_end', 
                                     strand.field = 'strand', keep.extra.columns = TRUE)
     
-    i <- sub('\\.\\d+', '', unique(x$posid))
+    # i <- sub('\\.\\d+', '', unique(x$posid))
+    i <- unique(x$posid)
     
     g <- makeGRangesFromDataFrame(tibble(seqnames = unlist(lapply(str_split(i, '[\\+\\-]'), '[', 1)),
                                          start = unlist(lapply(str_split(i, '[\\+\\-]'), '[', 2)),

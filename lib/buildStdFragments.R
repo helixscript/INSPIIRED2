@@ -122,261 +122,128 @@ standardize_positions <- function(df, side = "left", window = 8, local_radius = 
 
 
 build_multiHit_clusters <- function(frags_multPosIDs){
-  # Ensure incoming data is treated as a data.table for maximum optimization
   setDT(frags_multPosIDs)
+  nt_len <- args$multiHitclusteringNTlen
+  save_details <- isTRUE(args$saveMultiHitClusteringDetails)
   
-  if(length(args$multiHitclusteringNTlen) != 1L ||
-     is.na(args$multiHitclusteringNTlen) ||
-     args$multiHitclusteringNTlen < 1L){
+  if(length(nt_len) != 1L || is.na(nt_len) || nt_len < 1L)
     stop("Error - multiHitclusteringNTlen must be a positive integer.")
-  }
+  if(!"adrift_seq" %in% names(frags_multPosIDs))
+    stop("Error - adrift_seq is missing from the multi-hit fragment table.")
   
-  # Vectorized Network Builder & Clonal Abundance Processor
-  # ------------------------------------------------------------------------------
-  multiHitClusters <- data.table()
+  if(!dir.exists(args$ramDisk)) dir.create(args$ramDisk, recursive = TRUE, showWarnings = FALSE)
+  if(!dir.exists(args$ramDisk))
+    stop("Error - unable to create the multi-hit clustering temporary directory.")
   
-  # Including refGenome prevents reads aligned to different references from
-  # entering the same network.
   multiHitClusters <- frags_multPosIDs[, {
-    
-    # Filter out reads that only hit a single position
-    # (breakpoint-only variation).
-    valid_reads_dt <- .SD[
-      ,
-      .(pos_count = uniqueN(posid)),
-      by = readID
-    ][pos_count > 1]
+    valid_reads_dt <- .SD[, .(pos_count = uniqueN(posid)), by = readID][pos_count > 1]
     
     if(nrow(valid_reads_dt) == 0){
-      # Return an empty schema if no true multi-hits exist.
-      data.table(
-        clusterID = character(),
-        nodes = integer(),
-        reads = integer(),
-        UMIs = integer(),
-        posids = list(),
-        readIDs = list(),
-        clusterSonicLengths = numeric(),
-        nodeSonicLengths = list()
-      )
+      empty <- data.table(clusterID = character(), nodes = integer(), reads = integer(), UMIs = integer(),
+                          posids = list(), readIDs = list(), clusterSonicLengths = integer(),
+                          nodeSonicLengths = list())
+      if(save_details) empty[, cdhitAssignments := vector("list", .N)]
+      empty
     } else {
-      # Isolate valid multi-hit reads.
       sub_sd <- .SD[readID %in% valid_reads_dt$readID]
+      adrift_seqs <- as.character(sub_sd$adrift_seq)
       
-      # Cluster linker-adjacent adrift-read sequences.
-      # ------------------------------------------------------------------------
-      if(anyNA(sub_sd$adrift_seq) ||
-         any(nchar(as.character(sub_sd$adrift_seq)) <
-             args$multiHitclusteringNTlen)){
-        stop(
-          "Error - one or more adrift reads are shorter than ",
-          args$multiHitclusteringNTlen,
-          " nt or contain missing sequences."
-        )
-      }
+      if(anyNA(adrift_seqs) || any(nchar(adrift_seqs) < nt_len))
+        stop("Error - one or more adrift reads are shorter than ", nt_len,
+             " nt or contain missing sequences.")
       
-      # adrift_seq begins immediately after the linker removed during
-      # demultiplexing. Its first nucleotides therefore represent sequence
-      # adjacent to the sonic-shearing boundary.
-      unique_seqs <- unique(sub_sd[, .(
-        readID,
-        adrift_end_seq = substr(
-          as.character(adrift_seq),
-          1L,
-          args$multiHitclusteringNTlen
-        )
-      )])
+      # Identify sample-level connected-component networks first.
+      edge_map <- unique(sub_sd[, .(readID, posid,
+                                    from = paste0("read:", readID),
+                                    to = paste0("pos:", posid))])
+      setorder(edge_map, from, to)
       
-      # Establish temporary file paths.
-      ts_id <- paste0(
-        "mhc_",
-        sample[1], "_",
-        refGenome[1], "_",
-        data.table::frank(unique_seqs)[1]
-      )
+      graph_membership <- components(
+        graph_from_data_frame(edge_map[, .(from, to)], directed = FALSE)
+      )$membership
       
-      tmp_dir <- args$ramDisk
+      read_mem <- unique(edge_map[, .(readID, node_name = from)])
+      read_mem[, clusterID := paste0("MHC.", unname(graph_membership[node_name]))]
       
-      if(!dir.exists(tmp_dir)){
-        dir.create(
-          tmp_dir,
-          recursive = TRUE,
-          showWarnings = FALSE
-        )
-      }
+      dt_joined <- merge(sub_sd, read_mem[, .(readID, clusterID)],
+                         by = "readID", all.x = TRUE, sort = FALSE)
+      if(anyNA(dt_joined$clusterID))
+        stop("Error - one or more multi-hit reads were not assigned to a network.")
       
-      fasta_path <- file.path(
-        tmp_dir,
-        paste0(ts_id, ".fasta")
-      )
-      
-      out_prefix <- file.path(
-        tmp_dir,
-        paste0(ts_id, "_cdhit")
-      )
-      
-      # Write the extracted adrift-read ends to FASTA.
-      fasta_lines <- character(nrow(unique_seqs) * 2)
-      fasta_lines[c(TRUE, FALSE)] <- paste0(
-        ">",
-        unique_seqs$readID
-      )
-      fasta_lines[c(FALSE, TRUE)] <- unique_seqs$adrift_end_seq
-      
-      writeLines(
-        fasta_lines,
-        con = fasta_path
-      )
-      
-      # Execute CD-HIT using the dedicated multi-hit clustering parameters.
-      cmd <- paste0(
-        "cd-hit-est ",
-        args$multiHitclusteringParams,
-        " -T ", args$threads,
-        " -i ", fasta_path,
-        " -o ", out_prefix
-      )
-      
-      system(
-        cmd,
-        ignore.stdout = TRUE,
-        ignore.stderr = TRUE
-      )
-      
-      clstr_path <- paste0(
-        out_prefix,
-        ".clstr"
-      )
-      
-      if(!file.exists(clstr_path)){
-        stop(
-          "Error - cd-hit-est failed to return a clstr file."
-        )
-      }
-      
-      # Parse CD-HIT output.
-      cdhit_lookup <- as.data.table(
-        parse_cdhit_clstr(clstr_path)
-      )
-      
-      setkey(
-        cdhit_lookup,
-        readID
-      )
-      
-      # Remove temporary files.
-      unlink(c(
-        fasta_path,
-        out_prefix,
-        clstr_path,
-        paste0(out_prefix, ".bak")
-      ))
-      
-      # Build Bipartite Graph Projection
-      # ------------------------------------------------------------------------
-      bipartite_edges <- unique(sub_sd[, .(
-        from = readID,
-        to = posid
-      )])
-      
-      g <- graph_from_data_frame(
-        bipartite_edges,
-        directed = FALSE
-      )
-      
-      comp <- components(g)
-      
-      # Map graph vertices to network identifiers.
-      mem_dt <- data.table(
-        node_name = names(comp$membership),
-        comp_num = comp$membership
-      )
-      
-      mem_dt[, clusterID := paste0(
-        "MHC.",
-        comp_num
-      )]
-      
-      # Isolate position vertices.
-      pos_mem <- mem_dt[
-        node_name %in% sub_sd$posid
-      ]
-      
-      setnames(
-        pos_mem,
-        "node_name",
-        "posid"
-      )
-      
-      # Add network and sequence-cluster identifiers to each read-position
-      # association.
-      dt_joined <- merge(
-        sub_sd,
-        pos_mem,
-        by = "posid"
-      )
-      
-      dt_joined <- merge(
-        dt_joined,
-        cdhit_lookup[, .(
-          readID,
-          cluster_id
-        )],
-        by = "readID",
-        all.x = TRUE
-      )
-      
-      # Aggregate Network Features
-      # ------------------------------------------------------------------------
-      ans <- dt_joined[, {
-        u_posids <- unique(posid)
-        u_reads  <- unique(readID)
-        u_umis   <- unique(UMI)
-        
-        # Estimate network abundance using unique clusters of linker-adjacent
-        # adrift-read sequences.
-        tot_sonic <- uniqueN(cluster_id)
-        
-        # Estimate abundance separately for each candidate position.
-        node_table <- .SD[
-          ,
-          .(sonicLengths = uniqueN(cluster_id)),
-          by = .(posid)
-        ][, .(
-          posid,
-          sonicLengths
-        )]
-        
-        .(
-          nodes = length(u_posids),
-          reads = length(u_reads),
-          UMIs = length(u_umis),
-          posids = list(u_posids),
-          readIDs = list(u_reads),
-          clusterSonicLengths = tot_sonic,
-          nodeSonicLengths = list(node_table)
-        )
-      }, by = .(clusterID)]
-      
-      ans
+      # Run CD-HIT separately within every connected-component network.
+      rbindlist(lapply(
+        split(dt_joined, by = "clusterID", keep.by = TRUE, sorted = TRUE),
+        function(net){
+          unique_seqs <- unique(net[, .(
+            readID,
+            testSeq = substr(as.character(adrift_seq), 1L, nt_len)
+          )])
+          
+          if(nrow(unique_seqs[, .N, by = readID][N != 1L]) > 0)
+            stop("Error - a readID has more than one adrift-read sequence within a multi-hit network.")
+          
+          # Deterministic FASTA order is important because CD-HIT -g 0 is greedy.
+          setorder(unique_seqs, readID)
+          
+          ts <- file.path(args$ramDisk, paste0("mhc_", tmpString()))
+          fasta_path <- paste0(ts, ".fasta")
+          out_prefix <- paste0(ts, "_cdhit")
+          clstr_path <- paste0(out_prefix, ".clstr")
+          on.exit(unlink(c(fasta_path, out_prefix, clstr_path,
+                           paste0(out_prefix, ".bak"))), add = TRUE)
+          
+          fasta_lines <- character(nrow(unique_seqs) * 2L)
+          fasta_lines[c(TRUE, FALSE)] <- paste0(">", unique_seqs$readID)
+          fasta_lines[c(FALSE, TRUE)] <- unique_seqs$testSeq
+          writeLines(fasta_lines, fasta_path)
+          
+          cmd <- paste("cd-hit-est", args$multiHitclusteringParams,
+                       "-T", args$threads, "-i", shQuote(fasta_path),
+                       "-o", shQuote(out_prefix))
+          status <- system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
+          
+          if(status != 0L || !file.exists(clstr_path))
+            stop("Error - cd-hit-est failed for multi-hit network ", net$clusterID[1], ".")
+          
+          cdhit_lookup <- as.data.table(parse_cdhit_clstr(clstr_path))
+          if(anyDuplicated(cdhit_lookup$readID) ||
+             !setequal(unique_seqs$readID, cdhit_lookup$readID))
+            stop("Error - incomplete or duplicated CD-HIT assignments for multi-hit network ",
+                 net$clusterID[1], ".")
+          
+          if(save_details){
+            assignment_table <- merge(unique_seqs, cdhit_lookup,
+                                      by = "readID", all.x = TRUE, sort = FALSE)
+            setnames(assignment_table,
+                     c("testSeq", "cluster_id", "is_rep", "cluster_size"),
+                     c("adriftSeqSegment", "cdhitClusterID", "isRep", "clusterSize"))
+            setorder(assignment_table, cdhitClusterID, readID)
+          }
+          
+          net <- merge(net, cdhit_lookup[, .(readID, cluster_id)],
+                       by = "readID", all.x = TRUE, sort = FALSE)
+          if(anyNA(net$cluster_id))
+            stop("Error - missing CD-HIT assignments in multi-hit network ",
+                 net$clusterID[1], ".")
+          
+          ans <- net[, {
+            u_posids <- unique(posid)
+            u_reads <- unique(readID)
+            u_umis <- unique(UMI)
+            node_table <- .SD[, .(sonicLengths = uniqueN(cluster_id)), by = posid]
+            
+            .(nodes = length(u_posids), reads = length(u_reads), UMIs = length(u_umis),
+              posids = list(u_posids), readIDs = list(u_reads),
+              clusterSonicLengths = uniqueN(cluster_id),
+              nodeSonicLengths = list(node_table))
+          }, by = clusterID]
+          
+          if(save_details) ans[, cdhitAssignments := list(assignment_table)]
+          ans
+        }
+      ), use.names = TRUE, fill = FALSE)
     }
-  }, by = .(
-    trial,
-    subject,
-    sample,
-    refGenome
-  )]
-  
-  saveRDS(
-    multiHitClusters,
-    file.path(
-      args$outputDir,
-      paste0(
-        args$fileTag,
-        "_multiHitClusters.rds"
-      )
-    )
-  )
+  }, by = .(trial, subject, sample, refGenome)]
   
   multiHitClusters
 }

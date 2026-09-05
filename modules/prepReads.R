@@ -18,7 +18,6 @@ parser$add_argument("--vectorTestMinPercentID",  type  = "double",       default
 parser$add_argument("--vectorTestMinCoverage",   type = "double",        default = 90,             help = "Min. test sequence converage (0 .. 100) to accept a vector alignment.")
 parser$add_argument("--HMMparams",               type = "character",     default = 'none',         help = "Comma delimited shorthand containing HMM parmaters.")
 
-
 runModule <- function(){
   startModule()
   
@@ -144,9 +143,6 @@ runModule <- function(){
     # Collapse duplicate hits.
     o <- group_by(o, targetName) %>% dplyr::slice_max(fullScore, n = 1, with_ties = FALSE) %>% ungroup()
     
-    # Save these results to a separate files for diagnostic purposes before filtering...
-    
-    
     # Subset the data based on user scoring thresholds.
     o <- subset(o, targetStart >= args$HMMminStartPos     & 
                    targetStart <= args$HMMmaxStartPos     & 
@@ -207,7 +203,7 @@ runModule <- function(){
     
          my_iter <- make_dt_iterator(x, chunk_size = ceiling(nrow(x)/args$threads), chunk_num_start = chunk_start_num)
     
-         ###param <- SerialParam(stop.on.error = TRUE) # Use SerialParam() for browser() statements.
+         ### param <- SerialParam(stop.on.error = TRUE) # Use SerialParam() for browser() statements.
          param <- MulticoreParam(workers = args$threads)
     
          results <- bpiterate(ITER = my_iter, FUN = hmm_worker, BPPARAM = param)
@@ -252,6 +248,12 @@ runModule <- function(){
     
           x
        }))
+    
+    if(nrow(d) == 0){
+      msg <- 'Error - no reads remain after anchorRead overTrimming filter.'
+      updateLog(msg)
+      stop(msg)
+    }
   
     d$anchorReadTrimSeq <- NULL
   
@@ -267,6 +269,12 @@ runModule <- function(){
     
           x
         }))
+    
+    if(nrow(d) == 0){
+      msg <- 'Error - no reads remain after adriftRead overTrimming filter.'
+      updateLog(msg)
+      stop(msg)
+    }
   
     d$adriftReadTrimSeq <- NULL
   
@@ -310,6 +318,12 @@ runModule <- function(){
       x$testSeq <- NULL
       x
     }))
+    
+    if(nrow(d) == 0){
+      msg <- 'Error - no reads remain after vector filter.'
+      updateLog(msg)
+      stop(msg)
+    }
     
     updateLog(paste0(sprintf("%.1f%%", (sum(d$vectorHit) / nrow(d))*100), ' anchorRead ends matched the vector sequences.'))
     updateLog('Writing output.')

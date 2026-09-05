@@ -152,6 +152,7 @@ bsf_parser$add_argument("--leaderSeqClusteringParams",         type = "character
 bsf_parser$add_argument("--multiHitclusteringParams",          type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
 bsf_parser$add_argument("--multiHitclusteringNTlen",           type = "integer",       default = 30L,                 help = "Number of linker-adjacent adrift read nucleotides used for multi-hit clustering.")
 bsf_parser$add_argument("--anchorReadClusterParams",           type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
+bsf_parser$add_argument("--saveMultiHitClusteringDetails",     action = "store_true", default = FALSE, help = "Save per-read CD-HIT assignments for each multi-hit network.")
 bsf_parser$add_argument("--disableDominantUMIs",               action = "store_true",  default  = FALSE,               help = 'Disable the removal of spurious, likley rearranged UMIs')  
 bsf_parser$add_argument("--UMIprocessingMinSortReads",         type = "integer",       default  = 10,                  help = 'Min. number of reads to attempt isolating dominant UMIs.')  
 bsf_parser$add_argument("--UMIprocessingMinPercentTotal",      type = "double",        default  = 20,                  help = 'Min. percentage (0-100) that an UMI needs to reach within a replicate to be considered dominant.')  

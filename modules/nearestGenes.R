@@ -33,7 +33,8 @@ runModule <- function(){
     tu <- readRDS(file.path(args$softwareRoot, 'data', 'genomeAnnotations', paste0(x$refGenome[1], '.TUs.rds')))
     ex <- readRDS(file.path(args$softwareRoot, 'data', 'genomeAnnotations', paste0(x$refGenome[1], '.exons.rds')))
     
-    i <- sub('\\.\\d+', '', unique(x$posid))
+    # i <- sub('\\.\\d+', '', unique(x$posid))
+    i <- unique(x$posid)
     
     g <- makeGRangesFromDataFrame(tibble(seqnames = unlist(lapply(str_split(i, '[\\+\\-]'), '[', 1)),
                                          start = unlist(lapply(str_split(i, '[\\+\\-]'), '[', 2)),

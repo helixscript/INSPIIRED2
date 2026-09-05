@@ -66,6 +66,12 @@ runModule <- function(){
     r[fragWidth >= args$minFrgamentLength & fragWidth <= args$maxFrgamentLength]
   }))
   
+  if(nrow(frags) == 0){
+    msg <- 'Error - no fragments could be built from the alignment data.'
+    updateLog(msg)
+    stop(msg)
+  }
+  
   setnames(frags, "seq", "anchor_seq")
   
   frags$trial     <- as.factor(frags$trial)

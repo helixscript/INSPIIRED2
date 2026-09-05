@@ -1114,7 +1114,6 @@ runModule <- function() {
       "No HMM hits remained after applying the configured HMM-end and terminal-sequence requirements."
     )
   
-  # JKE
   hmmAnalysis <- plotHMMStartHeatmap(
     hmmResults,
     hmmParameters,
@@ -1123,7 +1122,7 @@ runModule <- function() {
     scoreBinWidth = args$scoreBinWidth,
     minScoreBinPct = args$minScoreBinPct,
     facetCols = args$facetCols,
-    showHorizontalGuides = ! args$disableHorizontalGuides,
+    showHorizontalGuides = args$disableHorizontalGuides,
     horizontalGuideEvery = args$horizontalGuideEvery,
     hitBorderColour = "grey70",
     hitBorderLinewidth = 0.10,
