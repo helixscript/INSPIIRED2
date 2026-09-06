@@ -174,22 +174,22 @@ Most core modules accept the following options:
 |---|---:|---|
 | `--outputDir` | Required | Output directory. It is normally created during module setup. When starting directly at `buildFragments` in v1.4.4, create the directory first. |
 | `--inputData` | Required | RDS output from the preceding module. `demultiplex` uses raw input flags instead. |
-| `--threads` | `50` | Maximum worker or library thread count. `buildStdFragments` defaults to `30`. Not every operation in every module is parallel. |
-| `--fileTag` | Module name | Basename for output files. `buildSeqDataMap` is the exception and currently defaults to `testHMMs`. |
+| `--threads` | `50` | Maximum worker or library thread count.  |
+| `--fileTag` | Module name | Basename for output files.  |
 | `--ramDiskPath` | `/dev/shm` | Scratch filesystem; falls back to `outputDir` when not writable. |
 
-The launcher supplies `--softwareRoot` internally. Users should not add it.
+The inspirred2 launcher supplies `--softwareRoot` internally. Users should not add it.
 
 Boolean options such as `--disablePolyGfilter` are activated by including the flag alone; do not append `TRUE`. Quote any value containing spaces or shell metacharacters, especially CD-HIT parameter strings and pipe-separated `--HMMparams` values.
 
-Core modules normally write:
+Core modules typically write:
 
 - `<fileTag>.rds`: primary result.
 - `<fileTag>.yml`: supplied arguments and run metadata.
 - `<fileTag>.log`: progress, filtering summaries, and errors.
 - `<fileTag>.done`: completion marker written at the end of a successful run.
 
-Some modules add diagnostic outputs described below. `testDBconn`, `pullDBrecords`, and `buildSeqDataMap` do not follow the complete core-output pattern.
+Some modules add diagnostic outputs described below. 
 
 Use `--fileTag` to preserve alternative parameter runs:
 
@@ -201,7 +201,7 @@ inspiired2 buildStdFragments \
   --intSite_sp_window 12
 ```
 
-If a module is rerun with changed parameters, rerun all downstream modules against the new output. A `.done` file is only a marker, not a workflow manager or guarantee that later stages used the corresponding result. Confirm success from the current command exit status and log. Keeping intermediate RDS files makes downstream reprocessing much faster.
+If a module is rerun with changed parameters, rerun all downstream modules against the new output.
 
 ## Core pipeline modules
 
