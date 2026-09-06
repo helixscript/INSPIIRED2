@@ -57,46 +57,15 @@ runModule <- function(){
   frags$UMI       <- as.character(frags$UMI)
   frags$replicate <- as.integer(as.character(frags$replicate))
   
-  
   frags$real_UMI <- frags$UMI 
   frags$UMI <- "AAAAAAAAAAAA" 
   
-  
+  frags$leaderSeqGroupNum <- 1
   
   # leaderSeq clustering
   #-----------------------------------------------------------------------------
-  if(args$clusterLeaderSeqs){
-    orgFragRowCount <- nrow(frags)
-    o <- dplyr::arrange(data.frame(table(frags$leaderSeq)), desc(Freq))
-    o$n <- 1:nrow(o)
-    o$readID <- paste0('s',  o$n)
-    
-    # Cluster unique leader sequences.
-    ts <- tmpString()
-    write(paste0('>', o$readID, '\n', o$Var1), file = file.path(args$ramDisk, paste0(ts, '.fasta')))
-    out_prefix <- file.path(args$ramDisk, paste0(ts, "_cdhit"))
-    cmd <- paste0("cd-hit-est ", args$leaderSeqClusteringParams, " -T ", args$threads, " -i ", file.path(args$ramDisk, paste0(ts, '.fasta')), " -o ", out_prefix)
-    system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
-    clstr_path <- paste0(out_prefix, ".clstr")
-    if(!file.exists(clstr_path)) stop(paste0('Error - cd-hit-est failed to return a clstr file.'))
-    
-    # Rename the clusters using table `o` so that the clusters with the highest number of reads are numbered the lowest.
-    r <- parse_cdhit_clstr(clstr_path)
-    
-    r <- left_join(r, o[, c('n', 'readID')], by = 'readID')
-    k <- group_by(r, cluster_id) %>% summarise(newClusterID = paste('Cluster', min(n))) %>% ungroup()
-    r <- left_join(r, k, by = 'cluster_id')
-    o <- left_join(o, r[, c('readID', 'newClusterID')], by = 'readID')
-    frags <- left_join(frags, o[, c('Var1', 'newClusterID')], by = c('leaderSeq' = 'Var1'))
-    
-    # Use re-named cluster ids to determine leader sequencing group numbers.
-    frags$leaderSeqGroupNum <-  as.integer(str_extract(frags$newClusterID, '\\d+'))
-    frags$newClusterID <- NULL
-    if(nrow(frags) != orgFragRowCount) stop('Error sorting and rennanming leader sequence clusters.')
-  } else {
-    frags$leaderSeqGroupNum <- 1
-  }
-  
+  if(args$clusterLeaderSeqs) updateLog('The ability to cluster leader sequences is not supported in this version of INSPIIRED2.')
+
   
   # Build fragment ids and separate reads for position standardization.
   #-----------------------------------------------------------------------------

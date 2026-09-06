@@ -169,7 +169,7 @@ runModule <- function(){
   # At this point, now that we're done parsing position ids, we can add leaderSeq
   # identifiers if more than one leaderSeqGroupNum is present. 
   
-  if(as.logical(frags$clusterLeaderSeqs[1]) == TRUE) frags$posid <- paste0(frags$posid, '.', frags$leaderSeqGroupNum)
+  if(n_distinct(frags$clusterLeaderSeqs) > 1) frags$posid <- paste0(frags$posid, '.', frags$leaderSeqGroupNum)
   
   consensusLeaderSeq <- function(x){
     tab <- dplyr::group_by(x, repLeaderSeq) %>% 
@@ -194,7 +194,6 @@ runModule <- function(){
     }
   }
   
-
   # Create the site-grouping vector.
   # When dual detection is disabled, keep U3 and U5 calls separate
   # even when orientation correction gives them the same posid.
