@@ -283,7 +283,7 @@ inspiired2 prepReads \
 | `--vectorTestMinPercentID` | `90` | Minimum BLAST nucleotide identity, as a percentage, for a vector hit. |
 | `--vectorTestMinCoverage` | `90` | Minimum percentage of the test segment covered by the vector alignment. |
 
-When enabled, the vector filter writes removed records to `prepReads_vectorHitReads.tsv.gz`. If the filter is disabled, that diagnostic is not written. HMM and over-read stages stop when they remove every record. Also check that the primary output is nonempty after vector filtering before proceeding.
+When enabled, the vector filter writes removed records to `prepReads_vectorHitReads.tsv.gz`. 
 
 ### `alignReads`
 
@@ -308,7 +308,7 @@ inspiired2 alignReads \
 | `--blatMaxqBaseInsert` | `1` | Maximum total inserted query bases. |
 | `--dataRowChunkSize` | `2500` | Approximate number of unique sequence rows sent to each alignment worker. Reduce to limit per-worker memory; increase to reduce worker and file overhead. |
 
-The output is an R list with `anchorReads` and `adriftReads` tables. The module uses `MulticoreParam()` and limits workers to the number of available chunks. Linux or the supplied Docker image is recommended.
+The output is an R list with `anchorReads` and `adriftReads` tables. The module uses `MulticoreParam()` and limits workers to the number of available chunks. 
 
 ### `buildFragments`
 
@@ -319,8 +319,6 @@ inspiired2 buildFragments \
   --outputDir out \
   --inputData out/alignReads.rds
 ```
-
-For a positive anchor alignment, the integration-facing boundary is the anchor start and the sonic boundary is the adrift end. For a negative anchor alignment, the integration-facing boundary is the anchor end and the sonic boundary is the adrift start.
 
 | Flag | Default | Description and use |
 |---|---:|---|
@@ -410,7 +408,7 @@ Default `--leaderSeqClusteringParams`:
 
 Custom CD-HIT arguments are passed directly to `cd-hit-est`. Change them only when their identity, word-size, and coverage effects are understood.
 
-When leader clustering is enabled, `buildSites` appends `.leaderSeqGroupNum` to `posid`. In v1.4.4, validate the downstream `nearestGenes` and `annotateRepeats` results carefully because their position parsers are designed around the usual unsuffixed `chromosome[+|-]position` form. The default, safer setting for the complete annotation chain is to leave leader clustering off.
+When leader clustering is enabled, `buildSites` appends `.leaderSeqGroupNum` to `posid`.
 
 #### Anchor-read PCR-rearrangement filter
 
