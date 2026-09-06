@@ -355,13 +355,6 @@ inspiired2 buildStdFragments \
 
 #### Position standardization
 
-The two standardized boundaries and their scopes are:
-
-| Boundary | Positive fragment | Negative fragment | Scope |
-|---|---|---|---|
-| Integration site | `fragStart` | `fragEnd` | `trial`, `subject`, chromosome, strand, and leader group |
-| Sonic breakpoint | `fragEnd` | `fragStart` | `trial`, `subject`, `sample`, `replicate`, chromosome, strand, and leader group |
-
 For each observed coordinate, the module sums read support and identifies local maxima. Coordinates compete for assignment to maxima within a search window. Candidate pull is based on anchor read count and a Gaussian distance penalty, with:
 
 ```text
