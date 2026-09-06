@@ -125,7 +125,7 @@ RUN wget https://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v479/twoBitToFa 
     && chmod 755 twoBitToFa \
     && mv twoBitToFa /usr/bin/
 
-RUN cd / \ 
+RUN cd / \
     && mkdir tempDir \
     && cd tempDir \
     && wget https://anaconda.org/bioconda/pear/0.9.6/download/linux-64/pear-0.9.6-hb1d24b7_12.tar.bz2 \

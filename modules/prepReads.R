@@ -269,18 +269,18 @@ runModule <- function(){
     
           x
         }))
-    
-    if(nrow(d) == 0){
-      msg <- 'Error - no reads remain after adriftRead overTrimming filter.'
-      updateLog(msg)
-      stop(msg)
-    }
   
     d$adriftReadTrimSeq <- NULL
   
     keep_idx <- which(nchar(d$anchorReadSeq) >= args$minReadLength & nchar(d$adriftReadSeq) >= args$minReadLength)
   
     d <- d[keep_idx]
+    
+    if(nrow(d) == 0){
+      msg <- 'Error - no reads remain after adriftRead overTrimming filter.'
+      updateLog(msg)
+      stop(msg)
+    }
   }
   
  

@@ -361,11 +361,18 @@ runModule <- function(){
     stop(msg)
   }
   
-  # Remove any reads that were demultiplexed more than once.
-  i <- duplicated(o$readID)
-  if(any(i)){
-    updateLog(paste0(ppNum(sum(n)), ' reads were demultiplexed to more than one sample replicate and will be removed.'))
-    o <- o[! i,]
+
+  # Remove every occurrence of read IDs seen more than once in the output.
+  duplicateReadIDs <- o[, .N, by = readID][N > 1L, readID]
+  if(length(duplicateReadIDs)){
+    updateLog(paste0(ppNum(length(duplicateReadIDs)), ' read IDs were demultiplexed more than once and will be removed.'))
+    o <- o[!readID %in% duplicateReadIDs]
+  }
+  
+  if(nrow(o) == 0){
+    msg <- 'Error - no reads remain after removing read IDs demultiplexed more than once.'
+    updateLog(msg)
+    stop(msg)
   }
   
   group_vars <- c("trial", "subject", "sample", "replicate")

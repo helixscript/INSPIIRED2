@@ -28,12 +28,29 @@ runModule <- function() {
   }, add = TRUE)
   
   updateLog('Starting testHMMs module.')
+  resource_overlay()
   if (!file.exists(args$inputData)) stop(paste0('Error - input file "', args$inputData, '" does not exist.'))
   
-  o <- readRDS(args$inputData)
+  o <- as.data.table(readRDS(args$inputData))
   if (nrow(o) == 0) stop(paste0('Error - input file "', args$inputData, '" has zero rows of data.'))
+  requiredInputCols <- c("trial", "subject", "sample", "leaderSeqHMM", "anchorReadSeq")
+  missingInputCols <- setdiff(requiredInputCols, names(o))
+  if (length(missingInputCols)) stop("Error - input data is missing required column(s): ", paste(missingInputCols, collapse = ", "))
+  if (!"nReads" %in% names(o)) {
+    updateLog('Input data has no nReads column; each input record will be counted as one read.')
+    o[, nReads := 1]
+  }
+  if (is.factor(o$nReads)) o[, nReads := as.character(nReads)]
+  o[, nReads := suppressWarnings(as.numeric(nReads))]
+  if (anyNA(o$nReads) || any(!is.finite(o$nReads)) || any(o$nReads <= 0)) stop("Error - nReads values must be finite and greater than zero.")
   
   buildHMMParameterTable <- function(hmmNames) {
+    emptyParameterTable <- function() data.table(
+      leaderSeqHMM = character(), HMMminStartPos = integer(), HMMmaxStartPos = integer(),
+      HMMminFullBitScore = numeric(), HMMmaxFullBitScore = numeric(), HMMmatchEnd = logical(),
+      HMMmatchTerminalSeq = character(), HMMmatchEndRadius = integer(), hmmLength = integer(),
+      parameterSource = character()
+    )
     parseOverrides <- function(x) {
       if (is.null(x) || length(x) != 1L || !nzchar(trimws(x)) || tolower(trimws(x)) == "none") return(list())
       
@@ -70,22 +87,32 @@ runModule <- function() {
     
     makeRow <- function(hmmName, p, source) {
       if (length(p) != 7L) stop("Error - expected 7 HMM parameters for hmm: ", hmmName)
+      p <- trimws(as.character(p))
       if (!grepl("^(TRUE|FALSE)$", p[5], ignore.case = TRUE)) stop("Error - HMMmatchEnd must be TRUE or FALSE for hmm: ", hmmName)
+      
+      integerValues <- suppressWarnings(as.numeric(p[c(1L, 2L, 7L)]))
+      if (anyNA(integerValues) || any(!is.finite(integerValues)) || any(integerValues != trunc(integerValues)))
+        stop("Error - HMM start positions and HMMmatchEndRadius must be finite whole numbers for hmm: ", hmmName)
+      
+      terminalSeq <- toupper(p[6])
+      if (!identical(tolower(terminalSeq), "none") && !grepl("^[ACGTN]+$", terminalSeq))
+        stop("Error - HMMmatchTerminalSeq must be 'none' or a sequence containing only A, C, G, T, or N for hmm: ", hmmName)
       
       z <- data.table(
         leaderSeqHMM = hmmName,
-        HMMminStartPos = suppressWarnings(as.integer(p[1])),
-        HMMmaxStartPos = suppressWarnings(as.integer(p[2])),
+        HMMminStartPos = suppressWarnings(as.integer(integerValues[1L])),
+        HMMmaxStartPos = suppressWarnings(as.integer(integerValues[2L])),
         HMMminFullBitScore = suppressWarnings(as.numeric(p[3])),
         HMMmaxFullBitScore = suppressWarnings(as.numeric(p[4])),
         HMMmatchEnd = grepl("^TRUE$", p[5], ignore.case = TRUE),
-        HMMmatchTerminalSeq = as.character(p[6]),
-        HMMmatchEndRadius = suppressWarnings(as.integer(p[7])),
+        HMMmatchTerminalSeq = terminalSeq,
+        HMMmatchEndRadius = suppressWarnings(as.integer(integerValues[3L])),
         hmmLength = readHMMLength(hmmName),
         parameterSource = source
       )
       
-      if (any(is.na(z[, .(HMMminStartPos, HMMmaxStartPos, HMMminFullBitScore, HMMmaxFullBitScore, HMMmatchEndRadius, hmmLength)])))
+      if (any(is.na(z[, .(HMMminStartPos, HMMmaxStartPos, HMMminFullBitScore, HMMmaxFullBitScore, HMMmatchEndRadius, hmmLength)])) ||
+          any(!is.finite(c(z$HMMminFullBitScore, z$HMMmaxFullBitScore))))
         stop("Error - one or more HMM parameters could not be parsed for hmm: ", hmmName)
       
       if (z$HMMminStartPos < 1L || z$HMMmaxStartPos < z$HMMminStartPos)
@@ -103,7 +130,11 @@ runModule <- function() {
       z
     }
     
+    hmmNames <- unique(as.character(hmmNames))
+    if (anyNA(hmmNames) || any(!nzchar(hmmNames))) stop("Error - leaderSeqHMM values must be non-missing and non-empty.")
     overrides <- parseOverrides(args$HMMparams)
+    unusedOverrides <- setdiff(names(overrides), hmmNames)
+    if (length(unusedOverrides)) updateLog(paste0("Ignoring --HMMparams entries not used by this input: ", paste(unusedOverrides, collapse = ", "), "."))
     
     expected <- c(
       "HMMminStartPos",
@@ -115,14 +146,20 @@ runModule <- function() {
       "HMMmatchEndRadius"
     )
     
-    rbindlist(lapply(unique(as.character(hmmNames)), function(hmmName) {
+    parameterRows <- lapply(hmmNames, function(hmmName) {
+      hmmFile <- file.path(args$softwareRoot, "data", "hmms", hmmName)
+      if (!file.exists(hmmFile)) stop("Error - HMM file does not exist: ", hmmFile)
+      
       if (hmmName %in% names(overrides))
         return(makeRow(hmmName, overrides[[hmmName]], "--HMMparams"))
       
       cfgFile <- file.path(args$softwareRoot, "data", "hmms", sub("\\.hmm$", ".cfg", hmmName))
       
-      if (!file.exists(cfgFile))
-        stop("Error - could not determine processing parameters for hmm: ", hmmName)
+      if (!file.exists(cfgFile)) {
+        updateLog(paste0('No scoring parameters were found for HMM "', hmmName,
+                         '"; its best nhmmer hits will be plotted without parameter-based filtering or a blue parameter box.'))
+        return(NULL)
+      }
       
       p <- readr::read_tsv(
         cfgFile,
@@ -144,7 +181,11 @@ runModule <- function() {
         stop("Error - the hmm cfg file for hmm: ", hmmName, " did not contain the expected parameter names.")
       
       makeRow(hmmName, p$value[match(expected, p$name)], "cfg")
-    }), use.names = TRUE, fill = TRUE)
+    })
+    
+    parameterRows <- Filter(Negate(is.null), parameterRows)
+    if (!length(parameterRows)) return(emptyParameterTable())
+    rbindlist(parameterRows, use.names = TRUE, fill = FALSE)
   }
   
   testHMM <- function(x, hmmParameters) {
@@ -155,13 +196,14 @@ runModule <- function() {
       leaderSeqHMM = character(),
       targetStart = integer(),
       targetEnd = integer(),
-      fullScore = numeric()
+      fullScore = numeric(),
+      nReads = numeric()
     )
     
     hmmName <- as.character(x$leaderSeqHMM[1L])
     hp <- hmmParameters[leaderSeqHMM == hmmName]
     
-    if (nrow(hp) != 1L) stop("Error - could not uniquely resolve HMM parameters for: ", hmmName)
+    if (nrow(hp) > 1L) stop("Error - multiple parameter records were resolved for HMM: ", hmmName)
     
     prefix <- tempfile(pattern = "nhmmer_", tmpdir = args$ramDisk)
     fastaFile <- paste0(prefix, ".fa")
@@ -229,56 +271,33 @@ runModule <- function() {
     
     hits <- hits[hits[, .I[which.max(fullScore)], by = targetName]$V1]
     
-    if (isTRUE(hp$HMMmatchEnd[1L])) {
-      hits <- hits[
-        abs(
-          hp$hmmLength[1L] -
-            hmmEnd
-        ) <= hp$HMMmatchEndRadius[1L]
-      ]
-    }
-    
-    if (!nrow(hits)) return(emptyResult())
-    
-    terminalSeq <- as.character(hp$HMMmatchTerminalSeq[1L])
-    radius <- as.integer(hp$HMMmatchEndRadius[1L])
-    
-    if (!grepl("none", terminalSeq, ignore.case = TRUE)) {
-      terminalSeq <- toupper(terminalSeq)
-      
-      readIndex <- match(hits$targetName, names(s))
-      
-      if (anyNA(readIndex))
-        stop("Error - could not map one or more nhmmer hits back to input reads for hmm: ", hmmName)
-      
-      anchorReadSeq <- toupper(as.character(x$anchorReadSeq[readIndex]))
-      
-      terminalMatchSeq <- substr(
-        anchorReadSeq,
-        hits$targetEnd - (nchar(terminalSeq) - 1L) - radius,
-        hits$targetEnd + radius
-      )
-      
-      ends <- stringr::str_locate(
-        terminalMatchSeq,
-        terminalSeq
-      )[, 2]
-      
-      keep <- !is.na(ends)
-      
-      hits <- hits[keep]
-      ends <- ends[keep]
+    if (nrow(hp)) {
+      if (isTRUE(hp$HMMmatchEnd[1L]))
+        hits <- hits[abs(hp$hmmLength[1L] - hmmEnd) <= hp$HMMmatchEndRadius[1L]]
       
       if (!nrow(hits)) return(emptyResult())
       
-      hits[
-        ,
-        targetEnd :=
-          targetEnd -
-          (nchar(terminalSeq) + radius) +
-          ends
-      ]
+      terminalSeq <- as.character(hp$HMMmatchTerminalSeq[1L])
+      radius <- as.integer(hp$HMMmatchEndRadius[1L])
+      
+      if (!identical(tolower(terminalSeq), "none")) {
+        terminalSeq <- toupper(terminalSeq)
+        readIndex <- match(hits$targetName, names(s))
+        if (anyNA(readIndex)) stop("Error - could not map one or more nhmmer hits back to input reads for HMM: ", hmmName)
+        anchorReadSeq <- toupper(as.character(x$anchorReadSeq[readIndex]))
+        terminalMatchSeq <- substr(anchorReadSeq, hits$targetEnd - (nchar(terminalSeq) - 1L) - radius, hits$targetEnd + radius)
+        ends <- stringr::str_locate(terminalMatchSeq, stringr::fixed(terminalSeq))[, 2]
+        keep <- !is.na(ends)
+        hits <- hits[keep]
+        ends <- ends[keep]
+        if (!nrow(hits)) return(emptyResult())
+        hits[, targetEnd := targetEnd - (nchar(terminalSeq) + radius) + ends]
+      }
     }
+    
+    readIndex <- match(hits$targetName, names(s))
+    if (anyNA(readIndex)) stop("Error - could not map one or more nhmmer hits back to input reads for HMM: ", hmmName)
+    hits[, nReads := as.numeric(x$nReads[readIndex])]
     
     hits[
       ,
@@ -299,13 +318,14 @@ runModule <- function() {
         leaderSeqHMM,
         targetStart,
         targetEnd,
-        fullScore
+        fullScore,
+        nReads
       )
     ]
   }
   
   build_HMM_tests <- function(o, hmmParameters) {
-    hmmInput <- o[, .(trial, subject, sample, leaderSeqHMM, anchorReadSeq)]
+    hmmInput <- o[, .(trial, subject, sample, leaderSeqHMM, anchorReadSeq, nReads)]
     groupCols <- c("trial", "subject", "sample", "leaderSeqHMM")
     
     hmmInput[, (groupCols) := lapply(.SD, as.character), .SDcols = groupCols]
@@ -372,13 +392,11 @@ runModule <- function() {
       as.integer(out)
     }
     
-    requiredCols <- c("trial", "subject", "sample", "leaderSeqHMM", "targetStart", "fullScore")
+    requiredCols <- c("trial", "subject", "sample", "leaderSeqHMM", "targetStart", "fullScore", "nReads")
     requiredParamCols <- c(
-      "leaderSeqHMM",
-      "HMMminStartPos",
-      "HMMmaxStartPos",
-      "HMMminFullBitScore",
-      "HMMmaxFullBitScore"
+      "leaderSeqHMM", "HMMminStartPos", "HMMmaxStartPos", "HMMminFullBitScore",
+      "HMMmaxFullBitScore", "HMMmatchEnd", "HMMmatchTerminalSeq", "HMMmatchEndRadius",
+      "parameterSource"
     )
     
     missingCols <- setdiff(requiredCols, names(d))
@@ -411,13 +429,15 @@ runModule <- function() {
     if (!is.finite(hitBorderLinewidth) || hitBorderLinewidth < 0) stop("hitBorderLinewidth must be >= 0.")
     if (!is.finite(parameterBoxLinewidth) || parameterBoxLinewidth < 0) stop("parameterBoxLinewidth must be >= 0.")
     
+    if (is.factor(d$nReads)) d[, nReads := as.character(nReads)]
     d[, `:=`(
       trial = as.character(trial),
       subject = as.character(subject),
       sample = as.character(sample),
       leaderSeqHMM = as.character(leaderSeqHMM),
       targetStart = as.integer(targetStart),
-      fullScore = as.numeric(fullScore)
+      fullScore = as.numeric(fullScore),
+      nReads = suppressWarnings(as.numeric(nReads))
     )]
     
     hp[, `:=`(
@@ -432,17 +452,14 @@ runModule <- function() {
       !is.na(targetStart) &
         targetStart >= 1L &
         !is.na(fullScore) &
-        is.finite(fullScore)
+        is.finite(fullScore) &
+        !is.na(nReads) &
+        is.finite(nReads) &
+        nReads > 0
     ]
     
     if (!nrow(d)) stop("No valid HMM results remain.")
     if (anyDuplicated(hp$leaderSeqHMM)) stop("HMM parameter table contains duplicate HMM names.")
-    
-    missingHMMs <- setdiff(unique(d$leaderSeqHMM), hp$leaderSeqHMM)
-    
-    if (length(missingHMMs))
-      stop("No HMM processing parameters were found for: ", paste(missingHMMs, collapse = ", "))
-    
     hp <- hp[leaderSeqHMM %in% unique(d$leaderSeqHMM)]
     
     groupCols <- c("trial", "subject", "sample", "leaderSeqHMM")
@@ -461,6 +478,7 @@ runModule <- function() {
     
     sampleOrderDT[, sampleOrder := .I]
     
+    rawMinScore <- min(d$fullScore, na.rm = TRUE)
     rawMaxScore <- max(d$fullScore, na.rm = TRUE)
     
     d[, scoreBin := floor(fullScore / scoreBinWidth) * scoreBinWidth]
@@ -473,15 +491,7 @@ runModule <- function() {
       )
     ]
     
-    scoreStats <- d[
-      ,
-      .N,
-      by = c(
-        groupCols,
-        "scoreBin",
-        "scoreBinUpper"
-      )
-    ]
+    scoreStats <- d[, .(N = sum(nReads)), by = c(groupCols, "scoreBin", "scoreBinUpper")]
     
     scoreStats[
       ,
@@ -492,54 +502,25 @@ runModule <- function() {
       by = groupCols
     ]
     
-    qualifyingScores <- scoreStats[
-      scoreBin >= 0 &
-        pctScoreBin >= minScoreBinPct
-    ]
-    
-    if (nrow(qualifyingScores)) {
-      maxDisplayBin <- max(
-        qualifyingScores$scoreBin,
-        na.rm = TRUE
-      )
-    } else {
-      nonnegativeBins <- d[
-        scoreBin >= 0,
-        scoreBin
-      ]
-      
-      if (!length(nonnegativeBins))
-        stop("No non-negative HMM scores are available for plotting.")
-      
-      warning(
-        "No non-negative HMM score bin contains >= ",
-        minScoreBinPct,
-        "% of any sample/HMM group; using the full non-negative score range."
-      )
-      
-      maxDisplayBin <- max(
-        nonnegativeBins,
-        na.rm = TRUE
-      )
+    qualifyingScores <- scoreStats[pctScoreBin >= minScoreBinPct]
+    if (!nrow(qualifyingScores)) {
+      warning("No HMM score bin contains >= ", minScoreBinPct,
+              "% of any sample/HMM group; using the full score range.")
+      qualifyingScores <- scoreStats
     }
     
-    parameterMaxBin <- max(
-      floor(
-        hp$HMMmaxFullBitScore /
-          scoreBinWidth
-      ) *
-        scoreBinWidth,
-      na.rm = TRUE
-    )
+    minDisplayBin <- min(qualifyingScores$scoreBin)
+    maxDisplayBin <- max(qualifyingScores$scoreBin)
     
-    maxDisplayBin <- max(
-      maxDisplayBin,
-      parameterMaxBin
-    )
+    if (nrow(hp)) {
+      parameterMinBin <- min(floor(hp$HMMminFullBitScore / scoreBinWidth) * scoreBinWidth)
+      parameterMaxBin <- max(floor(hp$HMMmaxFullBitScore / scoreBinWidth) * scoreBinWidth)
+      minDisplayBin <- min(minDisplayBin, parameterMinBin)
+      maxDisplayBin <- max(maxDisplayBin, parameterMaxBin)
+    }
     
-    maxDisplayScore <-
-      maxDisplayBin +
-      scoreBinWidth
+    minDisplayScore <- min(0, minDisplayBin)
+    maxDisplayScore <- max(0, maxDisplayBin + scoreBinWidth)
     
     d[
       ,
@@ -607,14 +588,9 @@ runModule <- function() {
     sampleStats <- d[
       ,
       .(
-        totalReads = .N,
-        withinReads = sum(
-          targetStart >= 1L &
-            targetStart <= maxStart
-        ),
-        overflowReads = sum(
-          targetStart > maxStart
-        )
+        totalReads = sum(nReads),
+        withinReads = sum(nReads[targetStart >= 1L & targetStart <= maxStart]),
+        overflowReads = sum(nReads[targetStart > maxStart])
       ),
       by = groupCols
     ]
@@ -686,17 +662,8 @@ runModule <- function() {
     
     facetOrder <- sampleStats$facetID
     
-    heatmapAll <- d[
-      ,
-      .N,
-      by = c(
-        groupCols,
-        "xCategory",
-        "scoreBin",
-        "scoreBinUpper",
-        "scoreMid"
-      )
-    ]
+    heatmapAll <- d[, .(N = sum(nReads)),
+                    by = c(groupCols, "xCategory", "scoreBin", "scoreBinUpper", "scoreMid")]
     
     heatmapAll <- merge(
       heatmapAll,
@@ -724,10 +691,7 @@ runModule <- function() {
         totalReads
     ]
     
-    heatmapDT <- heatmapAll[
-      scoreBin >= 0 &
-        scoreBin <= maxDisplayBin
-    ]
+    heatmapDT <- heatmapAll[scoreBin >= minDisplayBin & scoreBin <= maxDisplayBin]
     
     heatmapDT[
       ,
@@ -828,7 +792,7 @@ runModule <- function() {
         )
       ],
       by = "leaderSeqHMM",
-      all.x = TRUE,
+      all = FALSE,
       sort = FALSE,
       allow.cartesian = TRUE
     )
@@ -906,37 +870,10 @@ runModule <- function() {
       name = "% reads"
     )
     
-    guideScores <- numeric()
-    
-    if (maxDisplayScore > horizontalGuideEvery) {
-      guideScores <- seq(
-        horizontalGuideEvery,
-        floor(
-          (
-            maxDisplayScore -
-              .Machine$double.eps
-          ) /
-            horizontalGuideEvery
-        ) *
-          horizontalGuideEvery,
-        by = horizontalGuideEvery
-      )
-    }
-    
-    yTopBreak <- floor(
-      maxDisplayScore /
-        horizontalGuideEvery
-    ) *
-      horizontalGuideEvery
-    
-    yBreaks <- if (yTopBreak > 0)
-      seq(
-        0,
-        yTopBreak,
-        by = horizontalGuideEvery
-      )
-    else
-      0
+    yBreakMin <- ceiling(minDisplayScore / horizontalGuideEvery) * horizontalGuideEvery
+    yBreakMax <- floor(maxDisplayScore / horizontalGuideEvery) * horizontalGuideEvery
+    yBreaks <- if (yBreakMin <= yBreakMax) seq(yBreakMin, yBreakMax, by = horizontalGuideEvery) else numeric()
+    guideScores <- yBreaks[yBreaks > minDisplayScore & yBreaks < maxDisplayScore]
     
     nFacets <- nrow(
       sampleStats
@@ -981,7 +918,7 @@ runModule <- function() {
       scale_y_continuous(
         breaks = yBreaks,
         limits = c(
-          0,
+          minDisplayScore,
           maxDisplayScore
         ),
         expand = c(
@@ -1057,8 +994,8 @@ runModule <- function() {
         linewidth = 0.7
       )
     
-    p <- p +
-      geom_rect(
+    if (nrow(parameterBoxes)) {
+      p <- p + geom_rect(
         data = parameterBoxes,
         aes(
           xmin = xmin,
@@ -1071,6 +1008,7 @@ runModule <- function() {
         colour = parameterBoxColour,
         linewidth = parameterBoxLinewidth
       )
+    }
     
     list(
       plot = p,
@@ -1080,8 +1018,11 @@ runModule <- function() {
       sampleStats = sampleStats,
       hmmParameters = hp,
       parameterBoxes = parameterBoxes,
+      rawMinScore = rawMinScore,
       rawMaxScore = rawMaxScore,
+      minDisplayBin = minDisplayBin,
       maxDisplayBin = maxDisplayBin,
+      minDisplayScore = minDisplayScore,
       maxDisplayScore = maxDisplayScore,
       startBinWidth = startBinWidth,
       scoreBinWidth = scoreBinWidth,
@@ -1111,7 +1052,7 @@ runModule <- function() {
   
   if (!nrow(hmmResults))
     stop(
-      "No HMM hits remained after applying the configured HMM-end and terminal-sequence requirements."
+      "No HMM hits remained after testing and applying any configured HMM-end and terminal-sequence requirements."
     )
   
   hmmAnalysis <- plotHMMStartHeatmap(
@@ -1122,7 +1063,7 @@ runModule <- function() {
     scoreBinWidth = args$scoreBinWidth,
     minScoreBinPct = args$minScoreBinPct,
     facetCols = args$facetCols,
-    showHorizontalGuides = args$disableHorizontalGuides,
+    showHorizontalGuides = !args$disableHorizontalGuides,
     horizontalGuideEvery = args$horizontalGuideEvery,
     hitBorderColour = "grey70",
     hitBorderLinewidth = 0.10,
@@ -1141,7 +1082,8 @@ runModule <- function() {
     plot = hmmAnalysis$plot,
     width = 16,
     height = 3.6 * hmmAnalysis$nRows,
-    units = "in"
+    units = "in",
+    limitsize = FALSE
   )
   
   updateLog(

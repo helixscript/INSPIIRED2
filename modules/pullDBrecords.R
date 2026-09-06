@@ -1,17 +1,19 @@
 #!/usr/bin/env -S Rscript --vanilla
+options(useFancyQuotes = FALSE)
+
 for (p in c('argparse', 'data.table', 'RMariaDB')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
-parser$add_argument("--dbConfigFile", type = "character", default = 'none', help = "Path to db credential file.")
-parser$add_argument("--dbConfigID",   type = "character", default = 'none', help = "DB credential block identifier in db credential file.")
-parser$add_argument("--outputFile",   type = "character", default = 'buildFragments.rds', help = "Path to export final rds file.")
-parser$add_argument("--dataPath",     type = "character", default = 'none', help = "Path to INSPIIRED2 parquet file collection.")
-parser$add_argument("--trials",       type = "character", default = 'none', help = "Comma delimited list of trial identifiers.")
-parser$add_argument("--subjects",     type = "character", default = 'none', help = "Comma delimited list of subject identifiers.")
-parser$add_argument("--samples",      type = "character", default = 'none', help = "Comma delimited list of sample identifiers.")
-parser$add_argument("--refGenomes",   type = "character", default = 'none', help = "Comma delimited list of reference genome identifiers.")
-parser$add_argument("--modes",        type = "character", default = 'none', help = "Comma delimited list of mode identifiers.")
-parser$add_argument("--softwareRoot", type = "character", required = TRUE,  help = "Path to INSPIIRED2 installation.")
+parser$add_argument("--dbConfigFile",     type = "character", default = 'none', help = "Path to db credential file.")
+parser$add_argument("--dbConfigID",       type = "character", default = 'none', help = "DB credential block identifier in db credential file.")
+parser$add_argument("--outputFilePath",   type = "character", default = 'buildFragments.rds', help = "Path to export final rds file.")
+parser$add_argument("--dataPath",         type = "character", default = 'none', help = "Path to INSPIIRED2 parquet file collection.")
+parser$add_argument("--trials",           type = "character", default = 'none', help = "Comma delimited list of trial identifiers.")
+parser$add_argument("--subjects",         type = "character", default = 'none', help = "Comma delimited list of subject identifiers.")
+parser$add_argument("--samples",          type = "character", default = 'none', help = "Comma delimited list of sample identifiers.")
+parser$add_argument("--refGenomes",       type = "character", default = 'none', help = "Comma delimited list of reference genome identifiers.")
+parser$add_argument("--modes",            type = "character", default = 'none', help = "Comma delimited list of mode identifiers.")
+parser$add_argument("--softwareRoot",     type = "character", required = TRUE,  help = "Path to INSPIIRED2 installation.")
 
 runModule <- function(){
   if(args$dbConfigFile == 'none'){
@@ -91,7 +93,7 @@ runModule <- function(){
   d[, (cols) := lapply(.SD, as.character), .SDcols = cols]
   d[, (cols) := lapply(.SD, as.factor), .SDcols = cols]
   
-  saveRDS(d, args$outputFile, compress = FALSE)
+  saveRDS(d, args$outputFilePath, compress = FALSE)
 }
 
 args <- parser$parse_args()
