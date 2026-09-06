@@ -168,8 +168,9 @@ runModule <- function(){
   
   # At this point, now that we're done parsing position ids, we can add leaderSeq
   # identifiers if more than one leaderSeqGroupNum is present. 
-  
-  if(n_distinct(frags$clusterLeaderSeqs) > 1) frags$posid <- paste0(frags$posid, '.', frags$leaderSeqGroupNum)
+  # 
+  #  This feature is disabled in this version of the software.
+  #  if(n_distinct(frags$leaderSeqGroupNum) > 1) frags$posid <- paste0(frags$posid, '.', frags$leaderSeqGroupNum)
   
   consensusLeaderSeq <- function(x){
     tab <- dplyr::group_by(x, repLeaderSeq) %>% 
