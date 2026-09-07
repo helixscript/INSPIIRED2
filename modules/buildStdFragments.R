@@ -334,8 +334,8 @@ runModule <- function(){
       unique_subject_posids <- unique(subset(frags_uniqPosIDs, 
                                              trial == x$trial[1] & 
                                              subject == x$subject[1] &
-                                             refGenome = x$refGenome[1] &
-                                             mode = x$mode[1])$posid)
+                                             refGenome == x$refGenome[1] &
+                                             mode == x$mode[1])$posid)
       
       rbindlist(lapply(split(x, x$readID), function(xx){
         xx$rescue <- FALSE

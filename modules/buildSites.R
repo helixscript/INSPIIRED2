@@ -137,8 +137,8 @@ runModule <- function(){
     updateLog('Updating strandedness of U5 and U3 intSite calls.')
     
     frags <- bind_rows(lapply(split(frags, paste(frags$trial, frags$subject, frags$sample, frags$refGenome)), function(x){
-      a <- subset(frags, trial == x$trial[1] & subject == x$subject[1] & sample == x$sample[1] & mode == 'dual detect')
-      b <- subset(frags, trial == x$trial[1] & subject == x$subject[1] & sample == x$sample[1] & mode != 'dual detect')
+      a <- x[x$mode == "dual detect",]
+      b <- x[x$mode != "dual detect",]
       
       if(nrow(b)){
         
@@ -204,20 +204,11 @@ runModule <- function(){
     }
   }
   
-  # Create the site-grouping vector.
-  # When dual detection is disabled, keep U3 and U5 calls separate
-  # even when orientation correction gives them the same posid.
-  if(args$disableDualDetect){
-    frags <- group_by(frags, trial, subject, sample, mode, refGenome, posid) %>%
-      mutate(g = cur_group_id()) %>%
-      ungroup() %>%
-      data.table()
-  } else {
-    frags <- group_by(frags, trial, subject, sample, refGenome, posid) %>%
-      mutate(g = cur_group_id()) %>%
-      ungroup() %>%
-      data.table()
-  }
+
+  frags <- group_by(frags, trial, subject, sample, mode, refGenome, posid) %>%
+    mutate(g = cur_group_id()) %>%
+    ungroup() %>%
+    data.table()
   
   
   updateLog('Gather fragments into intSite events.')
@@ -259,7 +250,7 @@ runModule <- function(){
   sites[sites$mode == 'dual detect',]$nRepsObs <- NA
   
   updateLog('Collapsing replicate level sites into sample level records.')
-  sites <- group_by(sites, trial, subject, sample) %>%
+  sites <- group_by(sites, trial, subject, sample, refGenome) %>%
     mutate(
       sampleAbund = sum(sonicLengths),
       percentSampleRelAbund =
@@ -271,7 +262,7 @@ runModule <- function(){
   
   updateLog('Sample level site summary:')
   ts <- paste0(base::format(Sys.time(), "%m.%d.%Y"), ' [', timeElapsedString(), "]")
-  siteSummary <- group_by(sites, trial, subject, sample) %>% 
+  siteSummary <- group_by(sites, trial, subject, sample, refGenome) %>% 
                  summarise(nSites = n_distinct(posid), .groups = 'drop') %>% 
                  ungroup() %>%
                  mutate(timeStamp = ts, .before = trial) %>%
