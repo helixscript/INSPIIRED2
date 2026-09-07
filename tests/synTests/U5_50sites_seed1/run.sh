@@ -15,8 +15,10 @@ inspiired2 alignReads        --outputDir output  --threads 10 --inputData output
 inspiired2 buildFragments    --outputDir output  --threads 10 --inputData output/alignReads.rds
 inspiired2 buildStdFragments --outputDir output  --threads 10 --inputData output/buildFragments.rds
 inspiired2 buildSites        --outputDir output  --threads 10 --inputData output/buildStdFragments.rds
+inspiired2 nearestGenes      --outputDir output  --threads 10 --inputData output/buildSites.rds
+inspiired2 annotateRepeats   --outputDir output  --threads 10 --inputData output/nearestGenes.rds
 
-output_file="output/buildSites.rds"
+output_file="output/annotateRepeats.rds"
 md5_file="expected_md5sum"
 
 actual_md5=$(md5sum "$output_file" | awk '{print $1}')

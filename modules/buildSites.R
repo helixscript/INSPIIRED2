@@ -84,6 +84,15 @@ runModule <- function(){
             
             if(nrow(f1) == 0 | nrow(f2) == 0) return()
             
+            candidateU5posids <- unique(f2$posid)
+            
+            if(length(candidateU5posids) > 1L){
+              updateLog(paste0('Warning - U3 site ', u3_posid, ' has multiple candidate U5 sites: ',
+                paste(candidateU5posids, collapse = ', '), '. Leaving these sites unmerged.'
+              ))
+              return()
+            }
+            
             updateLog(paste0('   Processing U3 posid ', u3_posid, ' as a dual detection with ', nrow(f2), ' U5 fragments.'))
             
             # Records processed u5 fragments 

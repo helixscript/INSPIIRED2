@@ -50,6 +50,10 @@ runModule <- function(){
   
   frags <- setDT(readRDS(args$inputData))
   
+  if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
+    stop("Error - chromosome names cannot contain '+' or '-' because these characters delimit posid strand.")
+  }
+  
   # Drop factors to ensure split.data.table works as expected.
   frags$trial     <- as.character(frags$trial)
   frags$subject   <- as.character(frags$subject)
@@ -87,6 +91,7 @@ runModule <- function(){
   
   if(nrow(posFrags) > 0) posSubjectFrags <- split(posFrags, by = c('trial', 'subject', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   if(nrow(negFrags) > 0) negSubjectFrags <- split(negFrags, by = c('trial', 'subject', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+  
   
   # Standardize intSite positions.
   #-----------------------------------------------------------------------------
@@ -169,10 +174,17 @@ runModule <- function(){
     if(nrow(negSubjectFrags) > 0) negSubjectFrags$newFragStart <- negSubjectFrags$fragStart
   }
   
-  if(nrow(posFrags) > 0) posRepFrags <- split(posSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
-  if(nrow(negFrags) > 0) negRepFrags <- split(negSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   
+  # Isolate each standardized posid so that proximal sites can not compete when standardizing break points.
+  if(nrow(posSubjectFrags) > 0){
+    posSubjectFrags[, posid := paste0(fragChromosome, fragStrand, fragStart)]
+    posRepFrags <- split(posSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'refGenome', 'mode', 'fragChromosome', 'posid', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+  }
   
+  if(nrow(negSubjectFrags) > 0){
+    negSubjectFrags[, posid := paste0(fragChromosome, fragStrand, fragEnd)]
+    negRepFrags <- split(negSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'refGenome', 'mode', 'fragChromosome', 'posid', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+  }
   
   
   # Standardize break point positions.

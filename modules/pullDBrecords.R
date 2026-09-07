@@ -6,7 +6,7 @@ for (p in c('argparse', 'data.table', 'RMariaDB')) suppressPackageStartupMessage
 parser <- ArgumentParser()
 parser$add_argument("--dbConfigFile",     type = "character", default = 'none', help = "Path to db credential file.")
 parser$add_argument("--dbConfigID",       type = "character", default = 'none', help = "DB credential block identifier in db credential file.")
-parser$add_argument("--outputFilePath",   type = "character", default = 'buildFragments.rds', help = "Path to export final rds file.")
+parser$add_argument("--outputFile",       type = "character", default = 'buildFragments.rds', help = "Path to export final rds file.")
 parser$add_argument("--dataPath",         type = "character", default = 'none', help = "Path to INSPIIRED2 parquet file collection.")
 parser$add_argument("--trials",           type = "character", default = 'none', help = "Comma delimited list of trial identifiers.")
 parser$add_argument("--subjects",         type = "character", default = 'none', help = "Comma delimited list of subject identifiers.")
@@ -93,7 +93,7 @@ runModule <- function(){
   d[, (cols) := lapply(.SD, as.character), .SDcols = cols]
   d[, (cols) := lapply(.SD, as.factor), .SDcols = cols]
   
-  saveRDS(d, args$outputFilePath, compress = FALSE)
+  saveRDS(d, args$outputFile, compress = FALSE)
 }
 
 args <- parser$parse_args()

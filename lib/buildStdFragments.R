@@ -229,7 +229,7 @@ build_multiHit_clusters <- function(frags_multPosIDs){
           ans <- net[, {
             u_posids <- unique(posid)
             u_reads <- unique(readID)
-            u_umis <- unique(UMI)
+            u_umis <- unique(real_UMI)
             node_table <- .SD[, .(sonicLengths = uniqueN(cluster_id)), by = posid]
             
             .(nodes = length(u_posids), reads = length(u_reads), UMIs = length(u_umis),

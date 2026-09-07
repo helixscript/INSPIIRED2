@@ -319,18 +319,18 @@ runModule <- function(){
       x
     }))
     
-    if(nrow(d) == 0){
-      msg <- 'Error - no reads remain after vector filter.'
-      updateLog(msg)
-      stop(msg)
-    }
-    
     updateLog(paste0(sprintf("%.1f%%", (sum(d$vectorHit) / nrow(d))*100), ' anchorRead ends matched the vector sequences.'))
     updateLog('Writing output.')
     
     write_tsv(d[d$vectorHit == TRUE], file.path(args$outputDir, paste0(args$fileTag, '_vectorHitReads.tsv.gz')))
     
     d <- d[d$vectorHit == FALSE]
+    
+    if(nrow(d) == 0){
+      msg <- 'Error - no reads remain after vector filter.'
+      updateLog(msg)
+      stop(msg)
+    }
     
     d$vectorHit <- NULL
     d$linker1   <- NULL
