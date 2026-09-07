@@ -126,22 +126,15 @@ runModule <- function(){
     
     names(o) <- c('targetName', 'targetAcc', 'queryName', 'queryAcc', 'hmmStart', 'hmmEnd', 'targetStart', 'targetEnd', 'envStart', 'envEnd', 'seqLength', 'strand', 'fullEval', 'fullScore', 'bias', 'desc')
     
-    # Handle neg strand flipping coords. 
-    o1  <- o[o$strand == '+',]
-    o2  <- o[o$strand == '-',]
+    nMinus <- sum(o$strand == '-')
+    if(nMinus > 0) updateLog(paste0('Ignoring ', ppNum(nMinus), ' reverse-strand HMM hits.'), logFile = logFile)
     
-    if(nrow(o2) > 0){
-      o2x <- o2
-      o2x$targetStart <- o2$targetEnd;   o2x$envStart <- o2$envEnd
-      o2x$targetEnd   <- o2$targetStart; o2x$envEnd   <- o2$envStart
-      o <- bind_rows(o1, o2x)
-      invisible(rm(o2x))
-    }
+    o <- o[o$strand == '+', ]
+    if(nrow(o) == 0) return(data.table())
     
-    invisible(rm(o1, o2))
-    
-    # Collapse duplicate hits.
-    o <- group_by(o, targetName) %>% dplyr::slice_max(fullScore, n = 1, with_ties = FALSE) %>% ungroup()
+    o <- group_by(o, targetName) %>%
+      slice_max(fullScore, n = 1, with_ties = FALSE) %>%
+      ungroup()
     
     # Subset the data based on user scoring thresholds.
     o <- subset(o, targetStart >= args$HMMminStartPos     & 

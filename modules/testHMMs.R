@@ -249,26 +249,14 @@ runModule <- function() {
       showProgress = FALSE
     )
     
-    setnames(
-      hits,
-      c(
-        "targetName",
-        "hmmEnd",
-        "targetStart",
-        "targetEnd",
-        "strand",
-        "fullScore"
-      )
-    )
+    setnames(hits, c("targetName", "hmmEnd", "targetStart", "targetEnd", "strand", "fullScore"))
     
-    neg <- hits$strand == "-"
+    # Retain only HMM alignments in the expected anchor-read orientation.
+    hits <- hits[strand == "+"]
     
-    if (any(neg)) {
-      tmp <- hits$targetStart[neg]
-      hits$targetStart[neg] <- hits$targetEnd[neg]
-      hits$targetEnd[neg] <- tmp
-    }
+    if (!nrow(hits)) return(emptyResult())
     
+    # Select the highest-scoring valid-orientation hit for each read.
     hits <- hits[hits[, .I[which.max(fullScore)], by = targetName]$V1]
     
     if (nrow(hp)) {
@@ -283,14 +271,19 @@ runModule <- function() {
       if (!identical(tolower(terminalSeq), "none")) {
         terminalSeq <- toupper(terminalSeq)
         readIndex <- match(hits$targetName, names(s))
-        if (anyNA(readIndex)) stop("Error - could not map one or more nhmmer hits back to input reads for HMM: ", hmmName)
+        
+        if (anyNA(readIndex))
+          stop("Error - could not map one or more nhmmer hits back to input reads for HMM: ", hmmName)
+        
         anchorReadSeq <- toupper(as.character(x$anchorReadSeq[readIndex]))
         terminalMatchSeq <- substr(anchorReadSeq, hits$targetEnd - (nchar(terminalSeq) - 1L) - radius, hits$targetEnd + radius)
         ends <- stringr::str_locate(terminalMatchSeq, stringr::fixed(terminalSeq))[, 2]
         keep <- !is.na(ends)
         hits <- hits[keep]
         ends <- ends[keep]
+        
         if (!nrow(hits)) return(emptyResult())
+        
         hits[, targetEnd := targetEnd - (nchar(terminalSeq) + radius) + ends]
       }
     }
@@ -1050,10 +1043,9 @@ runModule <- function() {
     hmmParameters
   )
   
-  if (!nrow(hmmResults))
-    stop(
-      "No HMM hits remained after testing and applying any configured HMM-end and terminal-sequence requirements."
-    )
+  if (!nrow(hmmResults)){
+    stop("No expected-orientation HMM hits remained after applying strand and any configured HMM-end and terminal-sequence requirements.")
+  }
   
   hmmAnalysis <- plotHMMStartHeatmap(
     hmmResults,

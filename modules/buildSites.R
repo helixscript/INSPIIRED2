@@ -60,7 +60,7 @@ runModule <- function(){
     # and assign a common posid which will be centered between the U3 and U5 posids.
     # Track which fragments have been merged so that closely spaced fragments are not merged more than once.
     
-    invisible(lapply(split(frags, paste(frags$trial, frags$subject, frags$sample)), function(x){
+    invisible(lapply(split(frags, paste(frags$trial, frags$subject, frags$sample, frags$refGenome)), function(x){
       processed_fragments <- data.table()
       
       if('U5' %in% x$mode & 'U3' %in% x$mode){
@@ -101,11 +101,11 @@ runModule <- function(){
             
             # Apply positive strand position corrections.
             i <- which(frags$fragID %in% c(f1$fragID, f2$fragID) & frags$fragStrand == '+')
-            frags[i,]$posid <<- unlist(lapply(strsplit(frags[i,]$posid, '[\\+\\-\\.]', perl = TRUE), function(x) paste0(x[1], '+', as.integer(x[2]) + args$integraseCorrectionDist)))
+            frags[i,]$posid <<- unlist(lapply(strsplit(frags[i,]$posid, '[\\+\\-]', perl = TRUE), function(x) paste0(x[1], '+', as.integer(x[2]) + args$integraseCorrectionDist)))
             
             # Apply negative strand position corrections.
             i <- which(frags$fragID %in% c(f1$fragID, f2$fragID) & frags$fragStrand == '-')
-            frags[i,]$posid <<- unlist(lapply(strsplit(frags[i,]$posid, '[\\+\\-\\.]', perl = TRUE), function(x) paste0(x[1], '-', as.integer(x[2]) - args$integraseCorrectionDist)))
+            frags[i,]$posid <<- unlist(lapply(strsplit(frags[i,]$posid, '[\\+\\-]', perl = TRUE), function(x) paste0(x[1], '-', as.integer(x[2]) - args$integraseCorrectionDist)))
             
             # Create combined repLeaderSeq string.
             i <- which(frags$fragID %in% c(f1$fragID, f2$fragID))
@@ -136,7 +136,7 @@ runModule <- function(){
   if(! args$disableOrientationCorrection & ('U5' %in% frags$mode | 'U3' %in% frags$mode)){
     updateLog('Updating strandedness of U5 and U3 intSite calls.')
     
-    frags <- bind_rows(lapply(split(frags, paste(frags$trial, frags$subject, frags$sample)), function(x){
+    frags <- bind_rows(lapply(split(frags, paste(frags$trial, frags$subject, frags$sample, frags$refGenome)), function(x){
       a <- subset(frags, trial == x$trial[1] & subject == x$subject[1] & sample == x$sample[1] & mode == 'dual detect')
       b <- subset(frags, trial == x$trial[1] & subject == x$subject[1] & sample == x$sample[1] & mode != 'dual detect')
       
@@ -144,10 +144,10 @@ runModule <- function(){
         
         # Shift positions to reflect duplication caused by integrase.
         b1 <- subset(b, fragStrand == '+')
-        if(nrow(b1) > 0) b1$posid <- unlist(lapply(strsplit(b1$posid, '[\\+\\-\\.]', perl = TRUE), function(x) paste0(x[1], '+', as.integer(x[2]) + args$integraseCorrectionDist)))
+        if(nrow(b1) > 0) b1$posid <- unlist(lapply(strsplit(b1$posid, '[\\+\\-]', perl = TRUE), function(x) paste0(x[1], '+', as.integer(x[2]) + args$integraseCorrectionDist)))
         
         b2 <- subset(b, fragStrand == '-')
-        if(nrow(b2) > 0) b2$posid <- unlist(lapply(strsplit(b2$posid, '[\\+\\-\\.]', perl = TRUE), function(x) paste0(x[1], '-', as.integer(x[2]) - args$integraseCorrectionDist)))
+        if(nrow(b2) > 0) b2$posid <- unlist(lapply(strsplit(b2$posid, '[\\+\\-]', perl = TRUE), function(x) paste0(x[1], '-', as.integer(x[2]) - args$integraseCorrectionDist)))
         
         b <- bind_rows(b1, b2)
         rm(b1, b2)
@@ -208,12 +208,12 @@ runModule <- function(){
   # When dual detection is disabled, keep U3 and U5 calls separate
   # even when orientation correction gives them the same posid.
   if(args$disableDualDetect){
-    frags <- group_by(frags, trial, subject, sample, mode, posid) %>%
+    frags <- group_by(frags, trial, subject, sample, mode, refgenome, posid) %>%
       mutate(g = cur_group_id()) %>%
       ungroup() %>%
       data.table()
   } else {
-    frags <- group_by(frags, trial, subject, sample, posid) %>%
+    frags <- group_by(frags, trial, subject, sample, refGenome, posid) %>%
       mutate(g = cur_group_id()) %>%
       ungroup() %>%
       data.table()

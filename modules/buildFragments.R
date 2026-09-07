@@ -93,7 +93,7 @@ runModule <- function(){
         trial   = as.character(x$trial[1]), 
         subject = as.character(x$subject[1]), 
         sample  = as.character(x$sample[1]), 
-        rep     = as.integer(x$replicate[1]),
+        rep     = as.integer(as.character(x$replicate[1])),
         genome  = as.character(x$refGenome[1]),
         mode    = as.character(x$mode[1])
       )

@@ -89,8 +89,8 @@ runModule <- function(){
   posSubjectFrags <- list()
   negSubjectFrags <- list()
   
-  if(nrow(posFrags) > 0) posSubjectFrags <- split(posFrags, by = c('trial', 'subject', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
-  if(nrow(negFrags) > 0) negSubjectFrags <- split(negFrags, by = c('trial', 'subject', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+  if(nrow(posFrags) > 0) posSubjectFrags <- split(posFrags, by = c('trial', 'subject', 'refGenome', 'mode', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+  if(nrow(negFrags) > 0) negSubjectFrags <- split(negFrags, by = c('trial', 'subject', 'refGenome', 'mode', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   
   
   # Standardize intSite positions.
@@ -327,10 +327,10 @@ runModule <- function(){
   
   # Multi-hit read rescue.
   #-----------------------------------------------------------------------------
-  updateLog('Rescuing multihit reads using list on uniquely called positions.')
+  updateLog('Rescuing multihit reads using list on uniquely called positions.') 
   
   if(nrow(frags_multPosIDs) > 0){
-    frags_multPosIDs <- rbindlist(lapply(split(frags_multPosIDs, paste0(frags_multPosIDs$trial, frags_multPosIDs$subject)), function(x){
+    frags_multPosIDs <- rbindlist(lapply(split(frags_multPosIDs, paste0(frags_multPosIDs$trial, frags_multPosIDs$subject, frags_multPosIDs$refGenome, frags_multPosIDs$mode)), function(x){
       unique_subject_posids <- unique(subset(frags_uniqPosIDs, trial == x$trial[1] & subject == x$subject[1])$posid)
       
       rbindlist(lapply(split(x, x$readID), function(xx){
