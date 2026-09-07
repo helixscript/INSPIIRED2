@@ -243,7 +243,7 @@ build_multiHit_clusters <- function(frags_multPosIDs){
         }
       ), use.names = TRUE, fill = FALSE)
     }
-  }, by = .(trial, subject, sample, refGenome)]
+  }, by = .(trial, subject, sample, mode, refGenome)]
   
   multiHitClusters
 }

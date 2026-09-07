@@ -8,7 +8,6 @@ parser$add_argument("--softwareRoot",                      type = "character",  
 parser$add_argument("--threads",                           type = "integer",       default  = 50,                  help = "Number of threads to use.")
 parser$add_argument("--fileTag",                           type = "character",     default  = "buildStdFragments", help = "String appended to output files in the outpt directory.")
 parser$add_argument("--ramDiskPath",                       type = "character",     default  = "/dev/shm",          help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-parser$add_argument("--clusterLeaderSeqs",                 action = "store_true",  default  = FALSE,               help = 'Cluster leader sequences and consider when building fragments.')
 parser$add_argument("--disableBreakPointPosStd",           action = "store_true",  default  = FALSE,               help = 'Disable break point standardization.')
 parser$add_argument("--disableIntSitePosStd",              action = "store_true",  default  = FALSE,               help = 'Disable intSite position standardization.')
 parser$add_argument("--disableAnchorReadClusteringFilter", action = "store_true",  default  = FALSE,               help = 'Disable the anchor read clustering filter.')
@@ -23,7 +22,6 @@ parser$add_argument("--intSite_sp_sd_shrink",              type = "double",     
 parser$add_argument("--breakPoint_sp_window",              type = "integer",       default  = 5,                   help = 'Max search distance (in NT) for breakpoint candidate anchor points.')
 parser$add_argument("--breakPoint_sp_local_radius",        type = "integer",       default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
 parser$add_argument("--breakPoint_sp_sd_shrink",           type = "double",        default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
-parser$add_argument("--leaderSeqClusteringParams",         type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -aS 0.80",                              help = 'Clustering params for clustering leader sequences.')
 parser$add_argument("--multiHitclusteringParams",          type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
 parser$add_argument("--saveMultiHitClusteringDetails", action = "store_true", default = FALSE, help = "Save per-read CD-HIT assignments for each multi-hit network.")
 parser$add_argument("--anchorReadClusterParams",           type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
@@ -66,10 +64,6 @@ runModule <- function(){
   
   frags$leaderSeqGroupNum <- 1
   
-  # leaderSeq clustering
-  #-----------------------------------------------------------------------------
-  if(args$clusterLeaderSeqs) updateLog('The ability to cluster leader sequences is not supported in this version of INSPIIRED2.')
-
   
   # Build fragment ids and separate reads for position standardization.
   #-----------------------------------------------------------------------------
@@ -376,19 +370,19 @@ runModule <- function(){
   )
   
   if(args$saveMultiHitClusteringDetails){
-    assignment_cols <- c("trial", "subject", "sample", "refGenome", "clusterID", "readID",
-                         "adriftSeqSegment", "cdhitClusterID", "isRep", "clusterSize")
+    assignment_cols <- c("trial", "subject", "sample", "refGenome", "mode", "clusterID",
+                         "readID", "adriftSeqSegment", "cdhitClusterID", "isRep", "clusterSize")
     
     if(nrow(multiHit_clusters) > 0 && "cdhitAssignments" %in% names(multiHit_clusters)){
       multiHit_assignments <- multiHit_clusters[, cdhitAssignments[[1]],
-                                                by = .(trial, subject, sample, refGenome, clusterID)]
+                                                by = .(trial, subject, sample, refGenome, mode, clusterID)]
       setcolorder(multiHit_assignments, assignment_cols)
     } else {
       multiHit_assignments <- data.table(
         trial = character(), subject = character(), sample = character(),
-        refGenome = character(), clusterID = character(), readID = character(),
-        adriftSeqSegment = character(), cdhitClusterID = character(),
-        isRep = logical(), clusterSize = integer()
+        refGenome = character(), mode = character(), clusterID = character(),
+        readID = character(), adriftSeqSegment = character(),
+        cdhitClusterID = character(), isRep = logical(), clusterSize = integer()
       )
     }
     
@@ -621,8 +615,6 @@ runModule <- function(){
   frags$fragEnd   <- as.integer(frags$fragEnd)
   
   frags <- frags[, .(mode, refGenome, trial, subject, sample, replicate, UMI, posid, reads, repLeaderSeq, fragChromosome, fragStrand, fragStart, fragEnd, anchorReadCluster, readIDs, UMIs, leaderSeqGroupNum)]
-  
-  frags$clusterLeaderSeqs <- as.factor(args$clusterLeaderSeqs)
   
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('buildStdFragments module completed.')
