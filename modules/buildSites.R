@@ -84,7 +84,7 @@ runModule <- function(){
             
             if(nrow(f1) == 0 | nrow(f2) == 0) return()
             
-            candidateU5posids <- unique(f2$posid)
+            candidateU5posids <- unique(z$posid)
             
             if(length(candidateU5posids) > 1L){
               updateLog(paste0('Warning - U3 site ', u3_posid, ' has multiple candidate U5 sites: ',
@@ -208,7 +208,7 @@ runModule <- function(){
   # When dual detection is disabled, keep U3 and U5 calls separate
   # even when orientation correction gives them the same posid.
   if(args$disableDualDetect){
-    frags <- group_by(frags, trial, subject, sample, mode, refgenome, posid) %>%
+    frags <- group_by(frags, trial, subject, sample, mode, refGenome, posid) %>%
       mutate(g = cur_group_id()) %>%
       ungroup() %>%
       data.table()

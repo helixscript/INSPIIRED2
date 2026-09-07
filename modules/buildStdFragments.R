@@ -331,7 +331,11 @@ runModule <- function(){
   
   if(nrow(frags_multPosIDs) > 0){
     frags_multPosIDs <- rbindlist(lapply(split(frags_multPosIDs, paste0(frags_multPosIDs$trial, frags_multPosIDs$subject, frags_multPosIDs$refGenome, frags_multPosIDs$mode)), function(x){
-      unique_subject_posids <- unique(subset(frags_uniqPosIDs, trial == x$trial[1] & subject == x$subject[1])$posid)
+      unique_subject_posids <- unique(subset(frags_uniqPosIDs, 
+                                             trial == x$trial[1] & 
+                                             subject == x$subject[1] &
+                                             refGenome = x$refGenome[1] &
+                                             mode = x$mode[1])$posid)
       
       rbindlist(lapply(split(x, x$readID), function(xx){
         xx$rescue <- FALSE
