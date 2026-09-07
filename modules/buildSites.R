@@ -50,7 +50,8 @@ runModule <- function(){
   frags$fragWidths <- frags$fragEnd - frags$fragStart + 1
   
   # Define fragment IDs.
-  frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, fragStrand, fragStart, fragEnd, sep = ":")]
+  frags[, fragID := paste(trial, subject, sample, replicate, refGenome, mode,
+                          fragChromosome, fragStrand, fragStart, fragEnd, sep = ":")]
   
   if(! args$disableDualDetect & 'U5' %in% frags$mode & 'U3' %in% frags$mode){
     updateLog('Searching for dual detections.')

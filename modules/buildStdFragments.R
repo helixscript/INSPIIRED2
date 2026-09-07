@@ -73,9 +73,9 @@ runModule <- function(){
   
   # Build fragment ids and separate reads for position standardization.
   #-----------------------------------------------------------------------------
-  frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, 
-                          fragStrand, fragStart, fragEnd, leaderSeqGroupNum, 
-                          UMI, sep = ":")]
+  frags[, fragID := paste(trial, subject, sample, replicate, refGenome, mode,
+                          fragChromosome, fragStrand, fragStart, fragEnd,
+                          leaderSeqGroupNum, UMI, sep = ":")]
   
   posFrags <- frags[frags$fragStrand == '+']
   negFrags <- frags[frags$fragStrand == '-']
@@ -262,10 +262,9 @@ runModule <- function(){
   
   
   # Rebuild frag ids.
-  frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, 
-                          fragStrand, fragStart, fragEnd, leaderSeqGroupNum, 
-                          UMI, sep = ":")]
-  
+  frags[, fragID := paste(trial, subject, sample, replicate, refGenome, mode,
+                          fragChromosome, fragStrand, fragStart, fragEnd,
+                          leaderSeqGroupNum, UMI, sep = ":")]
   
   # Identify uniquely called reads.
   #-----------------------------------------------------------------------------
@@ -330,26 +329,36 @@ runModule <- function(){
   updateLog('Rescuing multihit reads using list on uniquely called positions.') 
   
   if(nrow(frags_multPosIDs) > 0){
-    frags_multPosIDs <- rbindlist(lapply(split(frags_multPosIDs, paste0(frags_multPosIDs$trial, frags_multPosIDs$subject, frags_multPosIDs$refGenome, frags_multPosIDs$mode)), function(x){
-      unique_subject_posids <- unique(subset(frags_uniqPosIDs, 
-                                             trial == x$trial[1] & 
-                                             subject == x$subject[1] &
-                                             refGenome == x$refGenome[1] &
-                                             mode == x$mode[1])$posid)
-      
-      rbindlist(lapply(split(x, x$readID), function(xx){
-        xx$rescue <- FALSE
-        i <- which(xx$posid %in% unique_subject_posids)
-        if(length(i) == 1) xx[i,]$rescue <- TRUE
-        xx
-      }))
-    }))
+    rescueGroups <- c("trial", "subject", "refGenome", "mode")
     
-    if(any(frags_multPosIDs$rescue == TRUE)){
-      r <- frags_multPosIDs[frags_multPosIDs$rescue == TRUE]
-      updateLog(paste0(ppNum(nrow(r)), ' reads rescued from multihit read table.'))
-      frags_uniqPosIDs <- rbindlist(list(frags_uniqPosIDs, r[, 'rescue' := NULL]))
-      frags_multPosIDs <- frags_multPosIDs[! frags_multPosIDs$readID %in% frags_uniqPosIDs$readID]
+    frags_multPosIDs <- rbindlist(lapply(
+      split(frags_multPosIDs, by = rescueGroups, flatten = TRUE, sorted = TRUE),
+      function(x){
+        supportedPosids <- unique(frags_uniqPosIDs[
+          trial == x$trial[1] & subject == x$subject[1] &
+            refGenome == x$refGenome[1] & mode == x$mode[1], posid
+        ])
+        
+        rbindlist(lapply(split(x, by = "readID", flatten = TRUE, sorted = TRUE), function(xx){
+          xx[, rescue := FALSE]
+          matchedPosids <- intersect(unique(xx$posid), supportedPosids)
+          
+          if(length(matchedPosids) == 1L){
+            i <- which(xx$posid == matchedPosids[1L])
+            if(length(i) > 1L) i <- i[which.min(xx$fragEnd[i] - xx$fragStart[i] + 1L)]
+            xx[i[1L], rescue := TRUE]
+          }
+          
+          xx
+        }), use.names = TRUE, fill = TRUE)
+      }
+    ), use.names = TRUE, fill = TRUE)
+    
+    if(any(frags_multPosIDs$rescue)){
+      r <- frags_multPosIDs[rescue == TRUE]
+      updateLog(paste0(ppNum(nrow(r)), " reads rescued from multihit read table."))
+      frags_uniqPosIDs <- rbindlist(list(frags_uniqPosIDs, r[, rescue := NULL]))
+      frags_multPosIDs <- frags_multPosIDs[!readID %in% frags_uniqPosIDs$readID]
     }
   }
   
