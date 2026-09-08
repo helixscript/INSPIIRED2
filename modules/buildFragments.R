@@ -37,18 +37,33 @@ runModule <- function(){
   setkey(o$adriftReads, readID)
   
   readIDs <- unique(o$anchorReads$readID)
+  
+  updateLog(paste0(ppNum(length(readIDs)), ' aligned reads will be chunked into ', ppNum(args$dataRowChunkSize), ' read ID chunks.'))
+  
   readIDs <- split(readIDs, ceiling(seq_along(readIDs) / args$dataRowChunkSize))
   
+  updateLog(paste0('Aligned readIDs broken into ', ppNum(length(readIDs)), ' chunks for fragment generation.'))
+  chunkNum <- 1
+  
   frags <- rbindlist(lapply(readIDs, function(x){
+    updateLog(paste0('Processing readID data chunk ',   ppNum(chunkNum), '/',  ppNum(length(readIDs))))
+    chunkNum <<- chunkNum + 1
+    
+    ### updateLog('   Subsetting full data sets.')
     a <- o$anchorReads[.(x), on = .(readID), nomatch = NULL]
     b <- o$adriftReads[.(x), on = .(readID), nomatch = NULL]
     
+    ### updateLog('   Isolating adrift read columns.')
     b <- b[, .(readID = readID, adrift_seq = seq, adrift_tName = tName, adrift_strand = strand, adrift_tStart = tStart, adrift_tEnd = tEnd)]
     
+    ### updateLog('   Joinging data.')
     r <- b[a, on = .(readID), nomatch = NULL, allow.cartesian = TRUE]
-    rm(a, b)
-    gc()
     
+    ### updateLog('   Cleaning up.')
+    rm(a, b)
+    ### gc()
+    
+    ### updateLog('   Filtering joined data set.')
     r <- r[r$tName == r$adrift_tName]
     if(nrow(r) == 0) return(data.table())
     
@@ -61,10 +76,13 @@ runModule <- function(){
     r$fragChromosome <- r$tName
     r$fragWidth = (r$fragEnd - r$fragStart) + 1
   
+    ### updateLog('   Returning fragments.')
     r[, c('tName', 'tStart', 'tEnd', 'adrift_tName', 'adrift_strand', 'adrift_tStart', 'adrift_tEnd', 'strand') := NULL]
     
     r[fragWidth >= args$minFrgamentLength & fragWidth <= args$maxFrgamentLength]
   }))
+  
+  updateLog('All readID alignment data chunks processed.')
   
   if(nrow(frags) == 0){
     msg <- 'Error - no fragments could be built from the alignment data.'
@@ -81,9 +99,13 @@ runModule <- function(){
   frags$fragStart <- as.integer(frags$fragStart)
   frags$fragEnd   <- as.integer(frags$fragEnd)
   
+  updateLog('Saving outputs.')
+  
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   
   if(! is.null(args$dbConn)){
+    updateLog('Database upload beginning.')
+    
     frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, fragStrand, fragStart, fragEnd, sep = ":")]
     frags[, `:=`(g = .GRP, totalFrags = uniqueN(fragID)), by = .(trial, subject, sample, replicate, mode, refGenome)]
     
@@ -203,7 +225,6 @@ runModule <- function(){
       updateLog('Entry successfully processed.')
     }
   }
-  
   
   updateLog('buildFragments module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))

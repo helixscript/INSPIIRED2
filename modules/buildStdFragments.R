@@ -48,6 +48,17 @@ runModule <- function(){
   
   frags <- setDT(readRDS(args$inputData))
   
+  
+  browser()
+  
+  
+  # test
+  frags$posid <- paste0(frags$fragChromosome, frags$fragStrand, ifelse(frags$fragStrand == '+', frags$fragStart, frags$fragEnd))
+  o <- frags[grepl('chr19[\\+\\-]344412', frags$posid),]
+  b <- frags[grepl('chr19\\-344412', frags$posid),]
+  
+  #-------------
+  
   if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
     stop("Error - chromosome names cannot contain '+' or '-' because these characters delimit posid strand.")
   }
@@ -58,12 +69,13 @@ runModule <- function(){
   frags$sample    <- as.character(frags$sample)
   frags$UMI       <- as.character(frags$UMI)
   frags$replicate <- as.integer(as.character(frags$replicate))
+  frags$refGenome <- as.character(frags$refGenome)
+  frags$mode      <- as.character(frags$mode)
   
   frags$real_UMI <- frags$UMI 
   frags$UMI <- "AAAAAAAAAAAA" 
   
   frags$leaderSeqGroupNum <- 1
-  
   
   # Build fragment ids and separate reads for position standardization.
   #-----------------------------------------------------------------------------
@@ -75,6 +87,7 @@ runModule <- function(){
   negFrags <- frags[frags$fragStrand == '-']
   rm(frags)
   
+  
   if(args$disableIntSitePosStd){
     if(nrow(posFrags) > 0) posFrags$newFragStart <- posFrags$fragStart
     if(nrow(negFrags) > 0) negFrags$newFragEnd   <- negFrags$fragEnd
@@ -85,7 +98,6 @@ runModule <- function(){
   
   if(nrow(posFrags) > 0) posSubjectFrags <- split(posFrags, by = c('trial', 'subject', 'refGenome', 'mode', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
   if(nrow(negFrags) > 0) negSubjectFrags <- split(negFrags, by = c('trial', 'subject', 'refGenome', 'mode', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
-  
   
   # Standardize intSite positions.
   #-----------------------------------------------------------------------------
@@ -162,69 +174,92 @@ runModule <- function(){
   
   posRepFrags <- list()
   negRepFrags <- list()
+  breakSplitCols <- c('trial', 'subject', 'sample', 'replicate', 'refGenome',
+                      'mode', 'fragChromosome', 'leaderSeqGroupNum')
   
-  if(args$disableBreakPointPosStd){
-    if(nrow(posSubjectFrags) > 0) posSubjectFrags$newFragEnd   <- posSubjectFrags$fragEnd
-    if(nrow(negSubjectFrags) > 0) negSubjectFrags$newFragStart <- negSubjectFrags$fragStart
-  }
-  
-  
-  # Isolate each standardized posid so that proximal sites can not compete when standardizing break points.
+  # Keep standardized sites isolated inside standardize_positions by using posid
+  # as its seqnames grouping key, without creating one R object per posid.
   if(nrow(posSubjectFrags) > 0){
     posSubjectFrags[, posid := paste0(fragChromosome, fragStrand, fragStart)]
-    posRepFrags <- split(posSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'refGenome', 'mode', 'fragChromosome', 'posid', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+    posRepFrags <- split(posSubjectFrags, by = breakSplitCols, flatten = TRUE, sorted = TRUE)
   }
   
   if(nrow(negSubjectFrags) > 0){
     negSubjectFrags[, posid := paste0(fragChromosome, fragStrand, fragEnd)]
-    negRepFrags <- split(negSubjectFrags, by = c('trial', 'subject', 'sample', 'replicate', 'refGenome', 'mode', 'fragChromosome', 'posid', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+    negRepFrags <- split(negSubjectFrags, by = breakSplitCols, flatten = TRUE, sorted = TRUE)
   }
   
+  updateLog(paste0('Breakpoint standardization batches: ', length(posRepFrags),
+                   ' positive and ', length(negRepFrags), ' negative.'))
   
-  # Standardize break point positions.
+  # Standardize break point positions. Sites supported by only one readID or
+  # containing only one distinct break point retain their original coordinates.
   #-----------------------------------------------------------------------------
-  if(! args$disableBreakPointPosStd){
-    if(length(posRepFrags) > 0){
-      posRepFrags <- lapply(posRepFrags, function(x){
-        tab <- group_by(x, seqnames = fragChromosome, 
-                        strand = fragStrand, 
-                        start = fragStart, 
-                        end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end, start, reads)
-        
-        tab2 <- standardize_positions(tab, side = 'right', window = args$breakPoint_sp_window, local_radius = args$breakPoint_sp_local_radius, sd_shrink = args$breakPoint_sp_sd_shrink)
-        
-        update <- unique(data.table(fragEnd = tab$end, newFragEnd = tab2$end))
-        preJoinRows <- nrow(x)
-        x <- left_join(x, update, by = 'fragEnd')
-        if(nrow(x) != preJoinRows)   stop('breakPoint posRepFrags join Error')
-        if(any(is.na(x$newFragEnd))) stop('breakPoint posRepFrags NA Error')
-        x
-      })
-    }
+  if(args$disableBreakPointPosStd){
+    posRepFrags <- lapply(posRepFrags, function(x){ x[, newFragEnd := as.numeric(fragEnd)]; x })
+    negRepFrags <- lapply(negRepFrags, function(x){ x[, newFragStart := as.numeric(fragStart)]; x })
+  } else {
+    posRepFrags <- lapply(posRepFrags, function(x){
+      x[, newFragEnd := as.numeric(fragEnd)]
+      stdPosids <- x[, .(nReadIDs = uniqueN(readID), nBreaks = uniqueN(fragEnd)), by = posid
+      ][nReadIDs > 1L & nBreaks > 1L, posid]
+      if(!length(stdPosids)) return(x)
+      
+      tab <- x[posid %chin% stdPosids, .(reads = sum(nReads)),
+               by = .(seqnames = posid, strand = fragStrand, start = fragStart, end = fragEnd)]
+      tab[, origFragEnd := end]
+      tab2 <- standardize_positions(tab, side = 'right', window = args$breakPoint_sp_window,
+                                    local_radius = args$breakPoint_sp_local_radius,
+                                    sd_shrink = args$breakPoint_sp_sd_shrink)
+      
+      update <- unique(tab2[, .(posid = seqnames, fragEnd = origFragEnd, newFragEnd = end)])
+      if(anyDuplicated(update, by = c('posid', 'fragEnd')))
+        stop('Error - non-unique positive breakpoint update key.')
+      
+      expected <- unique(x[posid %chin% stdPosids, .(posid, fragEnd)])
+      if(nrow(expected[!update, on = .(posid, fragEnd)]))
+        stop('Error - incomplete positive breakpoint updates.')
+      
+      x[update, on = .(posid, fragEnd), newFragEnd := i.newFragEnd]
+      if(anyNA(x$newFragEnd)) stop('breakPoint posRepFrags NA Error')
+      x
+    })
     
-    if(length(negRepFrags) > 0){
-      negRepFrags <- lapply(negRepFrags, function(x){
-        
-        
-        
-        tab <- group_by(x, seqnames = fragChromosome, 
-                        strand = fragStrand, 
-                        start = fragStart, 
-                        end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(start, end, reads)
-        tab2 <- standardize_positions(tab, side = 'left', window = args$breakPoint_sp_window, local_radius = args$breakPoint_sp_local_radius, sd_shrink = args$breakPoint_sp_sd_shrink)
-        update <- unique(data.table(fragStart = tab$start, newFragStart = tab2$start))
-        preJoinRows <- nrow(x)
-        x <- left_join(x, update, by = 'fragStart')
-        if(nrow(x) != preJoinRows) stop('negRepFrags join Error')
-        if(any(is.na(x$newFragStart))) stop('breakPoint negRepFrags NA Error')
-        x
-      })
-    }
+    negRepFrags <- lapply(negRepFrags, function(x){
+      x[, newFragStart := as.numeric(fragStart)]
+      stdPosids <- x[, .(nReadIDs = uniqueN(readID), nBreaks = uniqueN(fragStart)), by = posid
+      ][nReadIDs > 1L & nBreaks > 1L, posid]
+      if(!length(stdPosids)) return(x)
+      
+      tab <- x[posid %chin% stdPosids, .(reads = sum(nReads)),
+               by = .(seqnames = posid, strand = fragStrand, start = fragStart, end = fragEnd)]
+      tab[, origFragStart := start]
+      tab2 <- standardize_positions(tab, side = 'left', window = args$breakPoint_sp_window,
+                                    local_radius = args$breakPoint_sp_local_radius,
+                                    sd_shrink = args$breakPoint_sp_sd_shrink)
+      
+      update <- unique(tab2[, .(posid = seqnames, fragStart = origFragStart, newFragStart = start)])
+      if(anyDuplicated(update, by = c('posid', 'fragStart')))
+        stop('Error - non-unique negative breakpoint update key.')
+      
+      expected <- unique(x[posid %chin% stdPosids, .(posid, fragStart)])
+      if(nrow(expected[!update, on = .(posid, fragStart)]))
+        stop('Error - incomplete negative breakpoint updates.')
+      
+      x[update, on = .(posid, fragStart), newFragStart := i.newFragStart]
+      if(anyNA(x$newFragStart)) stop('breakPoint negRepFrags NA Error')
+      x
+    })
   }
   
   posRepFrags <- rbindlist(posRepFrags)
-  posMaxUpdatedDist <- abs(max(posRepFrags$newFragEnd - posRepFrags$fragEnd))
-  posPercentUpdated <- sprintf("%.2f%%", (sum(posRepFrags$fragEnd != posRepFrags$newFragEnd) / nrow(posRepFrags))*100)
+  posMaxUpdatedDist <- NA
+  posPercentUpdated <- NA
+  
+  if(nrow(posRepFrags) > 0){
+    posMaxUpdatedDist <- abs(max(posRepFrags$newFragEnd - posRepFrags$fragEnd))
+    posPercentUpdated <- sprintf("%.2f%%", (sum(posRepFrags$fragEnd != posRepFrags$newFragEnd) / nrow(posRepFrags))*100)
+  }
   
   updateLog(paste0('Intsite break points updated for positive strand fragments. Max position shift: ', posMaxUpdatedDist, 
                    ', percent fragments updated: ', posPercentUpdated))
@@ -406,9 +441,9 @@ runModule <- function(){
     frags_uniqPosIDs_rowCount <- nrow(frags_uniqPosIDs)
     
     split_cols <- switch(args$anchorReadClusterGrouping ,
-                         "trial"   = c('trial', 'refGenome'),
-                         "subject" = c('trial', 'subject', 'refGenome'),
-                         "sample"  = c('trial', 'subject', 'sample', 'refGenome'),
+                         "trial"   = c('trial', 'refGenome', 'mode'),
+                         "subject" = c('trial', 'subject', 'refGenome', 'mode'),
+                         "sample"  = c('trial', 'subject', 'sample', 'refGenome', 'mode'),
                          stop(paste("Error: Invalid groupLevel '", args$anchorReadClusterGrouping, "'. Must be 'trial', 'subject', or 'sample'.")))
     
     frags_uniqPosIDs <- bind_rows(lapply(split(frags_uniqPosIDs, by = split_cols, flatten = TRUE, sorted = TRUE), function(s){ 
@@ -450,7 +485,7 @@ runModule <- function(){
           x$anchorReadCluster <- TRUE
           
           z <- x %>%
-            dplyr::group_by(trial, subject, sample, refGenome, posid) %>%
+            dplyr::group_by(trial, subject, sample, refGenome, mode, posid) %>%
             dplyr::summarise(frags = dplyr::n_distinct(fragStart, fragEnd), reads = dplyr::n(),
                              readIDs = list(readID), .groups = "drop") %>%
             dplyr::arrange(dplyr::desc(frags), dplyr::desc(reads)) %>%
