@@ -181,25 +181,35 @@ parse_cdhit_clstr <- function(file_path) {
 }
 
 
-run_blastn_parallel <- function(fastaFile, dbPath, params, threads = 60) {
+run_blastn_parallel <- function(fastaFile, dbPath, params, threads = 60){
+  if(length(threads) != 1L || !is.numeric(threads) || is.na(threads) ||
+     !is.finite(threads) || threads < 1 || threads %% 1 != 0)
+    stop("Error - threads must be a positive integer.")
+  
+  threads <- as.integer(threads)
   seqs <- Biostrings::readDNAStringSet(fastaFile)
-  if(length(seqs) == 0) return(data.table())
+  if(length(seqs) == 0L) return(data.table())
   
   num_chunks <- min(length(seqs), threads)
-  chunks <- split(seqs, cut(seq_along(seqs), num_chunks, labels = FALSE))
   
+  # Avoid cut(..., breaks = 1) and unnecessary parallel overhead.
+  if(num_chunks == 1L)
+    return(run_blastn(fastaFile, dbPath, params, threads = 1L))
+  
+  chunks <- split(seqs, cut(seq_along(seqs), breaks = num_chunks, labels = FALSE))
   param <- BiocParallel::MulticoreParam(workers = num_chunks, tasks = num_chunks, stop.on.error = TRUE)
+  
   results_list <- tryCatch(
     BiocParallel::bplapply(seq_along(chunks), function(i){
       tmp_chunk <- paste0(fastaFile, ".chunk_", i)
       on.exit(unlink(tmp_chunk, force = TRUE), add = TRUE)
       Biostrings::writeXStringSet(chunks[[i]], tmp_chunk)
-      run_blastn(tmp_chunk, dbPath, params, threads = 1)
+      run_blastn(tmp_chunk, dbPath, params, threads = 1L)
     }, BPPARAM = param),
     finally = try(BiocParallel::bpstop(param), silent = TRUE)
   )
   
-  return(data.table::rbindlist(results_list))
+  data.table::rbindlist(results_list, use.names = TRUE, fill = TRUE)
 }
 
 

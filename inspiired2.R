@@ -16,7 +16,6 @@ testDB_parser <- subparsers$add_parser("testDBconn", help = "Test the connection
 testDB_parser$add_argument("--dbConfigFile", type = "character", default = 'none', help = "Path to db credential file.")
 testDB_parser$add_argument("--dbConfigID",   type = "character", default = 'none', help = "DB credential block identifier in db credential file.")
 
-
 pullDBrecords_parser <- subparsers$add_parser("pullDBrecords", help = "Pull fragment records from the database.")
 pullDBrecords_parser$add_argument("--dbConfigFile", type = "character", default = 'none', help = "Path to db credential file.")
 pullDBrecords_parser$add_argument("--dbConfigID",   type = "character", default = 'none', help = "DB credential block identifier in db credential file.")
@@ -28,22 +27,20 @@ pullDBrecords_parser$add_argument("--samples",      type = "character", default 
 pullDBrecords_parser$add_argument("--refGenomes",   type = "character", default = 'none', help = "Comma delimited list of reference genome identifiers.")
 pullDBrecords_parser$add_argument("--modes",        type = "character", default = 'none', help = "Comma delimited list of mode identifiers.")
 
-
 testHMM_parser <- subparsers$add_parser("testHMMs", help = "Test the performance of HMMs on anchor reads.")
-testHMM_parser$add_argument("--outputDir", type = "character", required = TRUE, help = "Directory for output files")
-testHMM_parser$add_argument("--inputData", type = "character", required = TRUE, help = "Path to demultiplex module output")
-testHMM_parser$add_argument("--threads", type = "integer", default = 50, help = "Number of threads to use.")
-testHMM_parser$add_argument("--fileTag", type = "character", default = "testHMMs", help = "String appended to output files in the output directory.")
-testHMM_parser$add_argument("--ramDiskPath", type = "character", default = "/dev/shm", help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-testHMM_parser$add_argument("--maxReadStartPos", type = "integer", default = 50, help = "Max. read position to show on plot before overflow bin.")
-testHMM_parser$add_argument("--startPosBinWidth", type = "integer", default = 3, help = "Bin size of alignment start positions before overflow bin.")
-testHMM_parser$add_argument("--scoreBinWidth", type = "double", default = 3, help = "Bin size for HMM scores.")
-testHMM_parser$add_argument("--minScoreBinPct", type = "double", default = 1, help = "Min. percent of total reads falling into a grid square needed to print square.")
-testHMM_parser$add_argument("--facetCols", type = "integer", default = 4, help = "Number of facet columns in the output plot.")
-testHMM_parser$add_argument("--disableHorizontalGuides", action = "store_true",  default = FALSE,          help = "Disable horizontal grid lines.")
-testHMM_parser$add_argument("--horizontalGuideEvery", type = "double", default = 6, help = "Number of HMM score points between horizontal grid lines.")
-testHMM_parser$add_argument("--HMMparams", type = "character", required = FALSE, default = 'none', help = "HMM parameter string.")
-
+testHMM_parser$add_argument("--outputDir",               type = "character",     required = TRUE,      help = "Directory for output files")
+testHMM_parser$add_argument("--inputData",               type = "character",     required = TRUE,      help = "Path to demultiplex module output")
+testHMM_parser$add_argument("--threads",                 type = "integer",       default = 50,         help = "Number of threads to use.")
+testHMM_parser$add_argument("--fileTag",                 type = "character",     default = "testHMMs", help = "String appended to output files in the output directory.")
+testHMM_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm", help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+testHMM_parser$add_argument("--maxReadStartPos",         type = "integer",       default = 50,         help = "Max. read position to show on plot before overflow bin.")
+testHMM_parser$add_argument("--startPosBinWidth",        type = "integer",       default = 3,          help = "Bin size of alignment start positions before overflow bin.")
+testHMM_parser$add_argument("--scoreBinWidth",           type = "double",        default = 3,          help = "Bin size for HMM scores.")
+testHMM_parser$add_argument("--minScoreBinPct",          type = "double",        default = 1,          help = "Min. percent of total reads falling into a grid square needed to print square.")
+testHMM_parser$add_argument("--facetCols",               type = "integer",       default = 4,          help = "Number of facet columns in the output plot.")
+testHMM_parser$add_argument("--horizontalGuideEvery",    type = "double",        default = 6,          help = "Number of HMM score points between horizontal grid lines.")
+testHMM_parser$add_argument("--HMMparams",               type = "character",     required = FALSE,     default = 'none', help = "HMM parameter string.")
+testHMM_parser$add_argument("--disableHorizontalGuides", action = "store_true",  default  = FALSE,     help = "Disable horizontal grid lines.")
 
 bsdm_parser <- subparsers$add_parser("buildSeqDataMap", help = "Build a sequencing heatmap from a FASTQ result.")
 bsdm_parser$add_argument("--outputDir",        type = "character", required = TRUE,       help = "Directory for output files.")
@@ -55,7 +52,6 @@ bsdm_parser$add_argument("--mapWidth",         type = "integer",   default  = 10
 bsdm_parser$add_argument("--startPosBinWidth", type = "integer",   default  = 3,          help = "Bin size of alignment start positions before overflow bin.")
 bsdm_parser$add_argument("--nBinRows",         type = "integer",   default  = 5000,       help = "Number of heat map rows.")
 bsdm_parser$add_argument("--outputImgHeight",  type = "double",    default  = 5,          help = "Height, in inches, of outpout image.")
-
 
 demux_parser <- subparsers$add_parser("demultiplex", help = "Separate reads by barcode")
 demux_parser$add_argument("--outputDir",                    type = "character",     required = TRUE,                  help = "Directory for output files")

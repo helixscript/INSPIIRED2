@@ -2,22 +2,27 @@
 for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'BiocParallel', 'stringi')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
-parser$add_argument("--outputDir", type = "character", required = TRUE, help = "Directory for output files")
-parser$add_argument("--inputData", type = "character", required = TRUE, help = "Path to demultiplex module output")
-parser$add_argument("--softwareRoot", type = "character", required = TRUE, help = "Path to INSPIIRED2 installation.")
-parser$add_argument("--threads", type = "integer", default = 50, help = "Number of threads to use.")
-parser$add_argument("--fileTag", type = "character", default = "testHMMs", help = "String appended to output files in the output directory.")
-parser$add_argument("--ramDiskPath", type = "character", default = "/dev/shm", help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-parser$add_argument("--maxReadStartPos", type = "integer", default = 50, help = "Max. read position to show on plot before overflow bin.")
-parser$add_argument("--startPosBinWidth", type = "integer", default = 3, help = "Bin size of alignment start positions before overflow bin.")
-parser$add_argument("--scoreBinWidth", type = "double", default = 3, help = "Bin size for HMM scores.")
-parser$add_argument("--minScoreBinPct", type = "double", default = 1, help = "Min. percent of total reads falling into a grid square needed to print square.")
-parser$add_argument("--facetCols", type = "integer", default = 4, help = "Number of facet columns in the output plot.")
-parser$add_argument("--disableHorizontalGuides", action = "store_true",  default = FALSE,          help = "Disable horizontal grid lines.")
-parser$add_argument("--horizontalGuideEvery", type = "double", default = 6, help = "Number of HMM score points between horizontal grid lines.")
-parser$add_argument("--HMMparams", type = "character", required = FALSE, default = 'none', help = "HMM parameter string.")
+parser$add_argument("--outputDir",               type = "character",     required = TRUE,      help = "Directory for output files")
+parser$add_argument("--inputData",               type = "character",     required = TRUE,      help = "Path to demultiplex module output")
+parser$add_argument("--softwareRoot",            type = "character",     required = TRUE,      help = "Path to INSPIIRED2 installation.")
+parser$add_argument("--threads",                 type = "integer",       default = 50,         help = "Number of threads to use.")
+parser$add_argument("--fileTag",                 type = "character",     default = "testHMMs", help = "String appended to output files in the output directory.")
+parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm", help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--maxReadStartPos",         type = "integer",       default = 50,         help = "Max. read position to show on plot before overflow bin.")
+parser$add_argument("--startPosBinWidth",        type = "integer",       default = 3,          help = "Bin size of alignment start positions before overflow bin.")
+parser$add_argument("--scoreBinWidth",           type = "double",        default = 3,          help = "Bin size for HMM scores.")
+parser$add_argument("--minScoreBinPct",          type = "double",        default = 1,          help = "Min. percent of total reads falling into a grid square needed to print square.")
+parser$add_argument("--facetCols",               type = "integer",       default = 4,          help = "Number of facet columns in the output plot.")
+parser$add_argument("--horizontalGuideEvery",    type = "double",        default = 6,          help = "Number of HMM score points between horizontal grid lines.")
+parser$add_argument("--HMMparams",               type = "character",     required = FALSE,     default = 'none', help = "HMM parameter string.")
+parser$add_argument("--disableHorizontalGuides", action = "store_true",  default  = FALSE,     help = "Disable horizontal grid lines.")
+
+
 
 runModule <- function() {
+  doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
+  if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
+  
   startModule()
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   

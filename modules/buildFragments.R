@@ -154,7 +154,6 @@ runModule <- function(){
           updateLog(paste0('Existing database record removed: ', record_tag))
           
         } else {
-          
           msg <- "Error - this entry is already in the database. In order to run the buildFragments module with databasing enabled, either remove the previously uploaded entry from the database, remove it from the module's input data object, or enable overwrite."
           updateLog(msg)
           stop(msg)

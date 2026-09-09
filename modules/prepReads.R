@@ -108,7 +108,7 @@ runModule <- function(){
     
     updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tCalling nhmmer.'), logFile = logFile)
     
-    comm <- paste0('nhmmer --dna --F1 1 --F2 1 --F3 1 -T -5 --incT -5 --nobias --popen 0.15 --pextend 0.05 --tblout ', 
+    comm <- paste0('nhmmer --cpu 1 --dna --F1 1 --F2 1 --F3 1 -T -5 --incT -5 --nobias --popen 0.15 --pextend 0.05 --tblout ', 
                    file.path(args$ramDisk, paste0(ts, '.tbl')), ' ', file.path(args$softwareRoot, 'data', 'hmms', hmmName), ' ', 
                    file.path(args$ramDisk, ts), ' > ', file.path(args$ramDisk, paste0(ts, '.hmmSearch')))
     

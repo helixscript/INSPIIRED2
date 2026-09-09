@@ -931,5 +931,11 @@ The supported public commands are those shown by `inspiired2 --help`. Scripts su
 When using INSPIIRED2, cite the software version used and the original [INSPIIRED integration-site method](https://pubmed.ncbi.nlm.nih.gov/28344990/), together with any protocol or reference-resource citations appropriate to the experiment.
 
 
+## License
 
+Original INSPIIRED2 source code is licensed under the Apache License 2.0.
+See [LICENSE](LICENSE).
+
+Third-party software, reference genomes, annotations, models, and other
+resources remain subject to their respective licenses. 
 

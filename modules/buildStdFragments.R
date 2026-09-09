@@ -343,9 +343,6 @@ runModule <- function(){
     invisible(rm(a, b, a2))
   }
   
-  invisible(gc())
-  
-  
   # Multi-hit read rescue.
   #-----------------------------------------------------------------------------
   updateLog('Rescuing multihit reads using list on uniquely called positions.') 

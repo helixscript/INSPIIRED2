@@ -51,23 +51,25 @@ runModule <- function(){
     o <- data.frame(suppressWarnings(GenomicRanges::distanceToNearest(g, tu, select = 'all', ignore.strand = TRUE)))
     e <- data.frame(suppressWarnings(GenomicRanges::distanceToNearest(g, ex, select = 'all', ignore.strand = TRUE)))
     
-    r <- unlist(GenomicRanges::GRangesList(lapply(1:length(g), function(xx){
+    r <- unlist(GenomicRanges::GRangesList(lapply(seq_along(g), function(xx){
       gg <- g[xx]
-      oo <- unique(o[o$queryHits == xx,])
-      ee <- unique(e[e$queryHits == xx,])
+      oo <- unique(o[o$queryHits == xx, , drop = FALSE])
       
-      hits <- distinct(data.frame(tu[oo$subjectHits,])[, c('name2', 'strand')])
+      gg$inGene <- IRanges::overlapsAny(gg, tu, ignore.strand = TRUE)
+      gg$inExon <- IRanges::overlapsAny(gg, ex, ignore.strand = TRUE)
+      gg$nearestGene <- NA_character_
+      gg$nearestGeneStrand <- NA_character_
+      gg$nearestGeneDist <- NA_integer_
+      gg$beforeNearestGene <- NA
       
-      gg$nearestGene <- paste0(hits$name2, collapse = ',')
-      gg$nearestGeneStrand <- paste0(hits$strand, collapse = ',')
-      
-      inGene <- IRanges::overlapsAny(gg, tu, ignore.strand = TRUE)
-      inExon <- IRanges::overlapsAny(gg, ex, ignore.strand = TRUE)
-      
-      gg$nearestGeneDist <- min(oo$distance) + as.integer(!inGene)
-      gg$beforeNearestGene <- start(gg) < min(start(tu[oo$subjectHits,]))
-      gg$inExon <- inExon
-      gg$inGene <- inGene
+      if(nrow(oo) > 0L){
+        hits <- distinct(data.frame(tu[oo$subjectHits, ])[, c("name2", "strand")])
+        
+        gg$nearestGene <- paste(hits$name2, collapse = ",")
+        gg$nearestGeneStrand <- paste(hits$strand, collapse = ",")
+        gg$nearestGeneDist <- as.integer(min(oo$distance) + as.integer(!gg$inGene))
+        gg$beforeNearestGene <- start(gg) < min(start(tu[oo$subjectHits]))
+      }
       
       gg
     })))
@@ -90,8 +92,8 @@ runModule <- function(){
   d <- dplyr::relocate(d, beforeNearestGene, .after = nearestGeneStrand)
   
   saveRDS(d, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
-  write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
   updateLog('Completed nearestGenes module.')
+  write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
 
 #-------------------------------------------------------------------------------

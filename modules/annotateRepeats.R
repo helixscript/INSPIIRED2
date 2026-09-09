@@ -88,8 +88,8 @@ runModule <- function(){
   d <- dplyr::relocate(d, repeat_class, .after = repeat_name)
   
   saveRDS(d, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
-  write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
   updateLog('Completed annotateRepeats module.')
+  write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
 
 #-------------------------------------------------------------------------------

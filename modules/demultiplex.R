@@ -141,18 +141,20 @@ runModule <- function(){
   chunk_num <- 0
   total_reads <- 0
   
-  demux_iterator <- function() {
+  demux_iterator <- function(){
     chunk_I1 <- yield(stream_I1)
-    if (length(chunk_I1) == 0) return(NULL)
-    chunk_num <<- chunk_num + 1
-    total_reads <<- total_reads + length(chunk_I1)
-    
     chunk_R1 <- yield(stream_R1)
     chunk_R2 <- yield(stream_R2)
     
-    if (length(chunk_I1) != length(chunk_R1) || length(chunk_I1) != length(chunk_R2)) {
-      stop("FASTQ files are out of sync! Check for file truncation.")
-    }
+    chunkLengths <- c(I1 = length(chunk_I1), R1 = length(chunk_R1), R2 = length(chunk_R2))
+    
+    if(all(chunkLengths == 0L)) return(NULL)
+    if(length(unique(chunkLengths)) != 1L)
+      stop("Error - FASTQ files ended at different positions. Chunk lengths: ",
+           paste(names(chunkLengths), chunkLengths, sep = "=", collapse = ", "), ".")
+    
+    chunk_num <<- chunk_num + 1L
+    total_reads <<- total_reads + length(chunk_I1)
     
     list(I1 = chunk_I1, R1 = chunk_R1, R2 = chunk_R2, chunk_num = chunk_num)
   }
@@ -176,9 +178,20 @@ runModule <- function(){
     
     suppressWarnings(rm(chunk_data))
     
-    if(length(cI1) == 0) break
+    I1_ids <- sub("\\s.*$", "", as.character(cI1@id))
+    R1_ids <- sub("\\s.*$", "", as.character(cR1@id))
+    R2_ids <- sub("\\s.*$", "", as.character(cR2@id))
     
-    clean_ids <- BStringSet(gsub('\\s.+$', '', as.character(cI1@id)))
+    mismatch <- which(I1_ids != R1_ids | I1_ids != R2_ids)
+    
+    if(length(mismatch)){
+      i <- mismatch[1L]
+      stop("Error - FASTQ read IDs are out of sync in chunk ", chunk_num,
+           " at record ", i, ": I1=", I1_ids[i],
+           ", R1=", R1_ids[i], ", R2=", R2_ids[i], ".")
+    }
+    
+    clean_ids <- BStringSet(I1_ids)
     cI1@id <- clean_ids
     cR1@id <- clean_ids
     cR2@id <- clean_ids
@@ -329,20 +342,20 @@ runModule <- function(){
   }
   
   param <- MulticoreParam(workers = args$threads, stop.on.error = TRUE)
-  ### param <- SerialParam(stop.on.error = TRUE)
   
   updateLog(paste0('Demultiplexing data across ', args$threads, ' CPUs.'))
   updateLog(paste0('Starting asynchronous calculations. Data chunk logs can be found in ', args$logDir, '/'))
   
-  x <- bpiterate(ITER = demux_iterator, 
-                 FUN = demux_worker, 
-                 BPPARAM = param,
-                 sampleData = sampleData, 
-                 args = args)
+  x <- tryCatch(
+    bpiterate(ITER = demux_iterator, FUN = demux_worker, BPPARAM = param,
+              sampleData = sampleData, args = args),
+    finally = {
+      try(bpstop(param), silent = TRUE)
+      closeAllConnections()
+    }
+  )
   
   updateLog('Demultiplexing calculations completed.')
-  bpstop(param)
-  closeAllConnections()
   
   logs <- unlist(lapply(list.files(args$logDir, pattern = '^log$', recursive = TRUE, full.names = TRUE), readLines))
   write(logs, args$logFile, append = TRUE)
