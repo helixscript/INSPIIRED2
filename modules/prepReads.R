@@ -109,7 +109,8 @@ runModule <- function(){
                    file.path(args$ramDisk, paste0(ts, '.tbl')), ' ', file.path(args$softwareRoot, 'data', 'hmms', hmmName), ' ', 
                    file.path(args$ramDisk, ts), ' > ', file.path(args$ramDisk, paste0(ts, '.hmmSearch')))
     
-    system(comm)
+    status <- system(comm)
+    requireCommandSuccess(status, "nhmmer")
     
     updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tnhmmer completed'), logFile = logFile)
     
@@ -197,7 +198,7 @@ runModule <- function(){
          my_iter <- make_dt_iterator(x, chunk_size = ceiling(nrow(x)/args$threads), chunk_num_start = chunk_start_num)
     
          ### param <- SerialParam(stop.on.error = TRUE) # Use SerialParam() for browser() statements.
-         param <- MulticoreParam(workers = args$threads)
+         param <- MulticoreParam(workers = args$threads, stop.on.error = TRUE)
     
          results <- bpiterate(ITER = my_iter, FUN = hmm_worker, BPPARAM = param)
     
@@ -280,7 +281,8 @@ runModule <- function(){
   if(! args$disableVectorFilter){
     d <- rbindlist(lapply(split(d, d$vectorFastaFile), function(x){
       ts <- tmpString()
-      system2("makeblastdb", args = c("-in",  file.path(args$softwareRoot, 'data', 'vectors', x$vectorFastaFile[1]), "-dbtype", "nucl", "-out", file.path(args$ramDisk, ts)), stdout = FALSE, stderr = FALSE)
+      status <- system2("makeblastdb", args = c("-in",  file.path(args$softwareRoot, 'data', 'vectors', x$vectorFastaFile[1]), "-dbtype", "nucl", "-out", file.path(args$ramDisk, ts)), stdout = FALSE, stderr = FALSE)
+      requireCommandSuccess(status, "makeblastdb")
       
       x$testSeq <- substr(x$anchorReadSeq, (nchar(x$anchorReadSeq) - args$vectorTestWidth + 1), nchar(x$anchorReadSeq))
       

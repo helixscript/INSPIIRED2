@@ -17,7 +17,7 @@ parser$add_argument("--anchorReadClusterMinAbundDiff",     type = "integer",    
 parser$add_argument("--anchorReadClusterMinReadMult",      type = "integer",       default  = 10,                  help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
 parser$add_argument("--minReadsPerFrag",                   type = "integer",       default  = 1,                   help = 'Min. number of reads to accept a fragment.')
 parser$add_argument("--intSite_sp_window",                 type = "integer",       default  = 8,                   help = 'Max search distance (in NT) for intSites candidate anchor points.')
-parser$add_argument("--intSite_sp_local_radius",           type = "integer",       default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
+parser$add_argument("--intSite_sp_local_radius",           type = "integer",       default  = 4,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
 parser$add_argument("--intSite_sp_sd_shrink",              type = "double",        default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
 parser$add_argument("--breakPoint_sp_window",              type = "integer",       default  = 5,                   help = 'Max search distance (in NT) for breakpoint candidate anchor points.')
 parser$add_argument("--breakPoint_sp_local_radius",        type = "integer",       default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
@@ -454,7 +454,8 @@ runModule <- function(){
       write(paste0('>', s$readID, '\n', s$testSeq), file = file.path(args$ramDisk, paste0(ts, '.fasta')))
       out_prefix <- file.path(args$ramDisk, paste0(ts, "_cdhit"))
       cmd <- paste0("cd-hit-est ", args$anchorReadClusterParams, " -T ", args$threads, " -i ", file.path(args$ramDisk, paste0(ts, '.fasta')), " -o ", out_prefix)
-      system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
+      status <- system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
+      requireCommandSuccess(status, "cd-hit-est")
       
       clstr_path <- paste0(out_prefix, ".clstr")
       if(! file.exists(clstr_path)) stop(paste0('Error - cd-hit-est failed to return a clstr file: ', file.exists(clstr_path)))

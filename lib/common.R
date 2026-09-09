@@ -39,6 +39,22 @@ createDBconnection <- function(){
 }
 
 
+commandStatus <- function(x){
+  status <- if(is.character(x)) attr(x, "status", exact = TRUE) else x
+  if(is.null(status)) 0L else suppressWarnings(as.integer(status))
+}
+
+
+requireCommandSuccess <- function(x, label){
+  status <- commandStatus(x)
+  if(length(status) != 1L || is.na(status) || status != 0L)
+    stop("Error - ", label, " failed with exit status ",
+         if(length(status) == 1L && !is.na(status)) status else "unknown", ".",
+         call. = FALSE)
+  invisible(x)
+}
+
+
 startModule <- function(){
   options(useFancyQuotes = FALSE)
   if(! file.access(args$ramDiskPath, mode = 2) == 0) args$ramDiskPath <- args$outputDir

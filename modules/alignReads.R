@@ -180,17 +180,22 @@ runModule <- function(){
       suppressWarnings(system2(blatExecutable, args = blatArgs, stdout = TRUE, stderr = TRUE)),
       error = function(e) stop('Error - BLAT could not be executed for chunk ', chunk$chunk_num, ': ', conditionMessage(e))
     )
+    
     blatStatus <- attr(blatOutput, 'status')
+    
     if(is.null(blatStatus)) blatStatus <- 0L
+    
     if(length(blatOutput) > 0){
       updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tBLAT: ', paste(blatOutput, collapse = '\n')), logFile = logFile)
     }
+    
     if(blatStatus != 0L){
       failureMessage <- paste0('Error - BLAT failed for chunk ', chunk$chunk_num, ' (reference ', chunkRefGenome,
                                ') with exit status ', blatStatus, '. See ', logFile, '.')
       updateLog(paste0('<data chunk #', chunk$chunk_num, '>\t', failureMessage), logFile = logFile)
       stop(failureMessage)
     }
+    
     if(!file.exists(pslFile)) stop('Error - BLAT did not create an output PSL file for chunk ', chunk$chunk_num, '.')
     
     updateLog(paste0('<data chunk #', chunk$chunk_num, '>\tParsing BLAT output.'), logFile = logFile)
@@ -227,6 +232,7 @@ runModule <- function(){
     
     # Do not create more forked workers than there are chunks to process.
     param <- MulticoreParam(workers = min(args$threads, nChunks), stop.on.error = TRUE)
+    
     results <- tryCatch(
       bpiterate(ITER = my_iter, FUN = alignment_worker, BPPARAM = param),
       finally = {

@@ -142,7 +142,7 @@ bsf_parser$add_argument("--anchorReadClusterMinAbundDiff",     type = "integer",
 bsf_parser$add_argument("--anchorReadClusterMinReadMult",      type = "integer",       default  = 10,                  help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
 bsf_parser$add_argument("--minReadsPerFrag",                   type = "integer",       default  = 1,                   help = 'Min. number of reads to accept a fragment.')
 bsf_parser$add_argument("--intSite_sp_window",                 type = "integer",       default  = 8,                   help = 'Max search distance (in NT) for intSites candidate anchor points.')
-bsf_parser$add_argument("--intSite_sp_local_radius",           type = "integer",       default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
+bsf_parser$add_argument("--intSite_sp_local_radius",           type = "integer",       default  = 4,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
 bsf_parser$add_argument("--intSite_sp_sd_shrink",              type = "double",        default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
 bsf_parser$add_argument("--breakPoint_sp_window",              type = "integer",       default  = 5,                   help = 'Max search distance (in NT) for breakpoint candidate anchor points.')
 bsf_parser$add_argument("--breakPoint_sp_local_radius",        type = "integer",       default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
