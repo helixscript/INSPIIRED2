@@ -48,17 +48,6 @@ runModule <- function(){
   
   frags <- setDT(readRDS(args$inputData))
   
-  
-  browser()
-  
-  
-  # test
-  frags$posid <- paste0(frags$fragChromosome, frags$fragStrand, ifelse(frags$fragStrand == '+', frags$fragStart, frags$fragEnd))
-  o <- frags[grepl('chr19[\\+\\-]344412', frags$posid),]
-  b <- frags[grepl('chr19\\-344412', frags$posid),]
-  
-  #-------------
-  
   if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
     stop("Error - chromosome names cannot contain '+' or '-' because these characters delimit posid strand.")
   }
