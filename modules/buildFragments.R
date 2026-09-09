@@ -100,125 +100,272 @@ runModule <- function(){
   
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   
-  if(! is.null(args$dbConn)){
-    updateLog('Database upload beginning.')
+  if(!is.null(args$dbConn)){
+    updateLog("Database upload beginning.")
     
-    frags[, fragID := paste(trial, subject, sample, replicate, fragChromosome, fragStrand, fragStart, fragEnd, sep = ":")]
-    frags[, `:=`(g = .GRP, totalFrags = uniqueN(fragID)), by = .(trial, subject, sample, replicate, mode, refGenome)]
+    data_lake <- "/data"
+    if(!DBI::dbIsValid(args$dbConn)) stop("Error - database connection is not valid.")
+    if(!dir.exists(data_lake) || file.access(data_lake, 2L) != 0L)
+      stop("Error - data lake directory does not exist or is not writable: ", data_lake)
     
-    for(x in split(frags, frags$g)){
+    engine_query <- paste(
+      "SELECT ENGINE FROM information_schema.TABLES",
+      "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fragments';"
+    )
+    engine <- DBI::dbGetQuery(args$dbConn, engine_query)
+    engine_name <- if(nrow(engine) == 1L && ncol(engine) == 1L)
+      as.character(engine[[1L]][1L]) else NA_character_
+    
+    if(is.na(engine_name) || toupper(engine_name) != "INNODB")
+      stop("Error - the fragments table must use InnoDB for transactional database updates.")
+    
+    key_where <- paste(
+      "trial = ?trial AND subject = ?subject AND sample = ?sample",
+      "AND replicate = ?rep AND ref_genome = ?genome AND mode = ?mode"
+    )
+    check_query <- paste("SELECT data_file_name FROM fragments WHERE", key_where, ";")
+    lock_query <- paste("SELECT data_file_name FROM fragments WHERE", key_where, "FOR UPDATE;")
+    verify_query <- paste("SELECT data_file_name, total_fragments FROM fragments WHERE", key_where, ";")
+    insert_query <- paste0(
+      "INSERT INTO fragments (trial, subject, sample, replicate, ref_genome, mode, total_fragments, data_file_name) ",
+      "VALUES (?trial, ?subject, ?sample, ?rep, ?genome, ?mode, ?total, ?file);"
+    )
+    update_query <- paste(
+      "UPDATE fragments SET total_fragments = ?total, data_file_name = ?file,",
+      "processed_date = CURRENT_TIMESTAMP WHERE", key_where, ";"
+    )
+    
+    stage_parquet <- function(x, record_tag){
+      local_path <- tempfile(pattern = "buildFragments_", tmpdir = args$tmpDir,
+                             fileext = ".parquet")
+      staged_path <- tempfile(pattern = ".inspiired2_", tmpdir = data_lake,
+                              fileext = ".pending")
       
+      on.exit(invisible(unlink(c(local_path, staged_path), force = TRUE)), add = TRUE)
+      
+      arrow::write_parquet(x, local_path)
+      local_size <- if(file.exists(local_path)) file.size(local_path) else NA_real_
+      
+      if(is.na(local_size) || local_size < 1)
+        stop("Error - failed to create a non-empty parquet file for record tag: ",
+             record_tag)
+      
+      md5 <- unname(tools::md5sum(local_path))
+      if(length(md5) != 1L || is.na(md5) ||
+         !grepl("^[[:xdigit:]]{32}$", md5))
+        stop("Error - failed to calculate the parquet checksum for record tag: ",
+             record_tag)
+      
+      md5 <- tolower(md5)
+      new_file <- paste0(md5, ".parquet")
+      new_path <- file.path(data_lake, new_file)
+      
+      # Content-addressed file already exists. Validate rather than overwrite it.
+      if(file.exists(new_path)){
+        existing_md5 <- unname(tools::md5sum(new_path))
+        if(length(existing_md5) != 1L || is.na(existing_md5) ||
+           tolower(existing_md5) != md5)
+          stop("Error - existing data-lake file does not match its checksum-derived name: ",
+               new_path)
+        
+        return(new_file)
+      }
+      
+      # Copy to a unique temporary path within /data and verify it before rename.
+      copied <- file.copy(local_path, staged_path, overwrite = FALSE)
+      staged_md5 <- if(isTRUE(copied) && file.exists(staged_path))
+        unname(tools::md5sum(staged_path)) else NA_character_
+      
+      if(!isTRUE(copied) || length(staged_md5) != 1L ||
+         is.na(staged_md5) || tolower(staged_md5) != md5)
+        stop("Error - failed to copy and verify the staged parquet file for record tag: ",
+             record_tag)
+      
+      # Rename inside /data so the final filename never exposes a partial copy.
+      if(!file.rename(staged_path, new_path)){
+        final_md5 <- if(file.exists(new_path))
+          unname(tools::md5sum(new_path)) else NA_character_
+        
+        # Another process may have installed the identical content concurrently.
+        if(length(final_md5) != 1L || is.na(final_md5) ||
+           tolower(final_md5) != md5)
+          stop("Error - failed to install the parquet file in the data lake: ",
+               new_path)
+      }
+      
+      final_md5 <- if(file.exists(new_path))
+        unname(tools::md5sum(new_path)) else NA_character_
+      
+      if(length(final_md5) != 1L || is.na(final_md5) ||
+         tolower(final_md5) != md5)
+        stop("Error - final parquet verification failed for record tag: ",
+             record_tag)
+      
+      new_file
+    }
+    
+    split_cols <- c("trial", "subject", "sample", "replicate", "mode",
+                    "refGenome")
+    frag_groups <- split(frags, by = split_cols, keep.by = TRUE,
+                         flatten = TRUE, sorted = TRUE, drop = TRUE)
+    uploads <- vector("list", length(frag_groups))
+    
+    # Check the complete batch before writing replacement files.
+    for(i in seq_along(frag_groups)){
+      x <- frag_groups[[i]]
       common_params <- list(
-        trial   = as.character(x$trial[1]), 
-        subject = as.character(x$subject[1]), 
-        sample  = as.character(x$sample[1]), 
-        rep     = as.integer(as.character(x$replicate[1])),
-        genome  = as.character(x$refGenome[1]),
-        mode    = as.character(x$mode[1])
+        trial = as.character(x$trial[1]),
+        subject = as.character(x$subject[1]),
+        sample = as.character(x$sample[1]),
+        rep = as.integer(as.character(x$replicate[1])),
+        genome = as.character(x$refGenome[1]),
+        mode = as.character(x$mode[1])
       )
       
-      record_tag <- paste(common_params, collapse = '|')
-      updateLog(paste0('Processing data entry: ', record_tag))
+      record_tag <- paste(unlist(common_params, use.names = FALSE),
+                          collapse = "|")
+      existing <- DBI::dbGetQuery(
+        args$dbConn,
+        DBI::sqlInterpolate(args$dbConn, check_query,
+                            .dots = common_params)
+      )
       
-      check_query <- "SELECT data_file_name FROM fragments WHERE trial = ?trial AND subject = ?subject AND sample = ?sample AND replicate = ?rep AND ref_genome = ?genome AND mode = ?mode LIMIT 1;"
-      record_exists <- dbGetQuery(args$dbConn, DBI::sqlInterpolate(args$dbConn, check_query, .dots = common_params))
+      if(nrow(existing) > 1L)
+        stop("Error - multiple database records found for record tag: ",
+             record_tag)
       
-      if(nrow(record_exists) > 0){
+      if(nrow(existing) == 1L && !isTRUE(args$overwriteDBrecords))
+        stop(
+          "Error - database entry already exists; remove it, exclude it ",
+          "from the input, or enable overwrite: ", record_tag
+        )
+      
+      # Equivalent to the former unique fragID count because the remaining
+      # fragID fields are constant within this database group.
+      total_frags <- data.table::uniqueN(
+        x, by = c("fragChromosome", "fragStrand", "fragStart", "fragEnd")
+      )
+      
+      uploads[[i]] <- list(
+        common = common_params,
+        tag = record_tag,
+        total = as.integer(total_frags),
+        new_file = NA_character_
+      )
+    }
+    
+    # Make every replacement parquet durable before changing the database.
+    for(i in seq_along(frag_groups)){
+      updateLog(paste0("Preparing data entry: ", uploads[[i]]$tag))
+      uploads[[i]]$new_file <- stage_parquet(
+        frag_groups[[i]], uploads[[i]]$tag
+      )
+      updateLog(paste0(
+        "Parquet ready in data lake (", uploads[[i]]$new_file, ")."
+      ))
+    }
+    
+    rm(frag_groups)
+    
+    prepared_files <- vapply(uploads, `[[`, character(1), "new_file")
+    if(anyNA(prepared_files) ||
+       !all(file.exists(file.path(data_lake, prepared_files))))
+      stop(
+        "Error - one or more prepared parquet files disappeared before ",
+        "the database transaction."
+      )
+    
+    # Commit the batch together so ordinary SQL errors roll back every row.
+    old_files <- tryCatch({
+      DBI::dbWithTransaction(args$dbConn, {
+        previous_files <- rep(NA_character_, length(uploads))
         
-        if(isTRUE(args$overwriteDBrecords)){
-          
-          old_file <- as.character(record_exists$data_file_name[1])
-          old_path <- file.path('/data', old_file)
-          
-          updateLog(paste0('Overwrite enabled - removing existing parquet file (', old_file, ').'))
-          
-          if(file.exists(old_path)){
-            if(! file.remove(old_path)){
-              stop(paste0('Error - failed to remove existing parquet file: ', old_path))
-            }
-          } else {
-            updateLog(paste0('Warning - existing parquet file was not found: ', old_path))
-          }
-          
-          delete_query <- "DELETE FROM fragments WHERE trial = ?trial AND subject = ?subject AND sample = ?sample AND replicate = ?rep AND ref_genome = ?genome AND mode = ?mode;"
-          
-          rows_deleted <- dbExecute(
+        for(i in seq_along(uploads)){
+          u <- uploads[[i]]
+          current <- DBI::dbGetQuery(
             args$dbConn,
-            DBI::sqlInterpolate(args$dbConn, delete_query, .dots = common_params)
+            DBI::sqlInterpolate(args$dbConn, lock_query,
+                                .dots = u$common)
           )
           
-          if(rows_deleted < 1){
-            stop(paste0('Error - failed to remove existing database record for record tag: ', record_tag))
+          if(nrow(current) > 1L)
+            stop("Error - multiple database records found for record tag: ",
+                 u$tag)
+          
+          if(nrow(current) == 1L && !isTRUE(args$overwriteDBrecords))
+            stop(
+              "Error - entry was added concurrently and overwrite is disabled: ",
+              u$tag
+            )
+          
+          previous_files[i] <- if(nrow(current) == 1L)
+            as.character(current$data_file_name[1]) else NA_character_
+          
+          params <- c(
+            u$common,
+            list(total = u$total, file = u$new_file)
+          )
+          
+          if(nrow(current) == 1L){
+            rows <- DBI::dbExecute(
+              args$dbConn,
+              DBI::sqlInterpolate(args$dbConn, update_query,
+                                  .dots = params)
+            )
+            
+            # MariaDB can report zero when an UPDATE does not change values.
+            if(length(rows) != 1L || is.na(rows) ||
+               !(rows %in% c(0L, 1L)))
+              stop("Error - unexpected number of rows updated for record tag: ",
+                   u$tag)
+          } else {
+            rows <- DBI::dbExecute(
+              args$dbConn,
+              DBI::sqlInterpolate(args$dbConn, insert_query,
+                                  .dots = params)
+            )
+            
+            if(length(rows) != 1L || is.na(rows) || rows != 1L)
+              stop("Error - failed to insert database record for record tag: ",
+                   u$tag)
           }
           
-          updateLog(paste0('Existing database record removed: ', record_tag))
+          stored <- DBI::dbGetQuery(
+            args$dbConn,
+            DBI::sqlInterpolate(args$dbConn, verify_query,
+                                .dots = u$common)
+          )
           
-        } else {
-          msg <- "Error - this entry is already in the database. In order to run the buildFragments module with databasing enabled, either remove the previously uploaded entry from the database, remove it from the module's input data object, or enable overwrite."
-          updateLog(msg)
-          stop(msg)
+          if(nrow(stored) != 1L ||
+             is.na(stored$data_file_name[1]) ||
+             as.character(stored$data_file_name[1]) != u$new_file ||
+             is.na(stored$total_fragments[1]) ||
+             as.integer(stored$total_fragments[1]) != u$total)
+            stop("Error - database verification failed for record tag: ",
+                 u$tag)
         }
-      }
-      
-      ts <- tmpString()
-      x$g <- NULL
-      arrow::write_parquet(x, file.path(args$outputDir, paste0(ts, '.parquet')))
-      md5sum <- unname(tools::md5sum(file.path(args$outputDir, paste0(ts, '.parquet'))))
-      file.rename(file.path(args$outputDir, paste0(ts, '.parquet')), file.path(args$outputDir, paste0(md5sum, '.parquet')))
-      
-      updateLog(paste0('Copying parquet file to data lake (', paste0(md5sum, '.parquet'), ').'))
-      
-      copyResult <- file.copy(
-        file.path(args$outputDir, paste0(md5sum, '.parquet')),
-        file.path('/data', paste0(md5sum, '.parquet')),
-        overwrite = TRUE
+        
+        previous_files
+      })
+    }, error = function(e){
+      updateLog(
+        "Database transaction failed; database state should be verified. ",
+        "Prepared parquet files were retained."
       )
-      
-      if(! copyResult){
-        stop(paste0(
-          'Error - failed to copy ',
-          file.path(args$outputDir, paste0(md5sum, '.parquet')),
-          ' to ',
-          file.path('/data', paste0(md5sum, '.parquet'))
-        ))
-      }
-      
-      invisible(file.remove(file.path(args$outputDir, paste0(md5sum, '.parquet'))))
-      
-      updateLog('Inserting record into database.')
-      
-      insert_query <- "INSERT INTO fragments (trial, subject, sample, replicate, ref_genome, mode, total_fragments, data_file_name) 
-                     VALUES (?trial, ?subject, ?sample, ?rep, ?genome, ?mode, ?total, ?file);"
-      
-      insert_params <- c(common_params, list(
-        total = as.integer(x$totalFrags[1]),
-        file  = paste0(md5sum, '.parquet')
+      stop(e)
+    })
+    
+    for(i in seq_along(uploads)){
+      updateLog(paste0(
+        "Entry successfully processed: ", uploads[[i]]$tag
       ))
       
-      database_error <- NA
-      
-      insert_success <- tryCatch({
-        rows_affected <- dbExecute(
-          args$dbConn,
-          DBI::sqlInterpolate(args$dbConn, insert_query, .dots = insert_params)
-        )
-        rows_affected == 1
-      }, error = function(cond) {
-        message(paste("Database Error:", cond$message))
-        database_error <<- cond$message
-        return(FALSE)
-      })
-      
-      if(! insert_success){
-        stop(paste0(
-          'Database error caught: ',
-          database_error,
-          ' for record tag: ',
-          record_tag
+      if(!is.na(old_files[i]) && nzchar(old_files[i]) &&
+         old_files[i] != uploads[[i]]$new_file)
+        updateLog(paste0(
+          "Previous parquet retained for safe garbage collection: ",
+          old_files[i]
         ))
-      }
-      
-      updateLog('Entry successfully processed.')
     }
   }
   
