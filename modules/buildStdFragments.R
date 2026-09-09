@@ -63,6 +63,9 @@ runModule <- function(){
   frags$replicate <- as.integer(as.character(frags$replicate))
   frags$refGenome <- as.character(frags$refGenome)
   frags$mode      <- as.character(frags$mode)
+  frags$leaderSeqHMM    <- as.character(frags$leaderSeqHMM)
+  frags$vectorFastaFile <- as.character(frags$vectorFastaFile)
+  
   
   frags$real_UMI <- frags$UMI 
   frags$UMI <- "AAAAAAAAAAAA" 
@@ -640,7 +643,7 @@ runModule <- function(){
   frags$fragStart <- as.integer(frags$fragStart)
   frags$fragEnd   <- as.integer(frags$fragEnd)
   
-  frags <- frags[, .(mode, refGenome, trial, subject, sample, replicate, UMI, posid, reads, repLeaderSeq, fragChromosome, fragStrand, fragStart, fragEnd, anchorReadCluster, readIDs, UMIs, leaderSeqGroupNum)]
+  frags <- frags[, .(mode, refGenome, trial, subject, sample, replicate, UMI, posid, reads, repLeaderSeq, fragChromosome, fragStrand, fragStart, fragEnd, anchorReadCluster, readIDs, UMIs, leaderSeqGroupNum, leaderSeqHMM, vectorFastaFile)]
   
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('buildStdFragments module completed.')

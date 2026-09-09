@@ -209,11 +209,16 @@ runModule <- function(){
     }
   }
   
-
-  frags <- group_by(frags, trial, subject, sample, mode, refGenome, posid) %>%
-    mutate(g = cur_group_id()) %>%
-    ungroup() %>%
-    data.table()
+  collapsePrepMetadata <- function(x){
+    x <- as.character(x)
+    x <- sort(unique(x[!is.na(x) & nzchar(x)]))
+    if(length(x)) paste(x, collapse = ";") else NA_character_
+  }
+  
+  frags <- group_by(frags, trial, subject, sample, mode, refGenome, vectorFastaFile, posid) %>%
+           mutate(g = cur_group_id()) %>%
+           ungroup() %>%
+           data.table()
   
   
   updateLog('Gather fragments into intSite events.')
@@ -240,6 +245,8 @@ runModule <- function(){
                               sample = x$sample[1],
                               refGenome = x$refGenome[1],
                               mode = x$mode[1],
+                              leaderSeqHMM = collapsePrepMetadata(x$leaderSeqHMM),
+                              vectorFastaFile = collapsePrepMetadata(x$vectorFastaFile),
                               posid = x$posid[1],
                               UMIs = n_distinct(unlist(x$UMIs)),
                               sonicLengths = ifelse(args$sumSonicBreaksWithin == 'replicates',

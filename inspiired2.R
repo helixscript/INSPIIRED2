@@ -208,5 +208,6 @@ cmd_args <- sapply(names(clean_args), function(n) {
 
 final_cmd <- paste(cmd_args[cmd_args != ""], collapse = " ")
 
+message('Starting module: ', args$module)
 status <- system2("Rscript", args = c("--vanilla", module_script, final_cmd, "--softwareRoot", shQuote(pipeline_root)))
 quit(status = status)

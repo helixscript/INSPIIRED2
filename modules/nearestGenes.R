@@ -1,5 +1,6 @@
 #!/usr/bin/env -S Rscript --vanilla
 for (p in c('argparse', 'tidyverse', 'data.table', 'GenomicRanges')) suppressPackageStartupMessages(library(p, character.only = TRUE))
+if(!requireNamespace("GenomeInfoDb", quietly = TRUE)) stop("Error - required R package GenomeInfoDb is not installed.")
 
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",     type = "character", required = TRUE,          help = "Directory for output files")
