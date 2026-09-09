@@ -19,6 +19,9 @@ parser$add_argument("--vectorTestMinCoverage",   type = "double",        default
 parser$add_argument("--HMMparams",               type = "character",     default = 'none',         help = "Comma delimited shorthand containing HMM parmaters.")
 
 runModule <- function(){
+  doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
+  if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
+  
   startModule()
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
@@ -200,11 +203,14 @@ runModule <- function(){
          ### param <- SerialParam(stop.on.error = TRUE) # Use SerialParam() for browser() statements.
          param <- MulticoreParam(workers = args$threads, stop.on.error = TRUE)
     
-         results <- bpiterate(ITER = my_iter, FUN = hmm_worker, BPPARAM = param)
-    
-         bpstop(param)
-         closeAllConnections()
-    
+         results <- tryCatch(
+           bpiterate(ITER = my_iter, FUN = hmm_worker, BPPARAM = param),
+           finally = {
+             try(bpstop(param), silent = TRUE)
+             closeAllConnections()
+           }
+         )
+         
         rbindlist(results)
     }))
   

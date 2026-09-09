@@ -207,12 +207,13 @@ runModule <- function(){
     if(nrow(b) > 0){
       if(any(!b$qName %in% chunk$data$seqNum)) stop('Error - BLAT returned an unexpected query ID for chunk ', chunk$chunk_num, '.')
       b$qPercentCoverage <- (b$qWidth / b$qSize)*100
-      b <- dplyr::filter(b, queryPercentID >= args$minPercentID, 
+      b <- dplyr::filter(b, 
+                         queryPercentID   >= args$minPercentID, 
                          qPercentCoverage >= args$minAlignmentCoverage,
-                         tNumInsert <= args$blatMaxtNumInsert,
-                         qNumInsert <= args$blatMaxqNumInsert,
-                         tBaseInsert <= args$blatMaxtBaseInsert,
-                         qBaseInsert <= args$blatMaxqBaseInsert)
+                         tNumInsert       <= args$blatMaxtNumInsert,
+                         qNumInsert       <= args$blatMaxqNumInsert,
+                         tBaseInsert      <= args$blatMaxtBaseInsert,
+                         qBaseInsert      <= args$blatMaxqBaseInsert)
       
       updateLog(paste0('<data chunk #', chunk$chunk_num, '>\t', ppNum(nrow(b)), ' data rows remain after filtering.'), logFile = logFile)
       if(nrow(b) > 0){
@@ -283,7 +284,6 @@ runModule <- function(){
   if(nrow(adriftReads) == 0) stop('Error -- no adrift reads remain after limiting reads to those with anchor read mates that aligned to the reference.')
   
   # Align unique adrift read sequences.
-  
   updateLog('Starting adrift read alignments.')
   
   alignmentResult <- run_alignments(adriftReads, chunk_start_num)
@@ -315,6 +315,7 @@ runModule <- function(){
   o$anchorReads$subject   <- as.factor(o$anchorReads$subject);    o$adriftReads$subject   <- as.factor(o$adriftReads$subject)
   o$anchorReads$sample    <- as.factor(o$anchorReads$sample);     o$adriftReads$sample    <- as.factor(o$adriftReads$sample)
   o$anchorReads$replicate <- as.factor(o$anchorReads$replicate);  o$adriftReads$replicate <- as.factor(o$adriftReads$replicate)
+  
   if(refGenomeIsFactor){
     o$anchorReads$refGenome <- factor(o$anchorReads$refGenome, levels = refGenomeLevels)
     o$adriftReads$refGenome <- factor(o$adriftReads$refGenome, levels = refGenomeLevels)
@@ -322,13 +323,19 @@ runModule <- function(){
   
   outputFile <- file.path(args$outputDir, paste0(args$fileTag, '.rds'))
   tmpOutputFile <- file.path(args$outputDir, paste0('.', args$fileTag, '.rds.', Sys.getpid(), '.tmp'))
+  
   on.exit(if(file.exists(tmpOutputFile)) unlink(tmpOutputFile), add = TRUE)
+  
   saveRDS(o, tmpOutputFile)
-  if(!file.rename(tmpOutputFile, outputFile)) stop('Error - could not atomically replace output file: ', outputFile)
+  
+  if(! file.rename(tmpOutputFile, outputFile)) stop('Error - could not replace output file: ', outputFile)
+  
   updateLog('alignReads module completed.')
   write(date(), doneFile)
   moduleSucceeded <- TRUE
 }
+
+#-------------------------------------------------------------------------------
 
 args <- parser$parse_args()
 source(file.path(args$softwareRoot, 'lib', 'common.R'))

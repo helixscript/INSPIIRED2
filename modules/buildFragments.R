@@ -16,6 +16,9 @@ parser$add_argument("--dbConfigID",              type = "character",     default
 parser$add_argument("--overwriteDBrecords",      action = "store_true",  default  = FALSE,           help = "Allow existing database records to be overwritten.") 
 
 runModule <- function(){
+  doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
+  if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
+  
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   
   startModule()
@@ -49,21 +52,16 @@ runModule <- function(){
     updateLog(paste0('Processing readID data chunk ',   ppNum(chunkNum), '/',  ppNum(length(readIDs))))
     chunkNum <<- chunkNum + 1
     
-    ### updateLog('   Subsetting full data sets.')
     a <- o$anchorReads[.(x), on = .(readID), nomatch = NULL]
     b <- o$adriftReads[.(x), on = .(readID), nomatch = NULL]
     
-    ### updateLog('   Isolating adrift read columns.')
     b <- b[, .(readID = readID, adrift_seq = seq, adrift_tName = tName, adrift_strand = strand, adrift_tStart = tStart, adrift_tEnd = tEnd)]
     
-    ### updateLog('   Joinging data.')
     r <- b[a, on = .(readID), nomatch = NULL, allow.cartesian = TRUE]
     
-    ### updateLog('   Cleaning up.')
     rm(a, b)
     ### gc()
     
-    ### updateLog('   Filtering joined data set.')
     r <- r[r$tName == r$adrift_tName]
     if(nrow(r) == 0) return(data.table())
     
@@ -76,7 +74,6 @@ runModule <- function(){
     r$fragChromosome <- r$tName
     r$fragWidth = (r$fragEnd - r$fragStart) + 1
   
-    ### updateLog('   Returning fragments.')
     r[, c('tName', 'tStart', 'tEnd', 'adrift_tName', 'adrift_strand', 'adrift_tStart', 'adrift_tEnd', 'strand') := NULL]
     
     r[fragWidth >= args$minFrgamentLength & fragWidth <= args$maxFrgamentLength]
@@ -229,6 +226,8 @@ runModule <- function(){
   updateLog('buildFragments module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
+
+#-------------------------------------------------------------------------------
 
 args <- parser$parse_args()
 source(file.path(args$softwareRoot, 'lib', 'common.R'))

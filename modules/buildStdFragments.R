@@ -31,6 +31,9 @@ parser$add_argument("--UMIprocessingMinSortReads",         type = "integer",    
 parser$add_argument("--UMIprocessingMinPercentTotal",      type = "double",        default  = 20,                  help = 'Min. percentage (0-100) that an UMI needs to reach within a replicate to be considered dominant.')  
 
 runModule <- function(){
+  doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
+  if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
+  
   startModule()
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
@@ -338,8 +341,9 @@ runModule <- function(){
     frags_uniqPosIDs <- bind_rows(a2, b)
     
     invisible(rm(a, b, a2))
-    invisible(gc())
   }
+  
+  invisible(gc())
   
   
   # Multi-hit read rescue.
@@ -645,6 +649,8 @@ runModule <- function(){
   updateLog('buildStdFragments module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
+
+#-------------------------------------------------------------------------------
 
 args <- parser$parse_args()
 source(file.path(args$softwareRoot, 'lib', 'common.R'))

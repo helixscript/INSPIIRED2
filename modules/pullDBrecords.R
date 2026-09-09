@@ -96,6 +96,8 @@ runModule <- function(){
   saveRDS(d, args$outputFile, compress = FALSE)
 }
 
+#-------------------------------------------------------------------------------
+
 args <- parser$parse_args()
 source(file.path(args$softwareRoot, 'lib', 'common.R'))
 

@@ -182,39 +182,44 @@ parse_cdhit_clstr <- function(file_path) {
 
 
 run_blastn_parallel <- function(fastaFile, dbPath, params, threads = 60) {
-  
   seqs <- Biostrings::readDNAStringSet(fastaFile)
   if(length(seqs) == 0) return(data.table())
   
   num_chunks <- min(length(seqs), threads)
   chunks <- split(seqs, cut(seq_along(seqs), num_chunks, labels = FALSE))
   
-  results_list <- parallel::mclapply(seq_along(chunks), function(i) {
-    tmp_chunk <- paste0(fastaFile, ".chunk_", i)
-    
-    Biostrings::writeXStringSet(chunks[[i]], tmp_chunk)
-    
-    res <- run_blastn(tmp_chunk, dbPath, params, threads = 1)
-    
-    if(file.exists(tmp_chunk)) unlink(tmp_chunk)
-    return(res)
-  }, mc.cores = num_chunks)
+  param <- BiocParallel::MulticoreParam(workers = num_chunks, tasks = num_chunks, stop.on.error = TRUE)
+  results_list <- tryCatch(
+    BiocParallel::bplapply(seq_along(chunks), function(i){
+      tmp_chunk <- paste0(fastaFile, ".chunk_", i)
+      on.exit(unlink(tmp_chunk, force = TRUE), add = TRUE)
+      Biostrings::writeXStringSet(chunks[[i]], tmp_chunk)
+      run_blastn(tmp_chunk, dbPath, params, threads = 1)
+    }, BPPARAM = param),
+    finally = try(BiocParallel::bpstop(param), silent = TRUE)
+  )
   
   return(data.table::rbindlist(results_list))
 }
 
 
 run_blastn <- function(fastaFile, dbPath, params, threads = 1){
-  system(paste0("blastn ",  params,
+  
+  outFile <- paste0(fastaFile, '.blastn')
+  comm <- paste0("blastn ",  params,
                 " -query ", fastaFile, 
                 " -db ",    dbPath,
-                " -out ",   paste0(fastaFile, '.blastn'),
+                " -out ",   outFile,
                 " -num_threads ", threads,
-                " -outfmt '6 qseqid qstart qend sstart send sstrand length pident gaps gapopen bitscore'"))
+                " -outfmt '6 qseqid qstart qend sstart send sstrand length pident gaps gapopen bitscore'")
+  
+  status <- system(comm)
+  requireCommandSuccess(status, paste0("blastn query ", basename(fastaFile)))
+  if(!file.exists(outFile)) stop("Error - blastn returned success without creating ", outFile, ".")
   
   hits <- data.table()
-  if(file.info(paste0(fastaFile, '.blastn'))$size > 0) hits <- fread(paste0(fastaFile, '.blastn'), col.names = c("qName", "qS", "qE", "vS", "vE", "strand", "len", "pident", "gaps", "gapsopen", "bitscore"))
-  invisible(file.remove(paste0(fastaFile, '.blastn')))
+  if(file.info(outFile)$size > 0) hits <- fread(outFile, col.names = c("qName", "qS", "qE", "vS", "vE", "strand", "len", "pident", "gaps", "gapsopen", "bitscore"))
+  invisible(file.remove(outFile))
   hits
 }
 
@@ -227,7 +232,10 @@ parseBLAToutput <- function(f){
                 'strand','qName','qSize','qStart','qEnd','tName','tSize','tStart','tEnd','blockCount',
                 'blockSizes','qStarts','tStarts')
   
-  x <- read.table(textConnection(system(paste(file.path(args$softwareRoot, 'bin', 'pslScore.pl'), f), intern=TRUE)), sep='\t')
+  scoreOutput <- suppressWarnings(system(paste(shQuote(file.path(args$softwareRoot, "bin", "pslScore.pl")), shQuote(f)), intern = TRUE))
+  requireCommandSuccess(scoreOutput, "pslScore.pl")
+  x <- read.table(textConnection(scoreOutput), sep = "\t")
+  
   names(x) <- c('tName','tStart','tEnd','hit','pslScore','percentIdentity')
   
   if(nrow(x) != nrow(b)) stop('pslScore.pl output does not match PSL record count')

@@ -27,6 +27,9 @@ parser$add_argument("--ramDiskPath",                  type = "character",     de
 parser$add_argument("--captureUMIs",                  action = "store_true",  default = FALSE,                  help = "Capture and use UMIs in abundance calculations.")
 
 runModule <- function(){
+  doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
+  if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
+  
   startModule()
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
@@ -166,8 +169,7 @@ runModule <- function(){
     
     if(! dir.exists(file.path(args$logDir, paste0('chunk_', chunk_num)))) dir.create(file.path(args$logDir, paste0('chunk_', chunk_num)))
     logFile <- file.path(args$logDir, paste0('chunk_', chunk_num), 'log')
-  
-      
+
     if(args$reverseComplementI1) cI1 <- reverseComplement(cI1)
     
     updateLog(paste0('<data chunk #', chunk_num, '>\tSeparated reads into groups (', ppNum(length(cI1)), ' reads).'), logFile = logFile)
@@ -418,7 +420,6 @@ runModule <- function(){
   
   invisible(gc(verbose = FALSE))
 
-  
   o$trial     <- as.factor(o$trial)
   o$subject   <- as.factor(o$subject)
   o$sample    <- as.factor(o$sample)
@@ -460,6 +461,8 @@ runModule <- function(){
   updateLog('Demultiplex module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
+
+#-------------------------------------------------------------------------------
 
 args <- parser$parse_args()
 args$qualTrimCode <- rawToChar(as.raw(args$qualTrimScore + 33))

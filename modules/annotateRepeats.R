@@ -10,7 +10,11 @@ parser$add_argument("--fileTag",       type = "character", default = "annotateRe
 parser$add_argument("--ramDiskPath",   type = "character", default = "/dev/shm",        help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
 
 runModule <- function(){
+  doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
+  if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
+  
   startModule()
+
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   
   on.exit({
@@ -87,6 +91,8 @@ runModule <- function(){
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
   updateLog('Completed annotateRepeats module.')
 }
+
+#-------------------------------------------------------------------------------
 
 args <- parser$parse_args()
 source(file.path(args$softwareRoot, 'lib', 'common.R'))

@@ -19,6 +19,9 @@ parser$add_argument("--leadSeqClusteringParms",       type = "character",     de
 # --threads not implemented yet.
 
 runModule <- function(){
+  doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
+  if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
+  
   startModule()
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
@@ -277,6 +280,8 @@ runModule <- function(){
   updateLog('buildSites module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
 }
+
+#-------------------------------------------------------------------------------
 
 args <- parser$parse_args()
 source(file.path(args$softwareRoot, 'lib', 'common.R'))

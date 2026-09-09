@@ -24,6 +24,8 @@ runModule <- function(){
   dbDisconnect(conn)
 }
 
+#-------------------------------------------------------------------------------
+
 args <- parser$parse_args()
 source(file.path(args$softwareRoot, 'lib', 'common.R'))
 
