@@ -215,7 +215,7 @@ runModule <- function(){
     if(length(x)) paste(x, collapse = ";") else NA_character_
   }
   
-  frags <- group_by(frags, trial, subject, sample, mode, refGenome, vectorFastaFile, posid) %>%
+  frags <- group_by(frags, trial, subject, sample, mode, refGenome, posid) %>%
            mutate(g = cur_group_id()) %>%
            ungroup() %>%
            data.table()

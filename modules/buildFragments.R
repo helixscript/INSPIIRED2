@@ -349,8 +349,7 @@ runModule <- function(){
       })
     }, error = function(e){
       updateLog(
-        "Database transaction failed; database state should be verified. ",
-        "Prepared parquet files were retained."
+        "Database transaction failed; database state should be verified. Prepared parquet files were retained."
       )
       stop(e)
     })

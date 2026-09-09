@@ -9,4 +9,4 @@ CREATE TABLE fragments (
     processed_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     data_file_name VARCHAR(50),
     PRIMARY KEY (trial, subject, sample, replicate, ref_genome, mode)
-);
+) ENGINE=InnoDB;
