@@ -86,6 +86,21 @@ startModule <- function(){
     if(args$dbConfigFile != 'none' & args$dbConfigID != 'none'){
       args$dbConn <<- createDBconnection()
       updateLog('Established conection with database.')
+      
+      # Database function is tied to a mounted external file system.
+      # Test that this file system is mounted and if writable. 
+      if(! file.exists('/data/.inspiired')) 
+        stop('Error - an external file system with a file name .inspiired was expected to be mounted to /data in the Docker container.')
+      
+      probe <- '/data/.inspiired_writeTest'
+      writable <- tryCatch({
+        writeBin(as.raw(1L), probe)
+        isTRUE(file.size(probe) == 1L)
+      }, error = function(e) FALSE)
+      
+      removed <- !file.exists(probe) || unlink(probe) == 0L
+      if(!writable || !removed)
+        stop('Error - external file system is not writable')
     } else {
       args$dbConn <<- NULL
     }
