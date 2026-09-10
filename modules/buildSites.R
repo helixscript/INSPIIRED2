@@ -15,7 +15,7 @@ parser$add_argument("--integraseCorrectionDist",      type = "integer",       de
 parser$add_argument("--sumSonicBreaksWithin",         type = "character",     default = "replicates",  help = "Sum sonic breaks within either 'replicates' (default) or within sample 'samples'.") 
 parser$add_argument("--leadSeqClusteringParms",       type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
 
-# Dev notes.
+# Dev notes. 
 # --threads not implemented yet.
 
 runModule <- function(){
@@ -52,91 +52,136 @@ runModule <- function(){
   # Define fragment widths.
   frags$fragWidths <- frags$fragEnd - frags$fragStart + 1
   
-  # Define fragment IDs.
-  frags[, fragID := paste(trial, subject, sample, replicate, refGenome, mode,
-                          fragChromosome, fragStrand, fragStart, fragEnd, sep = ":")]
-  
-  if(! args$disableDualDetect & 'U5' %in% frags$mode & 'U3' %in% frags$mode){
+  if(!args$disableDualDetect && all(c('U3', 'U5') %in% frags$mode)){
     updateLog('Searching for dual detections.')
+    if(length(args$dualDetectWidth) != 1L || is.na(args$dualDetectWidth) || args$dualDetectWidth < 0L)
+      stop('Error - dualDetectWidth must be a non-negative integer.')
+    if(anyNA(frags$posid)) stop('Error - missing posids cannot be evaluated for dual detection.')
+    if('.dualRowID' %in% names(frags)) stop('Error - reserved column .dualRowID is already present.')
     
-    # Loop through U3 fragments and search for close by U5 fragments oriented in the opposite direction. 
-    # For each identified pair, switch mode to 'dual detect', assign all fragments the U3 strand,
-    # and assign a common posid which will be centered between the U3 and U5 posids.
-    # Track which fragments have been merged so that closely spaced fragments are not merged more than once.
+    # Build all candidate relationships before changing any fragments. Only
+    # reciprocal one-to-one U3/U5 relationships are accepted.
+    originalRowCount <- nrow(frags)
+    frags[, .dualRowID := .I]
+    dualGroupCols <- c('trial', 'subject', 'sample', 'refGenome')
     
-    invisible(lapply(split(frags, paste(frags$trial, frags$subject, frags$sample, frags$refGenome)), function(x){
-      processed_fragments <- data.table()
-      
-      if('U5' %in% x$mode & 'U3' %in% x$mode){
-        u3 <- x[x$mode == 'U3']
-        u5 <- x[x$mode == 'U5']
-      
-        invisible(lapply(unique(u3$posid), function(u3_posid){
-          parts  <- unlist(strsplit(u3_posid, '[\\+\\-]'))
-          chrom  <- parts[1]
-          pos    <- as.integer(parts[2])
-          strand <- str_extract(u3_posid, '[\\+\\-]')
-          
-          alts <- paste0(chrom, ifelse(strand == '+', '-', '+'), (pos - args$dualDetectWidth):(pos + args$dualDetectWidth))
-          
-          z <- subset(u5, posid %in% alts)
-          
-          if(nrow(z) > 0){
-            # Retrieve fragments for both sites.
-            f1 <- subset(u3, posid == u3_posid & ! fragID %in% processed_fragments$fragID)
-            f2 <- subset(u5, posid %in% alts & ! fragID %in% processed_fragments$fragID)
-            
-            if(nrow(f1) == 0 | nrow(f2) == 0) return()
-            
-            candidateU5posids <- unique(z$posid)
-            
-            if(length(candidateU5posids) > 1L){
-              updateLog(paste0('Warning - U3 site ', u3_posid, ' has multiple candidate U5 sites: ',
-                paste(candidateU5posids, collapse = ', '), '. Leaving these sites unmerged.'
-              ))
-              return()
-            }
-            
-            updateLog(paste0('   Processing U3 posid ', u3_posid, ' as a dual detection with ', nrow(f2), ' U5 fragments.'))
-            
-            # Records processed u5 fragments 
-            i <- which(frags$fragID %in% c(f1$fragID, f2$fragID))
-            processed_fragments <<- bind_rows(processed_fragments, frags[i,])
-            
-            # Apply positive strand position corrections.
-            i <- which(frags$fragID %in% c(f1$fragID, f2$fragID) & frags$fragStrand == '+')
-            frags[i,]$posid <<- unlist(lapply(strsplit(frags[i,]$posid, '[\\+\\-]', perl = TRUE), function(x) paste0(x[1], '+', as.integer(x[2]) + args$integraseCorrectionDist)))
-            
-            # Apply negative strand position corrections.
-            i <- which(frags$fragID %in% c(f1$fragID, f2$fragID) & frags$fragStrand == '-')
-            frags[i,]$posid <<- unlist(lapply(strsplit(frags[i,]$posid, '[\\+\\-]', perl = TRUE), function(x) paste0(x[1], '-', as.integer(x[2]) - args$integraseCorrectionDist)))
-            
-            # Create combined repLeaderSeq string.
-            i <- which(frags$fragID %in% c(f1$fragID, f2$fragID))
-            frags[i,]$repLeaderSeq <<- paste0(names(sort(table(f1$repLeaderSeq), decreasing = TRUE))[1], '/', names(sort(table(f2$repLeaderSeq), decreasing = TRUE))[1])
-            
-            # Set new mode.
-            frags[i,]$mode <<- 'dual detect'
-            
-            # Find the most common fragment intSite position from combined fragments.
-            pos <- names(sort(table(sub('[\\+\\-]', '', stringr::str_extract(frags[i,]$posid, '[\\+\\-]\\d+'))), decreasing = TRUE))[1]
-            
-            # Let a leaderSeqGroupNum value of zero represent dual-detections.
-            frags[i,]$leaderSeqGroupNum <<- 0
-
-            if(strand == '-'){
-              frags[i,]$fragStrand <<- '+'                  # Set the u3 frag strands to positive to reflect correct orientation. U5 posid already '+'.
-              frags[i,]$posid  <<- paste0(chrom, '+', pos)  # Set the u3 frag posids to the u5 posid which is positive causing its fragments to merge with U3 fragments.
-            } else {
-              frags[i,]$fragStrand <<- '-'                  # Set the u3 frag strands to negative to reflect reverse orientation. U5 posid already '-'.
-              frags[i,]$posid  <<- paste0(chrom, '-', pos)  # Set the u3 frag posids to the u5 posid which is negative causing its fragments to merge with U3 fragments.
-            }
-          }
-        }))
-      }
-    }))
+    frags <- rbindlist(lapply(split(frags, by = dualGroupCols, keep.by = TRUE,
+                                    flatten = TRUE, sorted = TRUE, drop = TRUE), function(x){
+                                      if(!all(c('U3', 'U5') %in% x$mode)) return(x)
+                                      
+                                      u3 <- x[mode == 'U3']
+                                      u5 <- x[mode == 'U5']
+                                      
+                                      candidatePairs <- rbindlist(lapply(sort(unique(as.character(u3$posid))), function(u3Posid){
+                                        parts <- unlist(strsplit(u3Posid, '[\\+\\-]'))
+                                        if(length(parts) != 2L || is.na(suppressWarnings(as.integer(parts[2]))))
+                                          stop('Error - unable to parse U3 posid during dual-detection search: ', u3Posid)
+                                        
+                                        chrom <- parts[1]
+                                        pos <- as.integer(parts[2])
+                                        strand <- str_extract(u3Posid, '[\\+\\-]')
+                                        alts <- paste0(chrom, ifelse(strand == '+', '-', '+'),
+                                                       (pos - args$dualDetectWidth):(pos + args$dualDetectWidth))
+                                        candidateU5 <- sort(unique(as.character(u5$posid[u5$posid %in% alts])))
+                                        
+                                        if(!length(candidateU5)) return(NULL)
+                                        data.table(u3Posid = u3Posid, u5Posid = candidateU5,
+                                                   chromosome = chrom, u3Strand = strand)
+                                      }), use.names = TRUE)
+                                      
+                                      if(!nrow(candidatePairs)) return(x)
+                                      
+                                      # For each U3 site, this counts how many distinct U5 sites it could match.
+                                      candidatePairs <- unique(candidatePairs, by = c('u3Posid', 'u5Posid'))
+                                      candidatePairs[, nU5forU3 := uniqueN(u5Posid), by = u3Posid]
+                                      candidatePairs[, nU3forU5 := uniqueN(u3Posid), by = u5Posid]
+                                      setorder(candidatePairs, u3Posid, u5Posid)
+                                      
+                                      # Remove ambiguous pairings.
+                                      rejected <- candidatePairs[nU5forU3 != 1L | nU3forU5 != 1L]
+                                      
+                                      
+                                      # Warn about ambiguous pairings.
+                                      if(nrow(rejected)){
+                                        groupLabel <- paste(x$trial[1], x$subject[1], x$sample[1], x$refGenome[1], sep = '/')
+                                        updateLog(paste0('Warning - ambiguous dual-detection candidates in ', groupLabel,
+                                                         ': U3 sites [', paste(sort(unique(rejected$u3Posid)), collapse = ', '),
+                                                         ']; U5 sites [', paste(sort(unique(rejected$u5Posid)), collapse = ', '),
+                                                         ']. Leaving all involved sites unmerged.'))
+                                      }
+                                      
+                                      accepted <- candidatePairs[nU5forU3 == 1L & nU3forU5 == 1L]
+                                      
+                                      if(!nrow(accepted)) return(x)
+                                      
+                                      if(anyDuplicated(accepted$u3Posid) || anyDuplicated(accepted$u5Posid))
+                                        stop('Error - a dual-detection site was assigned to more than one accepted pair.')
+                                      
+                                      # Accepted data table stores unambiguous rationale dual detection pairs 
+                                      # u3Posid           u5Posid chromosome u3Strand nU5forU3 nU3forU5
+                                      # 1:  chr17+7683122   chr17-7683126       chr17        +         1         1
+                                      # 2: chr3-170572672  chr3+170572668        chr3        -         1         1
+                                      
+                                      for(j in seq_len(nrow(accepted))){
+                                        targetU3 <- accepted$u3Posid[j]
+                                        targetU5 <- accepted$u5Posid[j]
+                                        u3Rows <- u3[posid == targetU3, .dualRowID]  # Return row ids of targeted U3 candidates
+                                        u5Rows <- u5[posid == targetU5, .dualRowID]  # Return row ids of targeted U5 candidates
+                                        pairRows <- c(u3Rows, u5Rows)
+                                        
+                                        if(!length(u3Rows) || !length(u5Rows))
+                                          stop('Error - accepted dual-detection pair has no associated fragments.')
+                                        
+                                        f1 <- x[.dualRowID %in% u3Rows] # Retrieve U3 records as f1
+                                        f2 <- x[.dualRowID %in% u5Rows] # Retrieve U5 records as f2
+                                        
+                                        updateLog(paste0('   Processing U3 posid ', targetU3, ' as a dual detection with ',
+                                                         nrow(f2), ' U5 fragments at ', targetU5, '.'))
+                                        
+                                        # Apply the integrase correction factor to positive and negative strand positions in the pairing.
+                                        i <- which(x$.dualRowID %in% pairRows & x$fragStrand == '+')
+                                        if(length(i)) x[i, posid := unlist(lapply(strsplit(as.character(posid), '[\\+\\-]', perl = TRUE),
+                                                                                  function(z) paste0(z[1], '+', as.integer(z[2]) + args$integraseCorrectionDist)))]
+                                        
+                                        i <- which(x$.dualRowID %in% pairRows & x$fragStrand == '-')
+                                        if(length(i)) x[i, posid := unlist(lapply(strsplit(as.character(posid), '[\\+\\-]', perl = TRUE),
+                                                                                  function(z) paste0(z[1], '-', as.integer(z[2]) - args$integraseCorrectionDist)))]
+                                        
+                                        # Record the most common leader sequences and report both in repLeaseSeq.
+                                        # Set mode and assign a reserved leaderSeqGroupNum, 0, reserved for dual detections.
+                                        i <- which(x$.dualRowID %in% pairRows)
+                                        u3Leader <- names(sort(table(f1$repLeaderSeq), decreasing = TRUE))[1]
+                                        u5Leader <- names(sort(table(f2$repLeaderSeq), decreasing = TRUE))[1]
+                                        x[i, repLeaderSeq := paste0(u3Leader, '/', u5Leader)]
+                                        x[i, mode := 'dual detect']
+                                        x[i, leaderSeqGroupNum := 0]
+                                        
+                                        # Identify th mos common, corrected position, and correct all fragments in the pair to that position.
+                                        # Assign the the orientation strand used in the posid by U3 alignment.
+                                        pos <- names(sort(table(sub('[\\+\\-]', '', stringr::str_extract(as.character(x[i, posid]), '[\\+\\-]\\d+'))), decreasing = TRUE))[1]
+                                        
+                                        if(length(pos) != 1L || is.na(pos))
+                                          stop('Error - unable to determine a common position for accepted dual-detection pair.')
+                                        
+                                        if(accepted$u3Strand[j] == '-'){
+                                          x[i, fragStrand := '+']
+                                          x[i, posid := paste0(accepted$chromosome[j], '+', pos)]
+                                        } else {
+                                          x[i, fragStrand := '-']
+                                          x[i, posid := paste0(accepted$chromosome[j], '-', pos)]
+                                        }
+                                      }
+                                      
+                                      x
+                                    }), use.names = TRUE, fill = FALSE)
+    
+    setorder(frags, .dualRowID)
+    if(nrow(frags) != originalRowCount || anyDuplicated(frags$.dualRowID) ||
+       !identical(frags$.dualRowID, seq_len(originalRowCount)))
+      stop('Error - dual-detection processing changed the fragment row set.')
+    frags[, .dualRowID := NULL]
   }
-    
+  
   if(! args$disableOrientationCorrection & ('U5' %in% frags$mode | 'U3' %in% frags$mode)){
     updateLog('Updating strandedness of U5 and U3 intSite calls.')
     
@@ -187,9 +232,9 @@ runModule <- function(){
   
   consensusLeaderSeq <- function(x){
     tab <- dplyr::group_by(x, repLeaderSeq) %>% 
-           dplyr::summarise(nWidths = n_distinct(fragWidths), nReads = sum(reads)) %>% 
-           dplyr::ungroup() %>%
-           dplyr::arrange(desc(nWidths), desc(nReads))
+      dplyr::summarise(nWidths = n_distinct(fragWidths), nReads = sum(reads)) %>% 
+      dplyr::ungroup() %>%
+      dplyr::arrange(desc(nWidths), desc(nReads))
     as.character(tab[1, 'repLeaderSeq'])
   }
   
@@ -216,47 +261,47 @@ runModule <- function(){
   }
   
   frags <- group_by(frags, trial, subject, sample, mode, refGenome, posid) %>%
-           mutate(g = cur_group_id()) %>%
-           ungroup() %>%
-           data.table()
+    mutate(g = cur_group_id()) %>%
+    ungroup() %>%
+    data.table()
   
   
   updateLog('Gather fragments into intSite events.')
   sites <- bind_rows(lapply(split(frags, frags$g), function(x){
-             # Loop through replicates for this site defined by 'g'
-             r <- bind_cols(lapply(min(frags$replicate):max(frags$replicate), function(r){
+    # Loop through replicates for this site defined by 'g'
+    r <- bind_cols(lapply(min(frags$replicate):max(frags$replicate), function(r){
       
-                  b <- tibble(UMIs = NA, sonicLengths = NA, reads = NA, repLeaderSeq = NA)
-                  o <- x[x$replicate == r,]
+      b <- tibble(UMIs = NA, sonicLengths = NA, reads = NA, repLeaderSeq = NA)
+      o <- x[x$replicate == r,]
       
-                  if(nrow(o) >= 1){
-                    b$UMIs <- n_distinct(unlist(o$UMIs))
-                    b$sonicLengths <- n_distinct(o$fragWidths)
-                    b$reads <- sum(o$reads)
-                    b$repLeaderSeq <- consensusLeaderSeq(o)
-                } 
+      if(nrow(o) >= 1){
+        b$UMIs <- n_distinct(unlist(o$UMIs))
+        b$sonicLengths <- n_distinct(o$fragWidths)
+        b$reads <- sum(o$reads)
+        b$repLeaderSeq <- consensusLeaderSeq(o)
+      } 
       
-                names(b) <- paste0('rep', r, '-', names(b))
-                b
-             }))
-      
-             bind_cols(tibble(trial = x$trial[1], 
-                              subject = x$subject[1], 
-                              sample = x$sample[1],
-                              refGenome = x$refGenome[1],
-                              mode = x$mode[1],
-                              leaderSeqHMM = collapsePrepMetadata(x$leaderSeqHMM),
-                              vectorFastaFile = collapsePrepMetadata(x$vectorFastaFile),
-                              posid = x$posid[1],
-                              UMIs = n_distinct(unlist(x$UMIs)),
-                              sonicLengths = ifelse(args$sumSonicBreaksWithin == 'replicates',
-                                                    sum(r[, grepl('sonicLengths', names(r))], na.rm = TRUE),  
-                                                    n_distinct(x$fragWidths)),
-                              reads = sum(x$reads),
-                              repLeaderSeq = consensusLeaderSeq(x),
-                              repLeaderSeqClusters = n_distinct(clusterSeqs(unique(x$repLeaderSeq))$cluster_id),
-                              nRepsObs = sum(! is.na(unlist(r[, which(grepl('reads', names(r)))])))), r)
-           })) %>% arrange(desc(sonicLengths))
+      names(b) <- paste0('rep', r, '-', names(b))
+      b
+    }))
+    
+    bind_cols(tibble(trial = x$trial[1], 
+                     subject = x$subject[1], 
+                     sample = x$sample[1],
+                     refGenome = x$refGenome[1],
+                     mode = x$mode[1],
+                     leaderSeqHMM = collapsePrepMetadata(x$leaderSeqHMM),
+                     vectorFastaFile = collapsePrepMetadata(x$vectorFastaFile),
+                     posid = x$posid[1],
+                     UMIs = n_distinct(unlist(x$UMIs)),
+                     sonicLengths = ifelse(args$sumSonicBreaksWithin == 'replicates',
+                                           sum(r[, grepl('sonicLengths', names(r))], na.rm = TRUE),  
+                                           n_distinct(x$fragWidths)),
+                     reads = sum(x$reads),
+                     repLeaderSeq = consensusLeaderSeq(x),
+                     repLeaderSeqClusters = n_distinct(clusterSeqs(unique(x$repLeaderSeq))$cluster_id),
+                     nRepsObs = sum(! is.na(unlist(r[, which(grepl('reads', names(r)))])))), r)
+  })) %>% arrange(desc(sonicLengths))
   
   # Set nRepsObs to NA for dual detections since these have values of 1 after moving dual detection to rep-0.
   sites[sites$mode == 'dual detect',]$nRepsObs <- NA
@@ -275,10 +320,10 @@ runModule <- function(){
   updateLog('Sample level site summary:')
   ts <- paste0(base::format(Sys.time(), "%m.%d.%Y"), ' [', timeElapsedString(), "]")
   siteSummary <- group_by(sites, trial, subject, sample, refGenome) %>% 
-                 summarise(nSites = n_distinct(posid), .groups = 'drop') %>% 
-                 ungroup() %>%
-                 mutate(timeStamp = ts, .before = trial) %>%
-                 mutate(across(everything(), as.character))
+    summarise(nSites = n_distinct(posid), .groups = 'drop') %>% 
+    ungroup() %>%
+    mutate(timeStamp = ts, .before = trial) %>%
+    mutate(across(everything(), as.character))
   siteSummary <- rbind(names(siteSummary), siteSummary)
   siteSummary[1,1] <- ts
   write.table(siteSummary, file =  args$logFile, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE,  append = TRUE)
