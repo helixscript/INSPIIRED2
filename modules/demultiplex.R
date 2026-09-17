@@ -466,10 +466,8 @@ runModule <- function(){
   # Here are are discarding recovered sequences and setting to poly-A.
   # They can be re-introduced in later versions once the wet-side has greatly suppressed rearrangements.
   
-  if(! args$captureUMIs){
-    o$UMI <- "AAAAAAAAAAAA"
-    o$UMI <- as.factor(o$UMI)
-  }
+  if(!args$captureUMIs) o$UMI <- "AAAAAAAAAAAA"
+  o$UMI <- as.character(o$UMI)
   
   updateLog(paste0('Writing ', ppNum(n_distinct(o$readID)), ' reads.'))
   saveRDS(o, file.path(args$outputDir, paste0(args$fileTag, '.rds')), compress = FALSE)

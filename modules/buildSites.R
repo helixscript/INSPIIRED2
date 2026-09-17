@@ -316,6 +316,13 @@ runModule <- function(){
     ) %>%
     ungroup() %>%
     select(-sampleAbund)
+
+  # Change UMI counts of 1 to NA if UMIs were not captured.
+  umiValues <- unlist(frags$UMIs, use.names = FALSE)
+  if(length(umiValues) > 0L && isTRUE(all(umiValues == "AAAAAAAAAAAA"))){
+    umiCols <- grep("^(UMIs|rep[0-9]+-UMIs)$", names(sites), value = TRUE)
+    for(nm in umiCols) sites[[nm]] <- NA_integer_
+  }
   
   updateLog('Sample level site summary:')
   ts <- paste0(base::format(Sys.time(), "%m.%d.%Y"), ' [', timeElapsedString(), "]")
