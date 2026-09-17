@@ -88,6 +88,8 @@ runModule <- function(){
   
   d <- as.data.table(rbindlist(lapply(f, arrow::read_parquet)))
   
+  if(!nrow(d)) stop('Error - no fragment rows were found in the selected parquet files.', call. = FALSE)
+  
   # Rework the factor levels. 
   cols <- names(d)[vapply(d, is.factor, logical(1))]
   d[, (cols) := lapply(.SD, as.character), .SDcols = cols]

@@ -32,7 +32,14 @@ runModule <- function(){
   
   d <- readRDS(args$inputData)
   
-  o <- rbindlist(lapply(split(d, d$refGenome), function(x){
+  if(!is.data.frame(d))
+    stop('Error - input data must be a table.', call. = FALSE)
+  if(!nrow(d))
+    stop('Error - input contains no integration sites to annotate.', call. = FALSE)
+  if(!'refGenome' %in% names(d) || anyNA(d$refGenome) || any(!nzchar(trimws(as.character(d$refGenome)))))
+    stop('Error - input contains missing or blank refGenome values.', call. = FALSE)
+  
+  o <- rbindlist(lapply(split(d, d$refGenome, drop = TRUE), function(x){
     tu <- readRDS(file.path(args$softwareRoot, 'data', 'genomeAnnotations', paste0(x$refGenome[1], '.TUs.rds')))
     ex <- readRDS(file.path(args$softwareRoot, 'data', 'genomeAnnotations', paste0(x$refGenome[1], '.exons.rds')))
     

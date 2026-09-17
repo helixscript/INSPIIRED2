@@ -87,8 +87,17 @@ runModule <- function() {
     list(data=d,plot=p,order=ord)
   }
    
-   o <- subseq(readFastq(args$inputData)@sread, 1, args$mapWidth)
-   p <- makeSeqHeatmap(o, nBins = args$nBinRows)
+  o <- readFastq(args$inputData)@sread
+  if(!length(o))
+    stop('Error - input FASTQ contains no reads; no sequence map can be created.', call. = FALSE)
+  if(is.na(args$mapWidth) || is.na(args$nBinRows) ||
+     args$mapWidth < 1L || args$nBinRows < 1L)
+    stop('Error - mapWidth and nBinRows must be positive integers.', call. = FALSE)
+  if(any(width(o) < args$mapWidth))
+    stop('Error - some reads are shorter than --mapWidth; reduce --mapWidth.', call. = FALSE)
+  
+  o <- subseq(o, start = 1L, width = args$mapWidth)
+  p <- makeSeqHeatmap(o, nBins = args$nBinRows)
    
    suppressMessages(ggsave(file.path(args$outputDir, paste0(args$fileTag, '.png')), p$plot, units = 'in', height = args$outputImgHeight))
 }

@@ -51,6 +51,12 @@ runModule <- function(){
   
   frags <- setDT(readRDS(args$inputData))
   
+  if(!nrow(frags)){
+    msg <- 'Error - buildStdFragments input contains no fragment records.'
+    updateLog(msg)
+    stop(msg, call. = FALSE)
+  }
+  
   if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
     stop("Error - chromosome names cannot contain '+' or '-' because these characters delimit posid strand.")
   }

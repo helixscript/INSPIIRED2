@@ -54,6 +54,9 @@ runModule <- function(){
   
   sampleData <- read_tsv(args$sampleData, show_col_types = FALSE)
   
+  if(!nrow(sampleData))
+    stop('Error - sampleData contains no sample rows.', call. = FALSE)
+  
   if(anyNA(sampleData$mode) || any(!sampleData$mode %in% c("U3", "U5", "NA")))
     stop("Error - sampleData mode values must be exactly 'U3', 'U5', or 'NA'.")
   
@@ -336,7 +339,18 @@ runModule <- function(){
       return(d)
     }))
     
+    if(nrow(d)){
+      keep <- !is.na(d$anchorReadSeq) & nzchar(d$anchorReadSeq) &
+        !is.na(d$adriftReadSeq) & nzchar(d$adriftReadSeq)
+      if(any(!keep))
+        updateLog(paste0('<data chunk #', chunk_num, '>\tDropping ', ppNum(sum(!keep)),
+                         ' read pairs with an empty sequence after trimming.'), logFile = logFile)
+      d <- d[keep]
+    }
+    
     updateLog(paste0('<data chunk #', chunk_num, '>\t', ppNum(nrow(d)), ' reads demultiplexed.'), logFile = logFile)
+    
+    if(!nrow(d)) return(TRUE)
     
     suppressWarnings(rm(sampleData, args, cI1, cR1, cR2))
     
@@ -365,6 +379,12 @@ runModule <- function(){
   rm(logs)
   
   files <- list.files(args$tmpDir, pattern = '*.fst$', full.names = TRUE)
+  
+  if(length(files) == 0){
+    msg <- 'Error -- no fst files found, no reads were demultiplexed.'
+    updateLog(msg)
+    stop(msg)
+  }
   
   updateLog(paste0('Collating ', length(files), ' data files from ', args$tmpDir, '/'))
   

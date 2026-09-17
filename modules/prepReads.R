@@ -314,11 +314,36 @@ runModule <- function(){
   d$leaderSeq <- substr(d$anchorReadSeq, 1, d$targetEnd)
   d$anchorReadSeq <- substr(d$anchorReadSeq, d$targetEnd + 1, nchar(d$anchorReadSeq))
   
+  keep <- !is.na(d$anchorReadSeq) & nzchar(d$anchorReadSeq) & !is.na(d$adriftReadSeq) & nzchar(d$adriftReadSeq)
+  
+  if(any(!keep)) updateLog(paste0('Dropping ', ppNum(sum(!keep)), ' read pairs with an empty sequence after leader removal.'))
+  d <- d[keep]
+  
+  if(!nrow(d)){
+    msg <- 'Error - no read pairs remain with nonempty sequences after HMM leader removal.'
+    updateLog(msg)
+    stop(msg)
+  }
+  
   d$targetStart <- NULL
   d$targetEnd <- NULL
   
   if(! args$disableOverReadTrimming){
     updateLog('Trimming over reading.')
+    
+    w <- args$ORtrimPatternWidth
+    if(length(w) != 1L || is.na(w) || w < 1L){
+      msg <- 'Error - ORtrimPatternWidth must be a positive integer.'
+      updateLog(msg)
+      stop(msg, call. = FALSE)
+    }
+      
+    if(anyNA(d$linker2) || anyNA(d$leaderSeq) || any(nchar(d$linker2) < w) || any(nchar(d$leaderSeq) < w)){
+      msg <- paste0('Error - over-read trimming requires linker2 and recovered leaderSeq lengths >= ',
+                    w, ' nt. Lower --ORtrimPatternWidth or use --disableOverReadTrimming.')
+      updateLog(msg)
+      stop(msg, call. = FALSE)
+    }
     
     d$anchorReadTrimSeq <- as.character(subseq(reverseComplement(DNAStringSet(d$linker2)), 1, args$ORtrimPatternWidth))
     d$adriftReadTrimSeq <- as.character(subseq(reverseComplement(DNAStringSet(d$leaderSeq)), 1, args$ORtrimPatternWidth))
