@@ -238,6 +238,374 @@ Core modules accept the following options:
 
 
 
+<br>
+
+
+## Core analysis modules
+
+INSPIIRED2 processes sequencing data through eight core modules. Each module saves an RDS object that becomes the input to the next stage, allowing an analysis to resume from an intermediate result. The first six modules identify integration sites and calculate their abundance; the final two add genomic annotations.
+
+The examples below use `out` as the output directory and the default output names. Set `--fileTag` to change a module's output prefix, and update the next module's `--inputData` accordingly. Each core module also writes a `.log` file, a `.yml` parameter record, and a `.done` marker after successful completion. Run `inspiired2 <module> --help` for its full argument list.
+
+### demultiplex: assign read pairs to sample replicates
+
+`demultiplex` separates a sequencing run into the sample replicates defined in the sample data file. Assignment uses the Index 1 barcode together with the linker sequences on the adrift read. Combining these identifiers helps distinguish libraries that share an index or linker.
+
+**Input:** synchronized Index 1, adrift-read, and anchor-read FASTQ files, plus a tab-delimited sample data file.
+
+**Output:** `demultiplex.rds`, containing assigned read pairs, sample metadata, read sequences, and read counts; `demultiplex.tbl`, a tab-delimited copy of the sample table with `demultiplexedReads` counts.
+
+```bash
+inspiired2 demultiplex --outputDir out --threads 30 \
+  --sampleData sampleData.tsv \
+  --indexReads I1.fastq.gz \
+  --adriftReads R1.fastq.gz \
+  --anchorReads R2.fastq.gz
+```
+
+The module checks that the three FASTQ files have matching read IDs in the same order. It tests whether the Index 1 sequences should be reverse-complemented, trims low-quality read tails, and matches the barcode and the linker segments on either side of the UMI. It then removes the linker from the adrift read and trims matching poly-G tails from both mates. Reads assigned more than once are removed to avoid ambiguous sample assignments.
+
+By default, identical combinations of UMI, anchor sequence, and adrift sequence are collapsed within each sample replicate. The number of original read pairs is retained in `nReads`.
+
+| Option | Default | Effect |
+|---|---|---|
+| `--index1ReadMaxMismatch` | `1` | Allowed mismatches when matching Index 1. |
+| `--adriftReadLinkerMaxMismatch` | `1` | Allowed mismatches in the linker segment before the UMI. |
+| `--postUmiLinkerMaxMismatch` | `1` | Allowed mismatches in the linker segment after the UMI. |
+| `--qualTrimScore` | `10` | Phred score threshold used for tail trimming. |
+| `--qualTrimHalfWidth` | `3` | Half-width, in bases, of the quality-trimming window. |
+| `--qualTrimEvents` | `2` | Number of low-quality events within the window required to trigger trimming. |
+| `--captureUMIs` | Off | Preserve recovered UMI sequences for downstream processing. |
+| `--correctGolayIndexReads` | Off | Apply correction for 12-nucleotide Golay barcodes before assignment. |
+| `--disableSequenceCollapse` | Off | Retain individual assigned read pairs instead of collapsing identical records. |
+
+**UMI behavior:** UMI sequences are extracted during demultiplexing, but the default output replaces them with a common placeholder. Enable `--captureUMIs` if UMI information is required. With the default settings, downstream abundance estimates use distinct fragment lengths, and the final UMI count fields are reported as `NA`.
+
+Source: [modules/demultiplex.R](modules/demultiplex.R).
+
+### prepReads: identify the vector boundary and recover genomic sequence
+
+`prepReads` identifies the vector-terminal sequence at the beginning of each anchor read and removes it before genome alignment. This sequence, called the *leader sequence*, is retained separately for later reporting. Recognizing the leader helps establish where the read crosses from vector DNA into flanking genomic DNA.
+
+**Input:** `demultiplex.rds`.
+
+**Output:** `prepReads.rds`, containing the prepared genomic read pairs and recovered `leaderSeq`; `prepReads_vectorHitReads.tsv.gz`, containing reads rejected by the vector filter when that filter is enabled.
+
+```bash
+inspiired2 prepReads --outputDir out --threads 30 \
+  --inputData out/demultiplex.rds
+```
+
+The module runs `nhmmer` with the HMM assigned to each library. It selects the highest-scoring forward-strand hit per anchor read and applies the configured start-position range, minimum and maximum bit scores, and optional HMM-end and terminal-sequence requirements. Accepted leaders are removed from the anchor reads.
+
+For short fragments, a read may continue through the genomic insert and into the sequence at the opposite end. The default over-read trimming step detects this using reverse-complemented linker and leader sequences. It then requires both genomic read segments to meet the minimum length. Finally, a BLAST search tests the tail of each anchor read against its assigned vector sequence; matching pairs are removed as likely internal-vector reads.
+
+| Option | Default | Effect |
+|---|---|---|
+| `--minReadLength` | `30` | Minimum length of each mate after the enabled over-read trimming step. |
+| `--ORtrimPatternWidth` | `8` | Number of bases used to recognize over-reading. |
+| `--ORseqMaxMismatch` | `0.10` | Mismatch fraction used to calculate the over-read pattern allowance. |
+| `--vectorTestWidth` | `25` | Number of bases at the anchor-read tail tested against the vector. |
+| `--vectorTestMinPercentID` | `90` | Minimum sequence identity percentage for a vector hit. |
+| `--vectorTestMinCoverage` | `90` | Minimum coverage percentage of the tested sequence for a vector hit. |
+| `--disableOverReadTrimming` | Off | Skip over-read trimming and its associated minimum-length filter. |
+| `--disableVectorFilter` | Off | Skip the internal-vector read filter. |
+| `--HMMparams` | `none` | Supply HMM-specific processing parameters instead of reading the matching `.cfg` files. |
+
+HMM thresholds normally come from `data/hmms/<HMM-name>.cfg`. A `--HMMparams` entry contains the HMM filename followed by seven comma-separated values: minimum start, maximum start, minimum bit score, maximum bit score, match-end flag, terminal sequence, and end radius. Separate multiple entries with `|` and quote the entire argument. When this override is used, provide an entry for every HMM present in the input. The supporting `testHMMs` command can help inspect these settings.
+
+Source: [modules/prepReads.R](modules/prepReads.R).
+
+### alignReads: align both mates to their reference genomes
+
+`alignReads` uses BLAT to align the prepared anchor and adrift sequences to the reference genome assigned to each library. It retains all alignments that pass the configured filters, allowing later stages to evaluate ambiguous mappings using paired-read evidence.
+
+**Input:** `prepReads.rds` and the required `data/referenceGenomes/<refGenome>.2bit` files.
+
+**Output:** `alignReads.rds`, an R list containing separate `anchorReads` and `adriftReads` alignment tables.
+
+```bash
+inspiired2 alignReads --outputDir out --threads 30 \
+  --inputData out/prepReads.rds
+```
+
+Identical sequences are aligned once per reference genome, and their alignments are joined back to the corresponding read records. Anchor reads are aligned first; adrift reads are processed only when their anchor mate has an accepted alignment. Filters require sufficient sequence identity and query coverage and limit insertions in the query and reference. Stored alignment coordinates are converted from BLAT's format to 1-based, inclusive coordinates.
+
+| Option | Default | Effect |
+|---|---|---|
+| `--minPercentID` | `95` | Minimum alignment identity percentage. |
+| `--minAlignmentCoverage` | `95` | Minimum percentage of the query covered by the alignment span. |
+| `--blatTileSize` | `11` | Tile size, in bases, used by BLAT. |
+| `--blatStepSize` | `5` | Spacing, in bases, between BLAT seed tiles. |
+| `--blatRepMatch` | `3000` | Repeat-match threshold used by BLAT. |
+| `--blatMaxtNumInsert` | `1` | Maximum number of insertion events in the target. |
+| `--blatMaxqNumInsert` | `1` | Maximum number of insertion events in the query. |
+| `--blatMaxtBaseInsert` | `1` | Maximum total inserted bases in the target. |
+| `--blatMaxqBaseInsert` | `1` | Maximum total inserted bases in the query. |
+| `--dataRowChunkSize` | `2500` | Number of unique sequences sent to each alignment worker. |
+
+Source: [modules/alignReads.R](modules/alignReads.R).
+
+### buildFragments: reconstruct candidate genomic fragments
+
+`buildFragments` combines anchor and adrift alignments from the same read pair into candidate physical fragments. Each fragment connects a vector-genome junction to a genomic shearing boundary.
+
+**Input:** `alignReads.rds`.
+
+**Output:** `buildFragments.rds`, a table of candidate fragments with genomic coordinates, strand, sequences, read counts, and sample metadata.
+
+```bash
+inspiired2 buildFragments --outputDir out --threads 30 \
+  --inputData out/alignReads.rds
+```
+
+Mate alignments must lie on the same chromosome, have opposite strands, and define a fragment within the permitted length range. The anchor alignment determines the fragment strand and integration-side boundary. A read pair can produce several candidate fragments when its alignments are ambiguous; these candidates are carried forward for standardization and resolution.
+
+| Option | Default | Effect |
+|---|---|---|
+| `--minFrgamentLength` | `40` | Minimum accepted fragment length in bases. |
+| `--maxFrgamentLength` | `100000` | Maximum accepted fragment length in bases. |
+| `--dataRowChunkSize` | `5000` | Number of read IDs processed in each fragment-building batch. |
+| `--dbConfigFile` | `none` | Path to the database credential file. |
+| `--dbConfigID` | `none` | Name of the credential group within the database configuration file. |
+| `--overwriteDBrecords` | Off | Allow replacement of existing database entries for the same sample-replicate keys. |
+
+The spellings `minFrgamentLength` and `maxFrgamentLength` match the current command-line interface.
+
+Supplying both database options enables optional database and Parquet storage. The module then also writes candidate fragment data to checksum-named Parquet files under `/data`. The SQL `fragments` table stores the trial, subject, sample, replicate, reference genome, detection mode, fragment count, and corresponding filename. This preserves the fragment-level evidence for later selection and reanalysis with different downstream settings. The database path requires a writable `/data` location containing the `.inspiired` marker file. The supporting `pullDBrecords` command retrieves selected Parquet records into an RDS file that can be passed to `buildStdFragments`.
+
+Source: [modules/buildFragments.R](modules/buildFragments.R).
+
+### buildStdFragments: standardize boundaries and filter ambiguous fragments
+
+`buildStdFragments` reduces small differences in fragment coordinates, resolves supported multi-mapping reads, and filters fragment patterns consistent with PCR rearrangements. It then collapses the retained evidence into standardized fragment records for site assembly.
+
+**Input:** `buildFragments.rds`, or a compatible fragment table retrieved with `pullDBrecords`.
+
+**Output:** `buildStdFragments.rds`, containing standardized fragment coordinates, supporting read counts and IDs, UMI lists, and representative leader sequences.
+
+```bash
+inspiired2 buildStdFragments --outputDir out --threads 30 \
+  --inputData out/buildFragments.rds
+```
+
+Processing proceeds through the following steps:
+
+1. **Standardize integration positions.** Nearby integration-side coordinates are mapped to locally supported positions using read-count and distance weighting. This is performed across samples and replicates within a trial and subject, while keeping reference genomes, detection modes, chromosomes, and strands separate.
+2. **Standardize shearing boundaries.** The opposite fragment boundary is standardized within each sample replicate and integration position. This reduces inflation of fragment counts caused by small coordinate differences.
+3. **Resolve multiple candidate fragments.** When all candidates for a read support the same integration position, the shortest candidate is retained. A read mapping to several integration positions can be rescued when exactly one candidate position has uniquely mapped support within the same trial, subject, reference genome, and detection mode.
+4. **Summarize unresolved multi-hits.** Remaining ambiguous reads and candidate positions are grouped into connected networks. Within each network, CD-HIT-EST clusters linker-adjacent adrift sequences to estimate shearing diversity. These results are saved separately and are excluded from the main standardized-fragment output.
+5. **Filter competing anchor-sequence clusters.** Similar sequences at the beginning of anchor reads are clustered. When a cluster supports multiple integration positions, the module retains a clearly dominant position based on fragment support or read-record support; otherwise, it removes the competing records. This filter is applied within samples by default.
+6. **Process UMIs and collapse fragments.** When real UMIs have been retained, the module consolidates UMI variants using their support. It then combines records with the same standardized fragment identity, sums their read counts, chooses a representative leader, and applies the minimum-read requirement.
+
+| Option | Default | Effect |
+|---|---|---|
+| `--intSite_sp_window` | `8` | Search radius, in bases, for integration-position standardization. |
+| `--breakPoint_sp_window` | `5` | Search radius, in bases, for shearing-boundary standardization. |
+| `--disableIntSitePosStd` | Off | Disable integration-position standardization. |
+| `--disableBreakPointPosStd` | Off | Disable shearing-boundary standardization. |
+| `--anchorReadClusterLen` | `30` | Number of genomic anchor-read bases used for sequence clustering. |
+| `--anchorReadClusterGrouping` | `sample` | Apply the anchor filter within `sample`, `subject`, or `trial` groups. |
+| `--anchorReadClusterMinAbundDiff` | `5` | Minimum fragment-count advantage over the next candidate for selection. |
+| `--anchorReadClusterMinReadMult` | `10` | Alternative minimum ratio of supporting read records for selection. |
+| `--disableAnchorReadClusteringFilter` | Off | Skip the competing anchor-sequence filter. |
+| `--multiHitclusteringNTlen` | `30` | Number of linker-adjacent adrift bases used to cluster unresolved multi-hits. |
+| `--minReadsPerFrag` | `1` | Minimum summed read support for a retained fragment. |
+
+The anchor-cluster read-support comparison counts input read records; it does not sum their `nReads` values. Final fragment read totals do sum `nReads`.
+
+Additional outputs make the filtering decisions available for inspection:
+
+| File | Contents |
+|---|---|
+| `buildStdFragments_multiHitFrags.rds` | Candidate fragment records for unresolved multi-mapping reads. |
+| `buildStdFragments_multiHitClusters.rds` | Multi-hit networks, candidate positions, and sequence-based shearing-diversity summaries. |
+| `buildStdFragments_anchorReadClusters.rds` | Decisions for anchor-sequence clusters with competing positions, when that filter is enabled. |
+| `buildStdFragments_multiHitClusterAssignments.tsv.gz` | Per-read CD-HIT assignments, written only with `--saveMultiHitClusteringDetails`. |
+
+The current implementation requires at least one uniquely mapped integration position before attempting multi-hit rescue. The `inspiired2 buildStdFragments` command defaults to `30` threads; the other core commands default to `50`.
+
+Sources: [modules/buildStdFragments.R](modules/buildStdFragments.R) and [lib/buildStdFragments.R](lib/buildStdFragments.R).
+
+### buildSites: assemble integration sites and calculate abundance
+
+`buildSites` combines standardized fragments into sample-level integration-site records. It summarizes evidence across technical replicates and uses distinct fragment lengths as a measure of independent shearing events supporting each site.
+
+**Input:** `buildStdFragments.rds`.
+
+**Output:** `buildSites.rds`, containing site coordinates, detection modes, abundance measures, replicate-level summaries, and representative leader sequences.
+
+```bash
+inspiired2 buildSites --outputDir out --threads 30 \
+  --inputData out/buildStdFragments.rds
+```
+
+When both U3 and U5 evidence are present, the module searches for nearby, opposite-strand detections within the same trial, subject, sample, and reference genome. It combines a pair only when each site has exactly one candidate partner. Ambiguous pairings remain separate. Accepted pairs are labeled `dual detect`, and both representative leader sequences are retained.
+
+The default processing also corrects reported positions for the genomic duplication associated with integration and reports vector orientation in `posid`. U3 strand signs are reversed relative to the original anchor alignment; U5 strand signs are retained. The coordinate correction is controlled by `--integraseCorrectionDist` and should match the integration system being analyzed.
+
+| Option | Default | Effect |
+|---|---|---|
+| `--dualDetectWidth` | `6` | Maximum distance, in bases, when searching for U3/U5 partners. |
+| `--integraseCorrectionDist` | `2` | Coordinate shift applied according to fragment strand during integration-site correction. |
+| `--sumSonicBreaksWithin` | `replicates` | Count distinct fragment lengths within each replicate and sum them; use `samples` to count distinct lengths across the entire sample. |
+| `--disableDualDetect` | Off | Keep U3 and U5 detections separate. |
+| `--disableOrientationCorrection` | Off | Skip the orientation and coordinate correction step for unmerged detections. Accepted dual detections still receive their own correction. |
+
+Key output fields are:
+
+| Field | Meaning |
+|---|---|
+| `posid` | Chromosome, strand, and integration coordinate combined into one identifier, such as `chr1+123456`. Interpret it together with `refGenome`. |
+| `sonicLengths` | Distinct standardized fragment lengths counted using the selected replicate- or sample-level rule. |
+| `reads` | Total supporting sequencing read pairs, including counts carried forward from collapsed duplicates. |
+| `UMIs` | Number of distinct retained UMIs; `NA` when UMIs were not captured. |
+| `nRepsObs` | Number of replicates supporting the site; reported as `NA` for dual detections. |
+| `percentSampleRelAbund` | The site's percentage of total `sonicLengths` within its trial, subject, sample, and reference genome, rounded to two decimal places. |
+| `repLeaderSeq` | Representative recovered leader sequence, or paired U3/U5 leaders for a dual detection. |
+| `repLeaderSeqClusters` | Number of sequence clusters among the fragment-level representative leaders. |
+| `rep<N>-...` | Replicate-specific UMI counts, fragment-length counts, read counts, and representative leaders. |
+
+For example, a site supported by two distinct lengths in replicate 1 and three in replicate 2 has `sonicLengths = 5` with the default setting, even if some lengths occur in both replicates. With `--sumSonicBreaksWithin samples`, lengths shared across replicates are counted once. These values describe recovered integration-site evidence; `percentSampleRelAbund` is not a direct measurement of the percentage of cells carrying the integration.
+
+Source: [modules/buildSites.R](modules/buildSites.R).
+
+### nearestGenes: annotate gene and exon context
+
+`nearestGenes` determines whether each integration site overlaps a gene transcription unit or exon and identifies the nearest annotated gene. These annotations help interpret where integrations fall relative to known genes.
+
+**Input:** `buildSites.rds`, plus the matching `<refGenome>.TUs.rds` and `<refGenome>.exons.rds` files in `data/genomeAnnotations`.
+
+**Output:** `nearestGenes.rds`, preserving the site records and adding gene-context columns.
+
+```bash
+inspiired2 nearestGenes --outputDir out --threads 30 \
+  --inputData out/buildSites.rds
+```
+
+Sites are annotated separately for each reference genome. Overlap and nearest-gene searches ignore strand, and tied nearest genes are retained as comma-separated values.
+
+| Added field | Meaning |
+|---|---|
+| `inGene` | Whether the integration coordinate overlaps an annotated transcription unit. |
+| `inExon` | Whether it overlaps an annotated exon. |
+| `nearestGene` | Name or names of the nearest annotated genes. |
+| `nearestGeneDist` | Distance in bases to the nearest transcription-unit interval; `0` for a site inside a gene. |
+| `nearestGeneStrand` | Strand or strands of the reported nearest genes. |
+| `beforeNearestGene` | Whether the site has a lower genomic coordinate than the start of the nearest gene interval; for ties, the smallest interval start is used. |
+
+`nearestGeneDist` measures distance to the gene interval, not specifically to its transcription start site. `beforeNearestGene` describes genomic coordinate order, so it should not be interpreted as transcriptional upstream/downstream without considering gene strand. Sites without a nearest annotation on their reference sequence retain missing nearest-gene values. This module has no additional analysis-specific command-line options beyond the shared module options.
+
+Source: [modules/nearestGenes.R](modules/nearestGenes.R).
+
+### annotateRepeats: annotate overlapping repetitive elements
+
+`annotateRepeats` adds repeat annotations to integration sites using the precomputed RepeatMasker-derived table for each reference genome. It reports repeats overlapping the integration coordinate while retaining the existing site and gene annotations.
+
+**Input:** `nearestGenes.rds` in the standard workflow, plus `data/genomeAnnotations/<refGenome>.repeatTable.gz`. A site table from `buildSites` can also be used when gene annotations are not needed.
+
+**Output:** `annotateRepeats.rds`, the final annotated site table in the standard workflow.
+
+```bash
+inspiired2 annotateRepeats --outputDir out --threads 30 \
+  --inputData out/nearestGenes.rds
+```
+
+The module tests overlap at the integration coordinate, independently of strand, and adds `repeat_name` and `repeat_class`. Multiple overlapping repeat annotations are combined into comma-separated values; sites without an overlapping repeat receive `NA`. The input row count is preserved. This stage uses existing repeat annotations and does not run RepeatMasker during the analysis.
+
+There are no additional analysis-specific command-line options beyond the shared module options.
+
+Source: [modules/annotateRepeats.R](modules/annotateRepeats.R).
+
+### Supporting commands
+
+The following commands support setup, inspection, or reuse of results:
+
+| Command | Purpose |
+|---|---|
+| [`showResources`](modules/showResources.R) | List available reference genomes, annotations, HMMs, and vector sequences, including resource overlays. |
+| [`testHMMs`](modules/testHMMs.R) | Inspect HMM scores and read-position distributions using demultiplexed reads; produces an HMM diagnostic PDF. |
+| [`buildSeqDataMap`](modules/buildSeqDataMap.R) | Create a PNG showing sequence composition across sorted and binned FASTQ reads. Set `--fileTag` explicitly because its current default is `testHMMs`. |
+| [`testDBconn`](modules/testDBconn.R) | Check database connectivity using the supplied credential file and configuration group. |
+| [`pullDBrecords`](modules/pullDBrecords.R) | Select stored fragments by trial and optional subject, sample, reference genome, and mode filters, read their Parquet files, and save an RDS input for downstream reanalysis. |
+
+<br>
+
+## Working with HMMs
+Anchor reads containing the ends of vector LTR sequences are recognized using vector specific HMMs. HMMs are used because them are particularly adept at recognizing mismatches and minor indels that can occur due to natural variation and sequencing error.  Vector HMMs are created with the HMMER software package for each vector used in your analysis. To create a vector HMM, first create a FASTA file for the expected vector sequence you expect to observe in your R2 read sequences. This will be the expected sequence observed before transitioning into genomic DNA, eg.
+
+```
+docker run -it --rm  inspiired2 bash
+```
+
+```
+echo -e ">seq\nGAAAATCTCTAGCA" > test.ff
+```
+
+Next, use HMMER to create a HMM with this FASTA file.
+```
+hmmbuild test.hmm test.fasta
+```
+
+Now that we created an HMM, we need to determine how to score it. Next create a FASTA file containing minor variations in your sequence to see how it affects the HMM score. For example, here we create a file name *mySeqTests.fasta* and make minor changes which we would still consider valid hits.
+
+``` 
+echo ">seq
+GAAAATCTCTAGCA
+>seq_1SNP
+GAAGATCTCTAGCA
+>seq_2SNPs
+GAAGATCTCAAGCA
+>seq_1del
+GAAAATTCTAGCA
+>seq_1del_1ins
+GAAATCTCTGAGCA" > test2.ff
+```
+Once we create a couple of minor variations in our target sequence, we evaluate the variations with our HMM.  
+First run this command to evaluate the test sequences:
+
+```
+nhmmer --F1 1 --F2 1 --F3 1 -T -5 --incT -5 --nobias --popen 0.15 --pextend 0.05 --tblout out.tbl test.hmm test2.ff
+```
+
+Next, review the output (out.tbl) to determine a minimum acceptable score:
+  
+```
+# target name        accession  query name           accession  hmmfrom hmm to alifrom  ali to envfrom  env to  sq len strand   E-value  score  bias  description of target
+#------------------- ---------- -------------------- ---------- ------- ------- ------- ------- ------- ------- ------- ------ --------- ------ ----- ---------------------
+seq                  -          test                 -                1      14       1      14       1      14      14    +      0.0063    3.7   1.1  -
+seq_1SNP             -          test                 -                1      14       1      14       1      14      14    +       0.016    2.8   0.3  -
+seq_2SNPs            -          test                 -                1      13       1      13       1      14      14    +        0.15    0.5   0.9  -
+seq_1del_1ins        -          test                 -                3      10       2       9       1      14      14    +        0.29   -0.1   0.2  -
+seq_1del             -          test                 -                4      13       3      12       1      13      13    +        0.38   -0.4   1.2  -
+```
+  
+Examine the HMM scores in column 14 (score) and make a decision about the lowest score that provides an acceptable match. In this example, we will go with 0.5. Next we will create an settings file for the new HMM. This file needs to have the same name as the HMM file except we replace ".hmm" with ".cfg". The settings file provides default scoring parameters for the HMM. Here is an example:
+  
+```
+HMMminStartPos  1
+HMMmaxStartPos  5
+HMMminFullBitScore      10
+HMMmaxFullBitScore      30
+HMMmatchEnd     TRUE
+HMMmatchTerminalSeq     CA
+HMMmatchEndRadius       2
+```
+
+Alternatively, for each HMM defined in your sampelData.tsv file, you can provide these parameters as a comma delimited string where each HMM is separatred by a pipe character. HMM parameters provided on the command line will overide parameters found in the default  .cfg files.
+
+```
+inspiired2 prepReads --outputDir out --inputData out/demultiplex.rds --HMMparam 'HIV1_1-100_U5.hmm,1,5,10,30,TRUE,CA,2|HIV1_1-100_U3_RC.hmm,1,5,30,60,TRUE,CA,2'
+```
+
+The best approach for processing data with potentially varied LTR sequences is to run the HMMs on raw sequencing data using the testHMMs module:
+
+```
+inspiired2 testHMMs --outputDir out  --sampleData sampleData.tsv --anchorReads  Undetermined_S0_R2_001.fastq.gz --HMMmatchEnd --HMMmatchTerminalSeq CA --HMMmatchEndRadius 2
+```
+This module tests sequencing data using the HMM profiles found in the sample data file and provided a graphical output useful for tuning HMM paramaters:
+
+
 
 
 
