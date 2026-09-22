@@ -153,7 +153,7 @@ docker run --rm -v  ~/data:/resources:ro inspiired2 bash -c 'inspiired2 showReso
 
 
 ### Sample-data file
-A tab delimited file defining sample replicate barcode and linker sequences is required to demultiplex sequencing runs. An example file is provided with the software [`sampleData.tsv`](sampleData.tsv).
+A tab delimited file defining sample replicate barcode and linker sequences is required to demultiplex sequencing runs. This file is a required parameter for the demultiplex module. An example file is provided with the software [`sampleData.tsv`](sampleData.tsv).
 
 | Column | Description |
 |---|---|
