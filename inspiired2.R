@@ -12,6 +12,8 @@ subparsers <- parser$add_subparsers(dest = "module", help = "inspiired2 modules"
 # Define parameters for each module.
 # The parameters must match the parameters defined at the top of each module except that --softwareRoot flags should be excluded here.
 
+testDB_parser <- subparsers$add_parser("showResources", help = "Output a tree of data resources.")
+
 testDB_parser <- subparsers$add_parser("testDBconn", help = "Test the connection to the database.")
 testDB_parser$add_argument("--dbConfigFile", type = "character", default = 'none', help = "Path to db credential file.")
 testDB_parser$add_argument("--dbConfigID",   type = "character", default = 'none', help = "DB credential block identifier in db credential file.")

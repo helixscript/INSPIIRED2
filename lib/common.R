@@ -109,7 +109,7 @@ startModule <- function(){
 
 
 
-resource_overlay <- function(){
+resource_overlay <- function(logging = TRUE){
   resourceRoot <- '/resources'
   dataRoot <- file.path(args$softwareRoot, 'data')
   
@@ -146,14 +146,14 @@ resource_overlay <- function(){
     if(!file.symlink(source, destination)){
       stop('Could not overlay resource: ', source, ' -> ', destination)
     } else {
-      updateLog(paste0('Link created: ', source, ' -> ', destination))
+      if(logging) updateLog(paste0('Link created: ', source, ' -> ', destination))
     }
     
     nLinked <- nLinked + 1L
   }
   
   if(nLinked)
-    updateLog(paste0('Applied ', nLinked, ' user resource overlay(s) from ', resourceRoot))
+    if(logging) updateLog(paste0('Applied ', nLinked, ' user resource overlay(s) from ', resourceRoot))
   
   invisible(NULL)
 }
