@@ -61,9 +61,11 @@ The`--shm-size` flag defines the max. amount of memory allowed to be used as scr
 
 `-w /workspace` instructs Docker to make all paths relative to `/workspace` within the Docker image.
 
-`inspiired2 bash run.sh` instructs docker to run the processing script `run.sh`, located in your analysis directory, in a Docker container created with the `inspiired2` Docker image. 
+`inspiired2 bash run.sh` instructs docker to run the processing script `run.sh`, located in your analysis directory, in a Docker container created with the `inspiired2` Docker image.
 
 By default, all output files will be owned by root. To change ownership to the user initiating the analysis, add this argument:  `--user "$(id -u):$(id -g)"`
+
+### Resource data files
 
 INSPIIRED2 is provided with a number of reference genomes (hg38, hs1, sacCer3, mm10, canFam4, and macFas5) as well as U3 and U5 LTR HMMs created with data from Los Alamos National laboratories. The `showResources` command can be used to list available resources provided with the Docker image. All genomes and genome annotations were created with the included `tools/buildRefGenomeObjects.R` script. This script accepts UCSC genome IDs and pulls data from their data portals to build required data objects. A local install of RepeatMasker is required to create *.repeatTable.gz files required by the `annotateRepeats` module.  
 
@@ -112,8 +114,7 @@ INSPIIRED2 is provided with a number of reference genomes (hg38, hs1, sacCer3, m
  \-- synDataTest.fasta
  ```
 
-
-Custom reference genomes, gene annotations, vector sequences, and HMMs can be shared with the Docker image at run time by using an additional mount flag: `-v  ~/data:/resources:ro`
+Custom reference genomes, gene annotations, vector sequences, and HMMs can be shared with the Docker image at run time by using an additional mount flag: `-v  ~/data:/resources:ro`.
 Custom data must be organized in the same way that data is organized within INSPIIRED's data folder (below). 
 ```
 %> tree ~/data 
@@ -122,7 +123,7 @@ Custom data must be organized in the same way that data is organized within INSP
         └── myCustomProfile.hmm
  ```
 
-When data matching INSPIIRED2's data tree is mounted to `/resources` in the Docker container, the data is superimposed onto the INSPIIRED2's data tree and overwrites existing entries if the same names are used.
+When data matching INSPIIRED2's data tree is mounted to `/resources` in the Docker container, the data is superimposed onto the INSPIIRED2's data file tree and overwrites existing entries if the same names are used, eg.
 
 ```
 docker run --rm -v  ~/data:/resources:ro inspiired2 bash -c 'inspiired2 showResources'
@@ -138,7 +139,7 @@ docker run --rm -v  ~/data:/resources:ro inspiired2 bash -c 'inspiired2 showReso
 |   +-- HIV1_LTR_U5_v1.0.hmm 
 |   +-- generic_CART19_v1.0.cfg 
 |   +-- generic_CART19_v1.0.hmm 
-|   +-- myCustomProfile.hmm   <== overlayed data file 
+|   +-- myCustomProfile.hmm   <===== overlayed data file 
 |   +-- validation.cfg 
 |   \-- validation.hmm 
 +-- referenceGenomes 
@@ -171,7 +172,7 @@ trial	subject	sample	replicate	index1Seq	adriftReadLinkerSeq	refGenome	leaderSeq
 trial1	subject01	day0	1	CAGTGGGTCTAA	GAACGAGCACTAGTAAGCCCNNNNNNNNNNNNCTCCGCTTAAGGGACT	hg38	HIV1_1-100_U5.hmm	HXB2.fasta	U5
 ```
 
-Every `adriftReadLinkerSeq` must contain one contiguous UMI region and match, case-insensitively:
+Every `adriftReadLinkerSeq` must contain one contiguous UMI region (Ns) and match, case-insensitively:
 
 ```text
 ^[ACGT]{3,}N{5,}[ACGT]{3,}$
@@ -183,12 +184,10 @@ Additional requirements:
 
 - Resource names are case-sensitive and must match installed HMM, vector, and reference files.
 - Barcodes and linkers should remain distinguishable after the configured mismatch allowances are applied.
-- A subject identifier should refer to the same biological subject wherever longitudinal integration-site tracking is intended.
-
 
 ## Standard workflow
 
-The normal pipeline is a daisy chain: the primary RDS output of one module becomes the input to the next.
+The normal pipeline is a daisy chain: the primary RDS output of one module becomes the input to the next. Modules are chained together in a shell script passed to the Docker image.
 
 ```bash
 #!/usr/bin/env bash
@@ -222,7 +221,7 @@ The shell options stop the script at the first failed command.
 | `nearestGenes` | Add gene, exon, and nearest-gene annotations | `nearestGenes.rds` |
 | `annotateRepeats` | Add overlapping repeat names and classes | `annotateRepeats.rds` |
 
-`testHMMs`, `buildSeqDataMap`, `testDBconn`, and `pullDBrecords` are supporting commands rather than required stages of the standard chain.
+`showResources`, `testHMMs`, `buildSeqDataMap`, `testDBconn`, and `pullDBrecords` are supporting commands rather than required stages of the standard chain.
 
 ## General command behavior
 
