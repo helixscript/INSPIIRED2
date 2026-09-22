@@ -189,7 +189,7 @@ Additional requirements:
 
 ## Standard workflow
 
-The normal pipeline is a daisy chain: the primary RDS output of one module becomes the input to the next. Modules are chained together in a shell script passed to the Docker image.
+The pipeline is a daisy chain: the primary RDS output of one module becomes the input to the next. Modules are chained together in a shell script passed to the Docker image.
 
 ```bash
 #!/usr/bin/env bash
@@ -227,14 +227,14 @@ The shell options stop the script at the first failed command.
 
 ## General command behavior
 
-Most core modules accept the following options:
+Core modules accept the following options:
 
 | Flag | Default | Meaning |
 |---|---:|---|
-| `--outputDir` | Required | Output directory. It is normally created during module setup. When starting directly at `buildFragments` in v1.4.4, create the directory first. |
+| `--outputDir` | Required | Output directory. It is normally created during module setup. |
 | `--inputData` | Required | RDS output from the preceding module. `demultiplex` uses raw input flags instead. |
 | `--threads` | `50` | Maximum worker or library thread count.  |
-| `--fileTag` | Module name | Basename for output files.  |
+| `--fileTag` | Module name | Base name for output files. Allows modules to be run more than once by changing their output file base names.  |
 | `--ramDiskPath` | `/dev/shm` | Scratch filesystem; falls back to `outputDir` when not writable. |
 
 INSPIIRED2 is provided with an SQL database and the ability to create a data warehouse to store data from multiple experiments. Databasing and warehousing is enabled by providing database credentials to the buildFragments module arguments: `--dbConfigFile --dbConfigID`
