@@ -57,7 +57,7 @@ docker run --rm     \
 ```
 The`--shm-size` flag defines the max. amount of memory allowed to be used as scratch space during analysis. 20GB is a reasonable value for most moderate size Illumina paied-end data sets. This value should be increased for large data sets and should not reach an appreciable percentage of your total RAM. 
 
-` -v ./:/workspace` mounts your analysis directory to `/workspace` inside of the Docker container. Here we are mounting the current directory `./`. The analysis directory is expected to contain your sequencing data, sample data file, and processing script (described next).
+` -v ./:/workspace` mounts your analysis directory to `/workspace` inside of the Docker container. Here we are mounting the current directory `./` to `/workspace` within the Docker container. The analysis directory is expected to contain your sequencing data, sample data file, and processing script (described next).
 
 `-w /workspace` instructs Docker to make all paths relative to `/workspace` within the Docker image.
 
@@ -117,8 +117,7 @@ INSPIIRED2 is provided with a number of reference genomes (hg38, hs1, sacCer3, m
 In this data tree, reference genomes, stored in the referenceGenomes directory, are stored using the 2bit data format and are named with an identifier followed by '.2bit'. Genome annotations are stored in the genomeAnnotations directory. For each genome identifier, *.TUs.rds files stores gene transcription unit coordinates and *.exons.rds files store gene exon coordinates. Coordinates are stored as GenomicRange objects. Repeat annotations, created by RepeatMasker, are stored in *.repeatTable.gz files. These files contain the compressed tabular output created by RepeatMasker. Vector FASTA file are stored in the vectors directory and HMMs are stored in the hmms directory. Vector FASTA files are used to filter out anchor reads which read into the vector bodies rather than into flanking genomic DNA. Each HMM has a corresponding configuration file where the .hmm suffix of the HMM has been replaced with .cfg (discussed in the HMM section below).
 
 
-Custom reference genomes, gene annotations, vector sequences, and HMMs can be shared with the Docker image at run time by using an additional mount flag: `-v  ~/data:/resources:ro` to overlay custom files onto INSPIIRED2's data file tree.
-Custom data must be organized in the same way that data is organized within INSPIIRED's data folder. 
+Custom reference genomes, gene annotations, vector sequences, and HMMs can be shared with the Docker image at run time by using an additional mount flag: `-v  ~/data:/resources:ro` to overlay custom files onto INSPIIRED2's data file tree. In this example, we are mounting our local file tree  `~/data` to `/resources` within the Docker container. Custom data must be organized in the same way that data is organized within INSPIIRED's data folder. 
 ```
 %> tree ~/data 
   ~/data  
