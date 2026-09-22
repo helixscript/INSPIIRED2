@@ -19,7 +19,19 @@ The supplied Docker image is the recommended execution environment because INSPI
 INSPIIRED2 uses Linux multicore processing. CPU, memory, disk, and shared-memory requirements depend on library size, read complexity, and the reference genomes used. A server with approximately 30 cores and 100 GB RAM is a reasonable starting point for substantial datasets, but these are not hard minimums. On smaller systems, reduce `--threads` values; memory use generally increases with the number of concurrent workers.
 
 Temporary files are written below `--ramDiskPath`, which defaults to the server's RAM disk `/dev/shm`. If that location is not writable, INSPIIRED2 uses the output directory. The Docker `--shm-size` setting controls the space available in `/dev/shm`.
-<br> 
+
+### Installation
+
+Using the provided Docker image [[download here (7 GB)](https://bushmanlab.org/export/inspiired2_latest.tar.gz)] is the reccomended installation method. The documentation below will refer to this method. Alternatively, the software can be installed directly on your system by cloning this repository and calling inspiired2.R. The software requires a number of R libraries to be preinstalled as well as third party software packages (blastn, nhmmer, cd-hit-est). 
+
+
+### Required inputs
+
+Inspiired2 requires three inputs. 
+  - Paired end sequencing (R1, R2, I1) with readIDs in the same order between files.
+  - A [sample data](sampleData.tsv) file matching sample replicates to I1 barcode sequecnes and linker sequences.
+  - A [bash script](https://github.com/helixscript/INSPIIRED2/blob/main/run.sh) calling one or more INSPIIRED2 modules.  
+
 
 ### Quick start and validation
 Download and load the distributed Docker image:
@@ -45,7 +57,7 @@ cd /opt/INSPIIRED2/tests/synTests/U5_50sites_seed1
 
 The test takes about 5 minutes to complete and report PASS at the end will if the MD5sum of the output matches the expected value. 
 
-### Starting analyses
+### Starting analyses using the Docker image
 
 The basic INSPIIRED2 invocation command has this structure:
 ```
@@ -74,21 +86,10 @@ INSPIIRED2 is provided with a number of reference genomes (hg38, hs1, sacCer3, m
 
 +-- data 
 +-- genomeAnnotations 
-|   +-- canFam4.TUs.rds 
-|   +-- canFam4.exons.rds 
-|   +-- canFam4.repeatTable.gz 
 |   +-- hg38.TUs.rds 
 |   +-- hg38.exons.rds 
 |   +-- hg38.repeatTable.gz 
-|   +-- hs1.TUs.rds 
-|   +-- hs1.exons.rds 
-|   +-- hs1.repeatTable.gz 
-|   +-- macFas5.TUs.rds 
-|   +-- macFas5.exons.rds 
-|   +-- macFas5.repeatTable.gz 
-|   +-- mm10.TUs.rds 
-|   +-- mm10.exons.rds 
-|   +-- mm10.repeatTable.gz 
+    ...
 |   +-- sacCer3.TUs.rds 
 |   +-- sacCer3.exons.rds 
 |   \-- sacCer3.repeatTable.gz 
@@ -97,8 +98,7 @@ INSPIIRED2 is provided with a number of reference genomes (hg38, hs1, sacCer3, m
 |   +-- HIV1_LTR_U3_v1.0.hmm 
 |   +-- HIV1_LTR_U5_v1.0.cfg 
 |   +-- HIV1_LTR_U5_v1.0.hmm 
-|   +-- generic_CART19_v1.0.cfg 
-|   +-- generic_CART19_v1.0.hmm 
+    ...
 |   +-- validation.cfg 
 |   \-- validation.hmm 
 +-- referenceGenomes 
@@ -151,7 +151,8 @@ docker run --rm -v  ~/data:/resources:ro inspiired2 bash -c 'inspiired2 showReso
 ```
 
 
-### Sample-data file
+### Sample data file
+
 A tab delimited file defining sample replicate barcode and linker sequences is required to demultiplex sequencing runs. This file is a required parameter for the demultiplex module. An example file is provided with the software [`sampleData.tsv`](sampleData.tsv).
 
 | Column | Description |
@@ -165,7 +166,7 @@ A tab delimited file defining sample replicate barcode and linker sequences is r
 | `refGenome` | Reference identifier matching an installed `<refGenome>.2bit` file. |
 | `leaderSeqHMM` | HMM filename, including `.hmm`, used to recognize the vector-terminal sequence in anchor reads. |
 | `vectorFastaFile` | Vector FASTA filename used by the internal-vector read filter. |
-| `mode` | Vector-end detection mode. Use exactly `U3` or `U5`. |
+| `mode` | Vector-end detection mode(`U3` or `U5`). |
 
 Example:
 
@@ -176,20 +177,16 @@ trial1	subject01	day0	1	CAGTGGGTCTAA	GAACGAGCACTAGTAAGCCCNNNNNNNNNNNNCTCCGCTTAAG
 
 Every `adriftReadLinkerSeq` must contain one contiguous UMI region (Ns) and match, case-insensitively:
 
-```text
-^[ACGT]{3,}N{5,}[ACGT]{3,}$
-```
-
-In other words, the linker must contain at least three fixed bases, at least five `N` characters, and at least three more fixed bases. The fixed sequences before and after the UMI are tested separately during demultiplexing.
-
 Additional requirements:
 
 - Resource names are case-sensitive and must match installed HMM, vector, and reference files.
 - Barcodes and linkers should remain distinguishable after the configured mismatch allowances are applied.
 
+<br>
+
 ## Standard workflow
 
-The pipeline is a daisy chain: the primary RDS output of one module becomes the input to the next. Modules are chained together in a shell script passed to the Docker image.
+The pipeline is a daisy chain: the primary RDS file output of one module becomes the input to the next. Modules are chained together in a shell script which is passed to the Docker image.
 
 ```bash
 #!/usr/bin/env bash
@@ -210,7 +207,7 @@ inspiired2 nearestGenes      --outputDir out --threads 30 --inputData out/buildS
 inspiired2 annotateRepeats   --outputDir out --threads 30 --inputData out/nearestGenes.rds
 ```
 
-The shell options stop the script at the first failed command.
+Setting `set -euo pipefail` at the top of processing script instructs the script to stop at the first failed module.
 
 | Module | Main role | Primary output |
 |---|---|---|
@@ -225,6 +222,8 @@ The shell options stop the script at the first failed command.
 
 `showResources`, `testHMMs`, `buildSeqDataMap`, `testDBconn`, and `pullDBrecords` are supporting commands rather than required stages of the standard chain.
 
+<br>
+
 ## General command behavior
 
 Core modules accept the following options:
@@ -236,5 +235,10 @@ Core modules accept the following options:
 | `--threads` | `50` | Maximum worker or library thread count.  |
 | `--fileTag` | Module name | Base name for output files. Allows modules to be run more than once by changing their output file base names.  |
 | `--ramDiskPath` | `/dev/shm` | Scratch filesystem; falls back to `outputDir` when not writable. |
+
+
+
+
+
 
 INSPIIRED2 is provided with an SQL database and the ability to create a data warehouse to store data from multiple experiments. Databasing and warehousing is enabled by providing database credentials to the buildFragments module arguments: `--dbConfigFile --dbConfigID`
