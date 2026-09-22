@@ -61,7 +61,7 @@ The`--shm-size` flag defines the max. amount of memory allowed to be used as scr
 
 `-w /workspace` instructs Docker to make all paths relative to `/workspace` within the Docker image.
 
-`inspiired2 bash run.sh` instructs docker to run the processing script `run.sh`, located in your analysis directory, in a Docker container created with the `inspiired2` Docker image.
+`inspiired2 bash run.sh` instructs docker to run the processing script [run.sh](https://github.com/helixscript/INSPIIRED2/blob/main/run.sh), located in your analysis directory, in a Docker container created with the `inspiired2` Docker image.
 
 By default, all output files will be owned by root. To change ownership to the user initiating the analysis, add this argument:  `--user "$(id -u):$(id -g)"`
 
