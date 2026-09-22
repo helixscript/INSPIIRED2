@@ -114,6 +114,9 @@ INSPIIRED2 is provided with a number of reference genomes (hg38, hs1, sacCer3, m
  \-- synDataTest.fasta
  ```
 
+In this data tree, reference genomes, stored in the referenceGenomes directory, are stored using the 2bit data format and are named with an identifier followed by '.2bit'. Genome annotations are stored in the genomeAnnotations directory. For each genome identifier, *.TUs.rds files stores gene transcription unit coordinates and *.exons.rds files store gene exon coordinates. Coordinates are stored as GenomicRange objects. Repeat annotations, created by RepeatMasker, are stored in *.repeatTable.gz files. These files contain the compressed tabular output created by RepeatMasker. Vector FASTA file are stored in the vectors directory and HMMs are stored in the hmms directory. Each HMM has a corresponding configuration file where the .hmm suffix of the HMM has been replaced with .cfg.
+
+
 Custom reference genomes, gene annotations, vector sequences, and HMMs can be shared with the Docker image at run time by using an additional mount flag: `-v  ~/data:/resources:ro`.
 Custom data must be organized in the same way that data is organized within INSPIIRED's data folder (below). 
 ```
