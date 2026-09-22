@@ -192,19 +192,19 @@ The pipeline is a daisy chain: the primary RDS file output of one module becomes
 #!/usr/bin/env bash
 set -euo pipefail
 
-inspiired2 demultiplex --outputDir out --threads 30 \
-  --sampleData sampleData.tsv \
-  --indexReads I1.fastq.gz \
-  --adriftReads R1.fastq.gz \
+inspiired2 demultiplex --outputDir out  \
+  --sampleData sampleData.tsv           \
+  --indexReads I1.fastq.gz              \
+  --adriftReads R1.fastq.gz             \
   --anchorReads R2.fastq.gz
 
-inspiired2 prepReads         --outputDir out --threads 30 --inputData out/demultiplex.rds
-inspiired2 alignReads        --outputDir out --threads 30 --inputData out/prepReads.rds
-inspiired2 buildFragments    --outputDir out --threads 30 --inputData out/alignReads.rds
-inspiired2 buildStdFragments --outputDir out --threads 30 --inputData out/buildFragments.rds
-inspiired2 buildSites        --outputDir out --threads 30 --inputData out/buildStdFragments.rds
-inspiired2 nearestGenes      --outputDir out --threads 30 --inputData out/buildSites.rds
-inspiired2 annotateRepeats   --outputDir out --threads 30 --inputData out/nearestGenes.rds
+inspiired2 prepReads         --outputDir out --inputData out/demultiplex.rds
+inspiired2 alignReads        --outputDir out --inputData out/prepReads.rds
+inspiired2 buildFragments    --outputDir out --inputData out/alignReads.rds
+inspiired2 buildStdFragments --outputDir out --inputData out/buildFragments.rds
+inspiired2 buildSites        --outputDir out --inputData out/buildStdFragments.rds
+inspiired2 nearestGenes      --outputDir out --inputData out/buildSites.rds
+inspiired2 annotateRepeats   --outputDir out --inputData out/nearestGenes.rds
 ```
 
 Setting `set -euo pipefail` at the top of processing script instructs the script to stop at the first failed module.
@@ -347,10 +347,10 @@ The examples below use `out` as the output directory and the default output name
 **Output:** `demultiplex.rds`, containing assigned read pairs, sample metadata, read sequences, and read counts; `demultiplex.tbl`, a tab-delimited copy of the sample table with `demultiplexedReads` counts.
 
 ```bash
-inspiired2 demultiplex --outputDir out --threads 30 \
-  --sampleData sampleData.tsv \
-  --indexReads I1.fastq.gz \
-  --adriftReads R1.fastq.gz \
+inspiired2 demultiplex --outputDir out  \
+  --sampleData sampleData.tsv           \
+  --indexReads I1.fastq.gz              \
+  --adriftReads R1.fastq.g              \
   --anchorReads R2.fastq.gz
 ```
 
@@ -383,8 +383,7 @@ Source: [modules/demultiplex.R](modules/demultiplex.R).
 **Output:** `prepReads.rds`, containing the prepared genomic read pairs and recovered `leaderSeq`; `prepReads_vectorHitReads.tsv.gz`, containing reads rejected by the vector filter when that filter is enabled.
 
 ```bash
-inspiired2 prepReads --outputDir out --threads 30 \
-  --inputData out/demultiplex.rds
+inspiired2 prepReads --outputDir out --inputData out/demultiplex.rds
 ```
 
 The module runs `nhmmer` with the HMM assigned to each library. It selects the highest-scoring forward-strand hit per anchor read and applies the configured start-position range, minimum and maximum bit scores, and optional HMM-end and terminal-sequence requirements. Accepted leaders are removed from the anchor reads.
@@ -416,8 +415,7 @@ Source: [modules/prepReads.R](modules/prepReads.R).
 **Output:** `alignReads.rds`, an R list containing separate `anchorReads` and `adriftReads` alignment tables.
 
 ```bash
-inspiired2 alignReads --outputDir out --threads 30 \
-  --inputData out/prepReads.rds
+inspiired2 alignReads --outputDir out --inputData out/prepReads.rds
 ```
 
 Identical sequences are aligned once per reference genome, and their alignments are joined back to the corresponding read records. Anchor reads are aligned first; adrift reads are processed only when their anchor mate has an accepted alignment. Filters require sufficient sequence identity and query coverage and limit insertions in the query and reference. Stored alignment coordinates are converted from BLAT's format to 1-based, inclusive coordinates.
@@ -446,8 +444,7 @@ Source: [modules/alignReads.R](modules/alignReads.R).
 **Output:** `buildFragments.rds`, a table of candidate fragments with genomic coordinates, strand, sequences, read counts, and sample metadata.
 
 ```bash
-inspiired2 buildFragments --outputDir out --threads 30 \
-  --inputData out/alignReads.rds
+inspiired2 buildFragments --outputDir out --inputData out/alignReads.rds
 ```
 
 Mate alignments must lie on the same chromosome, have opposite strands, and define a fragment within the permitted length range. The anchor alignment determines the fragment strand and integration-side boundary. A read pair can produce several candidate fragments when its alignments are ambiguous; these candidates are carried forward for standardization and resolution.
@@ -476,8 +473,7 @@ Source: [modules/buildFragments.R](modules/buildFragments.R).
 **Output:** `buildStdFragments.rds`, containing standardized fragment coordinates, supporting read counts and IDs, UMI lists, and representative leader sequences.
 
 ```bash
-inspiired2 buildStdFragments --outputDir out --threads 30 \
-  --inputData out/buildFragments.rds
+inspiired2 buildStdFragments --outputDir out --inputData out/buildFragments.rds
 ```
 
 Processing proceeds through the following steps:
@@ -527,8 +523,7 @@ Sources: [modules/buildStdFragments.R](modules/buildStdFragments.R) and [lib/bui
 **Output:** `buildSites.rds`, containing site coordinates, detection modes, abundance measures, replicate-level summaries, and representative leader sequences.
 
 ```bash
-inspiired2 buildSites --outputDir out --threads 30 \
-  --inputData out/buildStdFragments.rds
+inspiired2 buildSites --outputDir out --inputData out/buildStdFragments.rds
 ```
 
 When both U3 and U5 evidence are present, the module searches for nearby, opposite-strand detections within the same trial, subject, sample, and reference genome. It combines a pair only when each site has exactly one candidate partner. Ambiguous pairings remain separate. Accepted pairs are labeled `dual detect`, and both representative leader sequences are retained.
@@ -570,8 +565,7 @@ Source: [modules/buildSites.R](modules/buildSites.R).
 **Output:** `nearestGenes.rds`, preserving the site records and adding gene-context columns.
 
 ```bash
-inspiired2 nearestGenes --outputDir out --threads 30 \
-  --inputData out/buildSites.rds
+inspiired2 nearestGenes --outputDir out --inputData out/buildSites.rds
 ```
 
 Sites are annotated separately for each reference genome. Overlap and nearest-gene searches ignore strand, and tied nearest genes are retained as comma-separated values.
@@ -598,8 +592,7 @@ Source: [modules/nearestGenes.R](modules/nearestGenes.R).
 **Output:** `annotateRepeats.rds`, the final annotated site table in the standard workflow.
 
 ```bash
-inspiired2 annotateRepeats --outputDir out --threads 30 \
-  --inputData out/nearestGenes.rds
+inspiired2 annotateRepeats --outputDir out --inputData out/nearestGenes.rds
 ```
 
 The module tests overlap at the integration coordinate, independently of strand, and adds `repeat_name` and `repeat_class`. Multiple overlapping repeat annotations are combined into comma-separated values; sites without an overlapping repeat receive `NA`. The input row count is preserved. This stage uses existing repeat annotations and does not run RepeatMasker during the analysis.
