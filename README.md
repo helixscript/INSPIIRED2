@@ -485,7 +485,7 @@ By default, `data/hmms/<name>.hmm` uses the matching `data/hmms/<name>.cfg`. A c
 | `HMMmatchTerminalSeq` | sequence or `none` | Exact terminal sequence required near the alignment endpoint on the read. Its final base sets the leader endpoint. `none` disables this check. Matching is literal; `N` is not a wildcard. |
 | `HMMmatchEndRadius` | integer ≥ 0 | Tolerance in bases for the model-end check and for shifting the terminal motif's final base relative to the read alignment endpoint. |
 
-The supplied U5 configuration uses the following values; these are **model-specific settings**, not universal defaults:
+A data/hmms/<name>.cfg configuration file has this format:
 
 ```text
 HMMminStartPos	1
@@ -509,7 +509,7 @@ For example:
 inspiired2 prepReads --outputDir out --inputData out/demultiplex.rds --HMMparams 'HIV1_LTR_U5_v1.0.hmm,1,5,10,30,TRUE,CA,2'
 ```
 
-Separate multiple complete entries with `|` inside the quoted argument. When using overrides, provide an entry for every HMM represented in the input. Extra entries for unused HMMs are logged and ignored.
+Parameter sets for more than one HMM can be provided separated with a `|` inside the quoted argument. When using .cfg file overrides, provide an entry for every HMM represented in the input. 
 
 Terminal matching uses the first exact motif match from left to right within its search window. For example, an alignment endpoint of 50, motif `CA`, and radius 2 searches read bases 47–52, allowing the motif's final base at positions 48–52. Model-end matching and terminal-sequence matching can be disabled independently through their respective configuration fields.
 
@@ -519,7 +519,7 @@ Sources: [modules/prepReads.R](modules/prepReads.R), [supplied U5 configuration]
 
 ### alignReads: align both mates to reference genomes
 
-`alignReads` aligns genomic anchor and adrift sequences with BLAT. It retains every alignment passing the filters so later stages can evaluate multiple possible placements using paired-read and site-support evidence.
+`alignReads` aligns genomic anchor and adrift sequences to a reference genome with BLAT. It retains every alignment passing the alignment filters so later stages can evaluate multiple alignments using paired-read and site-support evidence.
 
 **Inputs:** `prepReads.rds` and `data/referenceGenomes/<refGenome>.2bit` for each reference genome represented in the input.
 
@@ -531,7 +531,7 @@ inspiired2 alignReads --outputDir out --inputData out/prepReads.rds
 
 Identical sequences are aligned once per reference genome, then their alignments are joined back to all corresponding read records. Anchor reads are aligned first. Only adrift reads whose anchor mate has an accepted alignment are processed. Stored query and genomic alignment coordinates use 1-based, inclusive intervals.
 
-BLAT runs with permissive built-in score and identity settings; INSPIIRED2 then applies its own identity, query-span coverage, and insertion filters. All of these filters must pass. The target is the reference genome and the query is the read sequence.
+BLAT runs with permissive built-in score and identity settings (-minScore=0 and -minIdentity=0); INSPIIRED2 then applies its own identity, query-span coverage, and insertion filters. All of these filters must pass.
 
 **All command-line options**
 
@@ -561,11 +561,11 @@ Sources: [modules/alignReads.R](modules/alignReads.R), [BLAT parsing in lib/comm
 
 ### buildFragments: reconstruct candidate genomic fragments
 
-`buildFragments` combines anchor and adrift alignments from the same read pair into candidate physical fragments spanning the vector–genome junction and a shearing boundary.
+`buildFragments` combines anchor and adrift alignments from the same read pair into rationale fragments spanning the vector–genome junction and a shearing boundary.
 
 **Input:** `alignReads.rds`.
 
-**Output:** `buildFragments.rds`, containing candidate fragment coordinates, strand, read sequences, recovered leaders, `nReads`, and sample metadata. Optional database export also saves fragment tables as Parquet files and records their metadata and filenames in SQL.
+**Output:** `buildFragments.rds`, containing candidate fragment coordinates, strand, read sequences, recovered vector sequences, and sample metadata. Optional database export also saves fragment tables as Parquet files and records their metadata and filenames in SQL.
 
 ```bash
 inspiired2 buildFragments --outputDir out --inputData out/alignReads.rds
@@ -593,11 +593,11 @@ Within each read-ID batch, the module evaluates combinations of mate alignments.
 
 **Database and Parquet export**
 
-Supplying both database configuration values enables this optional export. The credential file is read by RMariaDB using the requested group. The database must contain an InnoDB `fragments` table, and `/data` must be writable and contain the `.inspiired` marker file. The main RDS result is written independently of this export.
+Supplying both database configuration values (--dbConfigFile and --dbConfigID) enables this optional export. The credential file is read by RMariaDB using the requested group. An external file system directory containing a marker file named `.inspiired` must be mounted to /data in the container. The main RDS result is written independently of this export.
 
-Candidate fragments are grouped by trial, subject, sample, replicate, reference genome, and mode. Each group is written to an MD5-named Parquet file under `/data`. The SQL row stores these identifiers, the number of distinct fragment-coordinate records, and the Parquet filename. That count describes candidate fragments before downstream standardization and site filtering.
+Candidate fragments are grouped by trial, subject, sample, replicate, reference genome, and mode. Each group is written to an MD5-named Parquet file under `/data`. The SQL row stores these identifiers, the number of distinct fragment-coordinate records, and the Parquet filename. 
 
-Export validates prepared Parquet files before changing database rows and commits the row updates as a transaction. Replacement updates the database pointer and retains the previous Parquet file. The supporting `pullDBrecords` command can select stored fragment groups and rebuild an RDS input for `buildStdFragments`, allowing downstream settings to be changed without repeating demultiplexing and alignment.
+The supporting `pullDBrecords` command can select stored fragment groups and rebuild an RDS input for `buildStdFragments`.
 
 Sources: [modules/buildFragments.R](modules/buildFragments.R), [database initialization in lib/common.R](lib/common.R).
 
