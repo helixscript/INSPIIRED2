@@ -224,6 +224,82 @@ Setting `set -euo pipefail` at the top of processing script instructs the script
 
 <br>
 
+### Working with HMMs
+Anchor reads containing the ends of vector LTR sequences are recognized using vector specific HMMs. HMMs are used because them are particularly adept at recognizing mismatches and minor indels that can occur due to natural variation and sequencing error.  Vector HMMs are created with the HMMER software package for each vector used in your analysis. To create a vector HMM, first create a FASTA file for the expected vector sequence you expect to observe in your R2 read sequences. This will be the expected sequence observed before transitioning into genomic DNA, eg.
+
+```
+docker run -it --rm  inspiired2 bash
+```
+
+```
+echo -e ">seq\nGAAAATCTCTAGCA" > test.ff
+```
+
+Next, use HMMER to create a HMM with this FASTA file.
+```
+hmmbuild test.hmm test.fasta
+```
+
+Now that we created an HMM, we need to determine how to score it. Next create a FASTA file containing minor variations in your sequence to see how it affects the HMM score. For example, here we create a file name *mySeqTests.fasta* and make minor changes which we would still consider valid hits.
+
+``` 
+echo ">seq
+GAAAATCTCTAGCA
+>seq_1SNP
+GAAGATCTCTAGCA
+>seq_2SNPs
+GAAGATCTCAAGCA
+>seq_1del
+GAAAATTCTAGCA
+>seq_1del_1ins
+GAAATCTCTGAGCA" > test2.ff
+```
+Once we create a couple of minor variations in our target sequence, we evaluate the variations with our HMM.  
+First run this command to evaluate the test sequences:
+
+```
+nhmmer --F1 1 --F2 1 --F3 1 -T -5 --incT -5 --nobias --popen 0.15 --pextend 0.05 --tblout out.tbl test.hmm test2.ff
+```
+
+Next, review the output (out.tbl) to determine a minimum acceptable score:
+  
+```
+# target name        accession  query name           accession  hmmfrom hmm to alifrom  ali to envfrom  env to  sq len strand   E-value  score  bias  description of target
+#------------------- ---------- -------------------- ---------- ------- ------- ------- ------- ------- ------- ------- ------ --------- ------ ----- ---------------------
+seq                  -          test                 -                1      14       1      14       1      14      14    +      0.0063    3.7   1.1  -
+seq_1SNP             -          test                 -                1      14       1      14       1      14      14    +       0.016    2.8   0.3  -
+seq_2SNPs            -          test                 -                1      13       1      13       1      14      14    +        0.15    0.5   0.9  -
+seq_1del_1ins        -          test                 -                3      10       2       9       1      14      14    +        0.29   -0.1   0.2  -
+seq_1del             -          test                 -                4      13       3      12       1      13      13    +        0.38   -0.4   1.2  -
+```
+  
+Examine the HMM scores in column 14 (score) and make a decision about the lowest score that provides an acceptable match. In this example, we will go with 0.5. Next we will create an settings file for the new HMM. This file needs to have the same name as the HMM file except we replace ".hmm" with ".cfg". The settings file provides default scoring parameters for the HMM. Here is an example:
+  
+```
+HMMminStartPos  1
+HMMmaxStartPos  5
+HMMminFullBitScore      10
+HMMmaxFullBitScore      30
+HMMmatchEnd     TRUE
+HMMmatchTerminalSeq     CA
+HMMmatchEndRadius       2
+```
+
+Alternatively, for each HMM defined in your sampelData.tsv file, you can provide these parameters as a comma delimited string where each HMM is separatred by a pipe character. HMM parameters provided on the command line will overide parameters found in the default  .cfg files.
+
+```
+inspiired2 prepReads --outputDir out --inputData out/demultiplex.rds --HMMparam 'HIV1_1-100_U5.hmm,1,5,10,30,TRUE,CA,2|HIV1_1-100_U3_RC.hmm,1,5,30,60,TRUE,CA,2'
+```
+
+The best approach for processing data with potentially varied LTR sequences is to run the HMMs on raw sequencing data using the testHMMs module:
+
+```
+inspiired2 testHMMs --outputDir out  --sampleData sampleData.tsv --anchorReads  Undetermined_S0_R2_001.fastq.gz --HMMmatchEnd --HMMmatchTerminalSeq CA --HMMmatchEndRadius 2
+```
+This module tests sequencing data using the HMM profiles found in the sample data file and provided a graphical output useful for tuning HMM paramaters:
+
+<br>
+
 ## General command behavior
 
 Core modules accept the following options:
@@ -235,8 +311,6 @@ Core modules accept the following options:
 | `--threads` | `50` | Maximum worker or library thread count.  |
 | `--fileTag` | Module name | Base name for output files. Allows modules to be run more than once by changing their output file base names.  |
 | `--ramDiskPath` | `/dev/shm` | Scratch filesystem; falls back to `outputDir` when not writable. |
-
-
 
 <br>
 
@@ -530,81 +604,6 @@ The following commands support setup, inspection, or reuse of results:
 | [`pullDBrecords`](modules/pullDBrecords.R) | Select stored fragments by trial and optional subject, sample, reference genome, and mode filters, read their Parquet files, and save an RDS input for downstream reanalysis. |
 
 <br>
-
-## Working with HMMs
-Anchor reads containing the ends of vector LTR sequences are recognized using vector specific HMMs. HMMs are used because them are particularly adept at recognizing mismatches and minor indels that can occur due to natural variation and sequencing error.  Vector HMMs are created with the HMMER software package for each vector used in your analysis. To create a vector HMM, first create a FASTA file for the expected vector sequence you expect to observe in your R2 read sequences. This will be the expected sequence observed before transitioning into genomic DNA, eg.
-
-```
-docker run -it --rm  inspiired2 bash
-```
-
-```
-echo -e ">seq\nGAAAATCTCTAGCA" > test.ff
-```
-
-Next, use HMMER to create a HMM with this FASTA file.
-```
-hmmbuild test.hmm test.fasta
-```
-
-Now that we created an HMM, we need to determine how to score it. Next create a FASTA file containing minor variations in your sequence to see how it affects the HMM score. For example, here we create a file name *mySeqTests.fasta* and make minor changes which we would still consider valid hits.
-
-``` 
-echo ">seq
-GAAAATCTCTAGCA
->seq_1SNP
-GAAGATCTCTAGCA
->seq_2SNPs
-GAAGATCTCAAGCA
->seq_1del
-GAAAATTCTAGCA
->seq_1del_1ins
-GAAATCTCTGAGCA" > test2.ff
-```
-Once we create a couple of minor variations in our target sequence, we evaluate the variations with our HMM.  
-First run this command to evaluate the test sequences:
-
-```
-nhmmer --F1 1 --F2 1 --F3 1 -T -5 --incT -5 --nobias --popen 0.15 --pextend 0.05 --tblout out.tbl test.hmm test2.ff
-```
-
-Next, review the output (out.tbl) to determine a minimum acceptable score:
-  
-```
-# target name        accession  query name           accession  hmmfrom hmm to alifrom  ali to envfrom  env to  sq len strand   E-value  score  bias  description of target
-#------------------- ---------- -------------------- ---------- ------- ------- ------- ------- ------- ------- ------- ------ --------- ------ ----- ---------------------
-seq                  -          test                 -                1      14       1      14       1      14      14    +      0.0063    3.7   1.1  -
-seq_1SNP             -          test                 -                1      14       1      14       1      14      14    +       0.016    2.8   0.3  -
-seq_2SNPs            -          test                 -                1      13       1      13       1      14      14    +        0.15    0.5   0.9  -
-seq_1del_1ins        -          test                 -                3      10       2       9       1      14      14    +        0.29   -0.1   0.2  -
-seq_1del             -          test                 -                4      13       3      12       1      13      13    +        0.38   -0.4   1.2  -
-```
-  
-Examine the HMM scores in column 14 (score) and make a decision about the lowest score that provides an acceptable match. In this example, we will go with 0.5. Next we will create an settings file for the new HMM. This file needs to have the same name as the HMM file except we replace ".hmm" with ".cfg". The settings file provides default scoring parameters for the HMM. Here is an example:
-  
-```
-HMMminStartPos  1
-HMMmaxStartPos  5
-HMMminFullBitScore      10
-HMMmaxFullBitScore      30
-HMMmatchEnd     TRUE
-HMMmatchTerminalSeq     CA
-HMMmatchEndRadius       2
-```
-
-Alternatively, for each HMM defined in your sampelData.tsv file, you can provide these parameters as a comma delimited string where each HMM is separatred by a pipe character. HMM parameters provided on the command line will overide parameters found in the default  .cfg files.
-
-```
-inspiired2 prepReads --outputDir out --inputData out/demultiplex.rds --HMMparam 'HIV1_1-100_U5.hmm,1,5,10,30,TRUE,CA,2|HIV1_1-100_U3_RC.hmm,1,5,30,60,TRUE,CA,2'
-```
-
-The best approach for processing data with potentially varied LTR sequences is to run the HMMs on raw sequencing data using the testHMMs module:
-
-```
-inspiired2 testHMMs --outputDir out  --sampleData sampleData.tsv --anchorReads  Undetermined_S0_R2_001.fastq.gz --HMMmatchEnd --HMMmatchTerminalSeq CA --HMMmatchEndRadius 2
-```
-This module tests sequencing data using the HMM profiles found in the sample data file and provided a graphical output useful for tuning HMM paramaters:
-
 
 
 
