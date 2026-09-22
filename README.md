@@ -285,7 +285,22 @@ HMMmatchTerminalSeq     CA
 HMMmatchEndRadius       2
 ```
 
-Once an HMM is created, it should be tested on real data. The `testHMMs` module reads in the output of the demultiplex module and runs demultiplexed reads through their associated HMMs. HMM scores and HMM alignment start positions are plotted on a grid. HMM hits that would be included in an analysis are within the blue box drawn atop of the grid. The position of the blue box is determined by the HMM processing parameters which are passed to the module using the `--HMMparams` flag. This flag accepts a comma delimited string of the processing parameters shown above. Adjust parameters until the blue box is gating scores in an manner appropriate for your work. These settings should be recorded in an HMM cfg file to be used in the future. If you are working with wild infections or anchor reads have the option of landing on multiple locations within LTRs, this configuration should be done for each sequencing run and an experiment HMM parameters should be passed to the `prepReads` module with the same  `--HMMparams` flag.
+### Field definitions
+
+| Field | Example value | Definition |
+|---|---|---|
+| `HMMminStartPos` | `1` | Earliest allowed start of the HMM alignment on the anchor read. Positions are 1-based, measured from the beginning of the read. Must be an integer of at least `1`. |
+| `HMMmaxStartPos` | `5` | Latest allowed start of the HMM alignment on the anchor read. Must be an integer greater than or equal to `HMMminStartPos`. The start-position bounds are inclusive. |
+| `HMMminFullBitScore` | `10` | Minimum accepted `nhmmer` bit score, inclusive. Hits below this value are rejected. Must be a finite number; decimal and negative values are permitted. |
+| `HMMmaxFullBitScore` | `30` | Maximum accepted `nhmmer` bit score, inclusive. Hits above this value are rejected, even if they are stronger matches. Must be finite and greater than or equal to `HMMminFullBitScore`. |
+| `HMMmatchEnd` | `TRUE` | Whether to require the alignment to reach the end of the HMM within the tolerance set by `HMMmatchEndRadius`. Accepts `TRUE` or `FALSE`, case-insensitively. This checks the model-end position; it does not require alignment from the first position of the model. |
+| `HMMmatchTerminalSeq` | `CA` | Exact nucleotide sequence required near the alignment endpoint on the anchor read. Its final base becomes the leader endpoint used for trimming. Set to `none` to disable this check. Sequences are converted to uppercase and may contain `A`, `C`, `G`, `T`, or `N`; matching is literal, so `N` is not a wildcard. |
+| `HMMmatchEndRadius` | `2` | Non-negative integer tolerance used for both the HMM-end check and the terminal-sequence search. For the model-end check, it is the allowed difference between the model length and the last aligned model position. For terminal matching, it is the allowed shift of the motif's final base from the alignment endpoint on the read. |
+
+Start positions refer to the **anchor read**, while `HMMmatchEnd` evaluates positions within the **HMM model**. The model length is read from the `LENG` entry in the `.hmm` file.
+
+
+Once an HMM is created, default scoring parameters should be defined based on the initial testing and then it should be tested on real data. The `testHMMs` module reads in the output of the demultiplex module and runs demultiplexed reads through their associated HMMs. HMM scores and HMM alignment start positions are plotted on a grid. HMM hits that would be included in an analysis are within the blue box drawn atop of the grid. The position of the blue box is determined by the HMM processing parameters which are passed to the module using the `--HMMparams` flag. This flag accepts a comma delimited string of the processing parameters shown above. Adjust parameters until the blue box is gating scores in an manner appropriate for your work. These settings should be recorded in an HMM cfg file to be used in the future. If you are working with wild infections or anchor reads have the option of landing on multiple locations within LTRs, this configuration should be done for each sequencing run and an experiment HMM parameters should be passed to the `prepReads` module with the same  `--HMMparams` flag.
 
 
 
