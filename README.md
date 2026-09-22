@@ -285,18 +285,20 @@ HMMmatchTerminalSeq     CA
 HMMmatchEndRadius       2
 ```
 
-Alternatively, for each HMM defined in your sampelData.tsv file, you can provide these parameters as a comma delimited string where each HMM is separatred by a pipe character. HMM parameters provided on the command line will overide parameters found in the default  .cfg files.
+Once an HMM is created, it should be tested on real data. The `testHMMs` module reads in the output of the demultiplex module and runs demultiplexed reads through their associated HMMs. HMM scores and HMM alignment start positions are plotted on a grid. HMM hits that would be included in an analysis are within the blue box drawn atop of the grid. The position of the blue box is determined by the HMM processing parameters which are passed to the module using the `--HMMparams` flag. This flag accepts a comma delimited string of the processing parameters shown above. Adjust parameters until the blue box is gating scores in an manner appropriate for your work. These settings should be recorded in an HMM cfg file to be used in the future. If you are working with wild infections or anchor reads have the option of landing on multiple locations within LTRs, this configuration should be done for each sequencing run and an experiment HMM parameters should be passed to the `prepReads` module with the same  `--HMMparams` flag.
+
+
 
 ```
-inspiired2 prepReads --outputDir out --inputData out/demultiplex.rds --HMMparam 'HIV1_1-100_U5.hmm,1,5,10,30,TRUE,CA,2|HIV1_1-100_U3_RC.hmm,1,5,30,60,TRUE,CA,2'
+inspiired2 testHMMs --outputDir out --outputDir INSPIIRED2  \
+--inputData INSPIIRED2/demultiplex.rds                       \
+--HMMparams 'HIV1_LTR_U5_v1.0.hmm,1,6,6,26,TRUE,CA,2'        \
+--scoreBinWidth 2 --startPosBinWidth 2 --minScoreBinPct 1
 ```
 
-The best approach for processing data with potentially varied LTR sequences is to run the HMMs on raw sequencing data using the testHMMs module:
-
-```
-inspiired2 testHMMs --outputDir out  --sampleData sampleData.tsv --anchorReads  Undetermined_S0_R2_001.fastq.gz --HMMmatchEnd --HMMmatchTerminalSeq CA --HMMmatchEndRadius 2
-```
-This module tests sequencing data using the HMM profiles found in the sample data file and provided a graphical output useful for tuning HMM paramaters:
+<p align="center">
+  <img src="figures/testHMMs.png" alt="INSPIIRED HMM test" />
+</p>
 
 <br>
 
