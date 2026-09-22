@@ -353,15 +353,11 @@ This reference describes **INSPIIRED2 1.6.3**, checked against [commit `1cf3fe3`
 
 ### Command conventions and shared behavior
 
-Use `inspiired2 <module> [options]`. All examples below use the default filename prefixes and an existing `out` directory:
-
-```bash
-mkdir -p out
-```
+Use `inspiired2 <module> [options]`.
 
 Options marked **Required** have no default. Boolean flags default to `FALSE`: supply the flag by itself to set it to `TRUE`, and omit it to keep `FALSE`. Do not append `TRUE` or `FALSE` to a flag. String values containing spaces, regular expressions, or a pipe must be quoted. The value `none` is a literal sentinel string where shown.
 
-The default `--fileTag` is the module name. Each core module writes `<fileTag>.rds`, a `<fileTag>.log` execution log, a `<fileTag>.yml` parameter record, and a `<fileTag>.done` marker after successful completion. Additional outputs are listed under the relevant module. Changing the prefix requires updating the next module's input path. Existing RDS files are not an automatic skip/resume mechanism: an invoked module runs again.
+The default `--fileTag` is the module name. Each core module writes `<fileTag>.rds`, a `<fileTag>.log` execution log, a `<fileTag>.yml` parameter record, and a `<fileTag>.done` marker after successful completion. Additional outputs are listed under the relevant module. Existing RDS files are not an automatic skip/resume mechanism: an invoked module runs again.
 
 Temporary working files use `--ramDiskPath`, normally `/dev/shm`; an unwritable path falls back to the output directory. Some intermediate files also use a `<fileTag>_tmp` directory under the output directory. Temporary working directories are cleaned up when a module exits. The shared initialization sets data.table's thread count, but individual modules differ in how much work they parallelize; each table explains the actual use of `--threads`.
 
@@ -370,9 +366,7 @@ The following options apply to the **top-level command**, before any module name
 | Option | Example | Effect |
 |---|---|---|
 | `--help` | `inspiired2 --help` | Print launcher help and the available subcommands. |
-| `-h` | `inspiired2 -h` | Short form of launcher help. |
 | `--version` | `inspiired2 --version` | Print the installed INSPIIRED2 version and exit. |
-| `-v` | `inspiired2 -v` | Short form of the version option. |
 
 ### demultiplex: assign read pairs to sample replicates
 
@@ -383,10 +377,10 @@ The following options apply to the **top-level command**, before any module name
 **Outputs:** `demultiplex.rds`, containing assigned read pairs, sequences, metadata, UMIs or placeholders, and `nReads`; and `demultiplex.tbl`, the sample table with `demultiplexedReads` totals added. Sample rows with no assigned reads receive a count of zero.
 
 ```bash
-inspiired2 demultiplex --outputDir \
-  --sampleData sampleData.tsv      \
-  --indexReads I1.fastq.gz         \
-  --adriftReads R1.fastq.gz        \
+inspiired2 demultiplex --outputDir out \
+  --sampleData sampleData.tsv          \
+  --indexReads I1.fastq.gz             \
+  --adriftReads R1.fastq.gz            \
   --anchorReads R2.fastq.gz
 ```
 
@@ -440,17 +434,15 @@ The two linker-matching switches are independent. Disabling the pre-UMI linker t
 
 **UMI handling:** duplicate collapsing uses the extracted UMI even when `--captureUMIs` is absent, because replacement with `AAAAAAAAAAAA` occurs afterward. Enable `--captureUMIs` at this stage if downstream UMI analysis is required. Later flags cannot recover discarded sequences. Site abundance remains based on fragment-length diversity; capturing UMIs supplies an additional output measure.
 
-**Mode handling in this version:** `sampleData` is read with readr's default missing-value handling, so a text `NA` can become a missing value and fail the mode validator. Do not assume that writing `NA` into a TSV is sufficient to use the nominal non-LTR mode. The `buildSites` notes also describe a limitation when non-U3/U5 records are mixed with U3/U5 records.
-
 Sources: [modules/demultiplex.R](modules/demultiplex.R), [lib/demultiplex.R](lib/demultiplex.R).
 
-### prepReads: recognize the vector leader and recover genomic reads
+### prepReads: trim sequencing reads and recognize the vector sequences
 
-`prepReads` locates the vector-terminal **leader sequence** at the beginning of each anchor read, saves it separately, and removes it to expose the genomic sequence for alignment. It also trims reads that extend through short inserts and filters likely internal-vector reads.
+`prepReads` locates the vector-terminal at the beginning of each anchor read, saves it separately, and removes it to expose the genomic sequence for alignment. It also trims reads that extend through short inserts and filters likely internal-vector reads.
 
-**Input:** `demultiplex.rds`, together with each library's HMM, HMM configuration, and vector FASTA resources.
+**Input:** `demultiplex.rds`, which includes each sample replicate's HMM, HMM configuration, and vector FASTA resources.
 
-**Outputs:** `prepReads.rds`, containing genomic read pairs and the recovered `leaderSeq`; and `prepReads_vectorHitReads.tsv.gz`, containing pairs rejected by the vector screen when that screen is enabled.
+**Outputs:** `prepReads.rds`, containing genomic read pairs and the recovered vector sequence; and `prepReads_vectorHitReads.tsv.gz`, containing pairs rejected by the vector screen when that screen is enabled.
 
 ```bash
 inspiired2 prepReads --outputDir out --inputData out/demultiplex.rds
