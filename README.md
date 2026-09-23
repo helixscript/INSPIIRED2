@@ -894,9 +894,6 @@ Rscript --vanilla /opt/INSPIIRED2/modules/buildStdFragments.R \
   --inputData out/buildFragments.rds 
 ```
 
-INSPIIRED2 is provided with an SQL database and the ability to create a data warehouse to store data from multiple experiments. Databasing and warehousing is enabled by providing database credentials to the buildFragments module arguments: `--dbConfigFile --dbConfigID`
-
-
 <br>
 
 ## Working with position standardization in `buildStdFragments`
@@ -1004,3 +1001,10 @@ The breakpoint settings remain at their defaults. Use a different output prefix 
 Supply either flag by itself to skip that step. Use these flags to disable standardization instead of setting the window or `sd_shrink` values to zero. The module's other processing and filtering steps still run.
 
 Source: [buildStdFragments module](modules/buildStdFragments.R) and [command-line options](inspiired2.R).
+
+<br>
+
+### Working with the database and data lake.
+
+INSPIIRED2 is provided with an SQL database and the ability to create a data warehouse to store data from multiple experiments. Databasing and warehousing is enabled by providing database credentials to the buildFragments module arguments: `--dbConfigFile --dbConfigID`
+
