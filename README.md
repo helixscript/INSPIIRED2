@@ -838,6 +838,8 @@ Multiple overlapping annotations are combined into comma-separated values after 
 
 Source: [modules/annotateRepeats.R](modules/annotateRepeats.R).
 
+<br>
+
 ### CD-HIT-EST parameter strings
 
 Three core modules pass a quoted parameter string to CD-HIT-EST. Their complete default strings appear in their module tables. Each supplied string replaces that option's entire default string; it is not a partial override. The key settings represented in those defaults are:
@@ -873,7 +875,9 @@ inspiired2 buildStdFragments --outputDir out  --inputData out/buildFragments.rds
 
 The pass-through interface can accept other arguments supported by the installed CD-HIT-EST version. Those external-tool options are not separate INSPIIRED2 command-line flags.
 
-### Calling a module script directly
+<br>
+
+### Calling module scripts directly
 
 The standard launcher locates the installation and supplies its path to the selected R module automatically. Direct execution of any core script additionally requires this option:
 
@@ -885,7 +889,7 @@ For example:
 
 ```bash
 Rscript --vanilla /opt/INSPIIRED2/modules/buildStdFragments.R \
-  --softwareRoot /opt/INSPIIRED2 \
+  --softwareRoot /opt/INSPIIRED2  \
   --outputDir out \
   --inputData out/buildFragments.rds 
 ```
