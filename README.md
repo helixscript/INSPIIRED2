@@ -240,7 +240,7 @@ Next, use HMMER to create a HMM with this FASTA file.
 hmmbuild test.hmm test.fasta
 ```
 
-Now that we created an HMM, we need to determine how to score it. Next create a FASTA file containing minor variations in your sequence to see how it affects the HMM score. For example, here we create a file name *mySeqTests.fasta* and make minor changes which we would still consider valid hits.
+Now that we created an HMM, we need to determine how to score it. Next create a FASTA file containing minor variations in your sequence to see how it affects the HMM score. For example, here we create a file named `test2.ff` and make minor changes which we would still consider valid hits.
 
 ``` 
 echo ">seq
