@@ -840,7 +840,7 @@ Source: [modules/annotateRepeats.R](modules/annotateRepeats.R).
 
 <br>
 
-### CD-HIT-EST parameter strings
+## Working with CD-HIT-EST parameter strings
 
 Three core modules pass a quoted parameter string to CD-HIT-EST. Their complete default strings appear in their module tables. Each supplied string replaces that option's entire default string; it is not a partial override. The key settings represented in those defaults are:
 
@@ -877,7 +877,7 @@ The pass-through interface can accept other arguments supported by the installed
 
 <br>
 
-### Calling module scripts directly
+## Calling module scripts directly
 
 The standard launcher locates the installation and supplies its path to the selected R module automatically. Direct execution of any core script additionally requires this option:
 
@@ -895,3 +895,165 @@ Rscript --vanilla /opt/INSPIIRED2/modules/buildStdFragments.R \
 ```
 
 INSPIIRED2 is provided with an SQL database and the ability to create a data warehouse to store data from multiple experiments. Databasing and warehousing is enabled by providing database credentials to the buildFragments module arguments: `--dbConfigFile --dbConfigID`
+
+
+<br>
+
+## Working with position standardization in `buildStdFragments`
+
+Small differences in alignment endpoints can cause reads from the same integration site or shearing boundary to receive slightly different coordinates. The `buildStdFragments` module uses `standardize_positions()` to consolidate nearby coordinates around positions supported by the data. This helps prevent coordinate variation from inflating the number of integration sites or distinct shearing boundaries. Because genuinely different positions can also be close together, the settings determine a trade-off between consolidating coordinate variation and preserving nearby events.
+
+The function selects among **observed positions with locally high read support**. It does not calculate a mean coordinate or simply merge every pair of positions separated by fewer than a specified number of bases.
+
+#### Which boundaries are standardized?
+
+The module applies the function in two passes:
+
+1. **Integration-position standardization** adjusts the vector–genome junction boundary. Support is pooled across samples and replicates within a trial and subject, while keeping reference genomes, detection modes, chromosomes, and strands separate.
+2. **Shearing-breakpoint standardization** adjusts the opposite boundary, separately for each standardized integration position within each sample replicate. A site with only one distinct read ID or only one distinct breakpoint keeps its original breakpoint coordinates.
+
+The module supplies a table, `df`, containing `seqnames`, `strand`, `start`, `end`, and `reads`. The `reads` values come from summed `nReads`, so collapsed sequencing duplicates contribute their recorded read counts. During breakpoint standardization, the standardized site identifier is used as the `seqnames` grouping key to prevent different integration sites from being combined.
+
+The `side` argument selects the coordinate to update. The module sets it automatically:
+
+| Boundary being standardized | Fragment strand | Updated coordinate | `side` |
+|---|---|---|---|
+| Integration position | `+` | `fragStart` | `left` |
+| Integration position | `-` | `fragEnd` | `right` |
+| Shearing breakpoint | `+` | `fragEnd` | `right` |
+| Shearing breakpoint | `-` | `fragStart` | `left` |
+
+Here, left and right mean the lower and higher genomic coordinates. These operations precede the integration-coordinate and vector-orientation corrections performed by `buildSites`.
+
+#### Parameters and defaults
+
+Three numeric parameters control each pass. Distances are in bases; `sd_shrink` is a dimensionless divisor.
+
+| Option | Default | Function argument and role |
+|---|---|---|
+| `--intSite_sp_window` | `8` | `window`: maximum candidate distance for integration positions. |
+| `--intSite_sp_local_radius` | `4` | `local_radius`: neighborhood for identifying integration-position maxima. |
+| `--intSite_sp_sd_shrink` | `4` | `sd_shrink`: controls the distance penalty for integration positions. |
+| `--breakPoint_sp_window` | `5` | `window`: maximum candidate distance for shearing breakpoints. |
+| `--breakPoint_sp_local_radius` | `2` | `local_radius`: neighborhood for identifying breakpoint maxima. |
+| `--breakPoint_sp_sd_shrink` | `4` | `sd_shrink`: controls the distance penalty for shearing breakpoints. |
+
+These are the **module defaults**. The helper function itself defaults to `local_radius = 2`, but the integration-position pass explicitly supplies `4`.
+
+#### How the function assigns a coordinate
+
+Within each processing group, the function performs the following steps:
+
+1. **Sum support at each coordinate.** It aggregates read counts at each observed coordinate, keeping the grouping key and strand separate.
+2. **Identify candidate positions.** A coordinate qualifies as a local maximum when its read count is at least as large as every count within `local_radius` bases on either side. The endpoints of this neighborhood are included, and equal-height maxima can both qualify.
+3. **Score candidates near each input coordinate.** Only local maxima within `window` bases of that coordinate are considered, including candidates exactly at the window boundary. Each candidate receives a score based on its read support and distance:
+
+   ```text
+   sigma = window / sd_shrink
+   score = candidate_reads * exp(-distance^2 / (2 * sigma^2))
+   ```
+
+4. **Choose the highest-scoring candidate.** The input coordinate is replaced with that candidate's coordinate. If no eligible candidate is available within the search window, the original coordinate is retained.
+
+`sigma` sets the width of the Gaussian distance weighting; it is calculated from the parameters, rather than estimated from the data. The score is a relative weight, not a probability. With the defaults, sigma is **2 bases for integration positions** and **1.25 bases for shearing breakpoints**.
+
+Candidate positions and their read support are calculated from the input to that call. The function performs one assignment pass; it does not repeatedly recompute maxima after coordinates have moved. A candidate maximum can itself move if another candidate has a higher score at its position. Exact score ties are resolved by the first maximum encountered by `which.max()`; there is no separate biological tie-breaking rule.
+
+#### `window`: how far a coordinate can move
+
+`window` defines the maximum distance to a candidate position. A value of `8` searches from eight bases below to eight bases above the input coordinate. Increasing it allows more distant candidates to compete; decreasing it excludes them.
+
+Changing `window` also changes sigma if `sd_shrink` stays fixed. For example, increasing `window` from `8` to `12` with `sd_shrink = 4` increases sigma from `2` to `3`, weakening the distance penalty as well as expanding the search. To expand the window while keeping sigma at `2`, use `window = 12` and `sd_shrink = 6`.
+
+**Example: restricting the search distance.** Suppose a processing group contains only the positions below. Hold `local_radius = 4` and `sd_shrink = 4` constant:
+
+| Input position | Reads | Output with `window = 4` | Output with `window = 8` |
+|---|---|---|---|
+| 1000 | 100 | 1000 | 1000 |
+| 1003 | 10 | 1000 | 1000 |
+| 1006 | 5 | 1006 | 1000 |
+
+Position 1000 is the only local maximum. Position 1003 is excluded as a candidate because 1000 has more support within its local neighborhood; 1006 is excluded because 1003 has more support within its neighborhood.
+
+With a four-base search window, 1006 cannot reach the candidate at 1000 and therefore keeps its original coordinate. It cannot use 1003 as an intermediate destination because 1003 is not a candidate. With an eight-base window, all three input positions map to 1000.
+
+#### `local_radius`: which positions can compete
+
+`local_radius` controls the neighborhood used to identify read-support maxima. Increasing it can disqualify a smaller nearby peak by bringing a stronger peak into its comparison neighborhood. Decreasing it allows more closely spaced peaks to qualify independently.
+
+This parameter does not define the maximum shift. A qualifying position can attract coordinates from anywhere inside `window`, and allowing a small peak to qualify does not guarantee that it will retain its own coordinate. With `local_radius = 0`, every observed position qualifies, but positions can still move during candidate competition.
+
+**Example: retaining or removing a nearby candidate.** Suppose the only observed positions are 1000 with 100 reads and 1003 with 60 reads. Hold `window = 8` and `sd_shrink = 4` constant:
+
+| `local_radius` | Candidate positions | Output for position 1003 |
+|---|---|---|
+| `2` | 1000 and 1003 | 1003 |
+| `4` | 1000 only | 1000 |
+
+At radius 2, the peaks are outside each other's local neighborhoods. Both qualify. At position 1003, its own score is 60, while the score from 1000 is approximately 32.47, so 1003 stays separate.
+
+At radius 4, the 100-read peak disqualifies the 60-read peak as a candidate. Position 1003 then maps to the only eligible candidate, 1000. Position 1000 remains unchanged in both cases.
+
+#### `sd_shrink`: how strongly distance is penalized
+
+`sd_shrink` divides the search window to determine sigma:
+
+- A **larger divisor** produces a narrower Gaussian and a stronger penalty for distance.
+- A **smaller divisor** produces a broader Gaussian and allows more distant high-support candidates to compete more strongly.
+
+It changes candidate scores without changing which positions qualify as local maxima or which candidates fall inside the search window.
+
+**Example: competition between a stronger distant peak and a weaker nearby peak.** Use the same two positions—1000 with 100 reads and 1003 with 60 reads—and hold `window = 8` and `local_radius = 2` constant. Both positions qualify as candidates. At input position 1003:
+
+| `sd_shrink` | Sigma | Score from 1000 | Score from 1003 | Output position |
+|---|---|---|---|---|
+| `2` | 4 | 75.48 | 60.00 | 1000 |
+| `4` | 2 | 32.47 | 60.00 | 1003 |
+| `8` | 1 | 1.11 | 60.00 | 1003 |
+
+With the smaller divisor, the 100-read peak still has enough weight three bases away to win. Increasing the divisor strengthens the distance penalty, allowing the 60-read peak to retain its coordinate. Position 1000 remains unchanged in all three cases.
+
+**A larger divisor is not a rejection threshold.** If `local_radius` is changed to `4`, position 1003 no longer qualifies as a candidate. It then maps to 1000 for all three divisor values shown above, including `8`, even though the remaining candidate's score is only 1.11. The function has no minimum acceptable score and does not compare that score with the original position's read count unless the original position is itself a candidate. To prevent such an assignment, the candidate must be outside the search window, an alternative candidate must win, or that standardization pass must be disabled.
+
+#### How breakpoint settings can affect abundance
+
+The same rules apply to shearing breakpoints, but their downstream consequence is a change in fragment-length diversity. Consider three input read records from one positive-strand integration at position 1000 in one sample replicate. Assume the integration coordinate stays fixed, the records pass subsequent filters, and no other fragments are present. Keep `local_radius = 2` and `sd_shrink = 4`:
+
+| Input breakpoint | Reads | Output with `window = 1` | Output with `window = 5` |
+|---|---|---|---|
+| 1100 | 100 | 1100 | 1100 |
+| 1102 | 5 | 1102 | 1100 |
+| 1110 | 20 | 1110 | 1110 |
+
+With the default five-base breakpoint window, the weak endpoint at 1102 maps to 1100. The distinct fragment lengths change from **101, 103, and 111 bases** to **101 and 111 bases**, using `fragEnd - fragStart + 1`. This yields two distinct lengths rather than three in the site's `sonicLengths` count for that replicate. Standardization preserves the combined read support of 125; the reduction is in the number of distinct fragment boundaries.
+
+With a one-base window, 1102 has no eligible candidate within reach and retains its coordinate. Although its local-maximum radius is still two bases, that radius does not permit a two-base assignment when the search window is only one base.
+
+Changing integration-position settings can also affect breakpoint results indirectly: when integration coordinates are combined, their fragments enter the same site-specific breakpoint standardization group.
+
+#### Setting or disabling the parameters
+
+For example, the following command uses an eight-base integration search window, a two-base local-maximum radius, and a narrow Gaussian with sigma 1. It uses the settings from the final row of the competition example and leaves breakpoint parameters at their defaults:
+
+```bash
+inspiired2 buildStdFragments \
+  --inputData out/buildFragments.rds \
+  --outputDir out \
+  --fileTag std_local \
+  --intSite_sp_window 8 \
+  --intSite_sp_local_radius 2 \
+  --intSite_sp_sd_shrink 8
+```
+
+This illustrates a parameter combination, rather than an optimum for every dataset. Its effect depends on the spacing and relative support of the observed coordinates. Comparing settings on the same candidate-fragment input makes their effects on site positions and fragment-length counts easier to assess. Because integration-position support is pooled within a subject, changing which samples are included can also change the selected maxima.
+
+Use positive values for `window` and `sd_shrink`, and a non-negative integer for `local_radius`. Setting the window or divisor to zero makes the Gaussian calculation degenerate; use the explicit switches to skip a pass:
+
+| Option | Default | Effect |
+|---|---|---|
+| `--disableIntSitePosStd` | `FALSE` | Skip integration-position standardization. |
+| `--disableBreakPointPosStd` | `FALSE` | Skip shearing-breakpoint standardization. |
+
+Supply either switch by itself to enable it. The corresponding numeric parameters then have no effect. These switches only skip their coordinate-standardization passes; the module's later read-rescue, clustering, and filtering steps still run.
+
+Sources: [standardize_positions() implementation](lib/buildStdFragments.R), [buildStdFragments module](modules/buildStdFragments.R), and [command-line defaults](inspiired2.R).
