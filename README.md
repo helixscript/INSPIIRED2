@@ -305,7 +305,7 @@ Once an HMM is created, default scoring parameters should be defined based on th
 
 
 ```
-inspiired2 testHMMs --outputDir out --outputDir INSPIIRED2  \
+inspiired2 testHMMs --outputDir out --outputDir INSPIIRED2   \
 --inputData INSPIIRED2/demultiplex.rds                       \
 --HMMparams 'HIV1_LTR_U5_v1.0.hmm,1,6,6,26,TRUE,CA,2'        \
 --scoreBinWidth 2 --startPosBinWidth 2 --minScoreBinPct 1
@@ -840,9 +840,9 @@ Source: [modules/annotateRepeats.R](modules/annotateRepeats.R).
 
 ### CD-HIT-EST parameter strings
 
-Three core options pass a quoted argument string to CD-HIT-EST. Their complete default strings appear in their module tables. Each supplied string replaces that option's entire default string; it is not a partial override. The key settings represented in those defaults are:
+Three core modules pass a quoted parameter string to CD-HIT-EST. Their complete default strings appear in their module tables. Each supplied string replaces that option's entire default string; it is not a partial override. The key settings represented in those defaults are:
 
-| CD-HIT option | Multi-hit default | Anchor-cluster default | Leader-cluster default | Meaning |
+| CD-HIT option | Multi-hit default (prepReads) | Anchor-cluster default (prepReads) | Leader-cluster default (buildSites) | Meaning |
 |---|---|---|---|---|
 | `-c` | `0.87` | `0.87` | `0.90` | Sequence identity threshold, expressed as a fraction. |
 | `-d` | `0` | `0` | `0` | Retain sequence identifiers rather than truncating them to a fixed description length in cluster output. |
