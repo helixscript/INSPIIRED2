@@ -349,8 +349,6 @@ The standard workflow contains eight core modules. Each saves an RDS result that
 | `nearestGenes` | `buildSites.rds` | `nearestGenes.rds` | Add gene, exon, and nearest-gene annotations. |
 | `annotateRepeats` | `nearestGenes.rds` | `annotateRepeats.rds` | Add overlapping repeat annotations. |
 
-This reference describes **INSPIIRED2 1.6.3**, checked against [commit `1cf3fe3`](https://github.com/helixscript/INSPIIRED2/tree/1cf3fe3ea3a99fc408b5dcea2bec29518683dbb5). Each module table includes every option exposed by `inspiired2 <module>`, with one option per row. Required arguments and defaults follow the launcher in [inspiired2.R](inspiired2.R).
-
 ### Command conventions and shared behavior
 
 Use `inspiired2 <module> [options]`.
