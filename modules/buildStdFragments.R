@@ -1,5 +1,5 @@
 #!/usr/bin/env -S Rscript --vanilla
-for (p in c('argparse', 'tidyverse', 'parallel', 'data.table', 'BiocParallel', 'stringi', 'igraph')) suppressPackageStartupMessages(library(p, character.only = TRUE))
+for (p in c('argparse', 'tidyverse', 'parallel', 'data.table', 'BiocParallel', 'stringi', 'igraph', 'RMariaDB')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",                         type = "character",     required = TRUE,                help = "Directory for output files")
@@ -8,6 +8,9 @@ parser$add_argument("--softwareRoot",                      type = "character",  
 parser$add_argument("--threads",                           type = "integer",       default  = 50,                  help = "Number of threads to use.")
 parser$add_argument("--fileTag",                           type = "character",     default  = "buildStdFragments", help = "String appended to output files in the outpt directory.")
 parser$add_argument("--ramDiskPath",                       type = "character",     default  = "/dev/shm",          help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--dbConfigFile",                      type = "character",     default  = "none",              help = "Path to db credential file.")
+parser$add_argument("--dbConfigID",                        type = "character",     default  = "none",              help = "DB credential block identifier in db credential file.")
+parser$add_argument("--pullSubjectFragments",              action = "store_true",  default  = FALSE,               help = "Append database fragments for incoming trial/subject pairs, excluding full fragment keys already supplied.")
 parser$add_argument("--disableBreakPointPosStd",           action = "store_true",  default  = FALSE,               help = 'Disable break point standardization.')
 parser$add_argument("--disableIntSitePosStd",              action = "store_true",  default  = FALSE,               help = 'Disable intSite position standardization.')
 parser$add_argument("--disableAnchorReadClusteringFilter", action = "store_true",  default  = FALSE,               help = 'Disable the anchor read clustering filter.')
@@ -34,7 +37,10 @@ runModule <- function(){
   doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
   if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
   
-  startModule()
+  if(xor(args$dbConfigFile != 'none', args$dbConfigID != 'none')) stop('Error - supply both --dbConfigFile and --dbConfigID, or neither.', call. = FALSE)
+  if(isTRUE(args$pullSubjectFragments) && args$dbConfigFile == 'none') stop('Error - --pullSubjectFragments requires --dbConfigFile and --dbConfigID.', call. = FALSE)
+  
+  startModule(connectDB = FALSE)
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   
@@ -72,6 +78,14 @@ runModule <- function(){
   frags$leaderSeqHMM    <- as.character(frags$leaderSeqHMM)
   frags$vectorFastaFile <- as.character(frags$vectorFastaFile)
   
+  if(isTRUE(args$pullSubjectFragments)){
+    newFrags <- pullDBfragments(frags)
+    if(nrow(newFrags) > 0L) frags <- data.table::as.data.table(dplyr::bind_rows(frags, newFrags))
+  }
+  
+  if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
+    stop("Error - chromosome names cannot contain '+' or '-' because these characters delimit posid strand.")
+  }
   
   frags$real_UMI <- frags$UMI 
   frags$UMI <- "AAAAAAAAAAAA" 

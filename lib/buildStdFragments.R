@@ -247,3 +247,106 @@ build_multiHit_clusters <- function(frags_multPosIDs){
   
   multiHitClusters
 }
+
+
+
+
+
+# Return additional, unstandardized fragments for the incoming trial/subject
+# pairs. Incoming full database keys take precedence over stored versions.
+pullDBfragments <- function(frags){
+  if(!is.data.frame(frags)) stop('Error - pullDBfragments requires a fragment data frame.', call. = FALSE)
+  input <- as.data.frame(frags)
+  empty <- input[FALSE, , drop = FALSE]
+  if(!nrow(input)){
+    updateLog('pullDBfragments: no incoming trial/subject groups; pulled 0 fragment rows.')
+    return(empty)
+  }
+  key_columns <- c('trial', 'subject', 'sample', 'replicate', 'refGenome', 'mode')
+  db_columns <- c('trial', 'subject', 'sample', 'replicate', 'ref_genome', 'mode')
+  get_keys <- function(x, label){
+    if(anyDuplicated(names(x)) || !all(key_columns %in% names(x)))
+      stop('Error - ', label, ' must have unique column names and include ', paste(key_columns, collapse = ', '), '.', call. = FALSE)
+    if(any(!vapply(x[key_columns], function(v) is.atomic(v) && is.null(dim(v)), logical(1))))
+      stop('Error - ', label, ' contains non-scalar fragment identifiers.', call. = FALSE)
+    keys <- as.data.frame(lapply(x[key_columns], as.character), stringsAsFactors = FALSE)
+    if(anyNA(keys) || any(vapply(keys, function(v) any(!nzchar(trimws(v))), logical(1))))
+      stop('Error - ', label, ' contains missing or blank fragment identifiers.', call. = FALSE)
+    reps <- suppressWarnings(as.numeric(keys$replicate))
+    if(any(!is.finite(reps) | reps != trunc(reps) | reps > .Machine$integer.max | reps < -.Machine$integer.max))
+      stop('Error - ', label, ' contains invalid replicate identifiers.', call. = FALSE)
+    keys$replicate <- as.integer(reps)
+    keys
+  }
+  input_keys <- unique(get_keys(input, 'Incoming fragments'))
+  pairs <- unique(input_keys[c('trial', 'subject')])
+  if(!is.list(args) || !all(c('dbConfigFile', 'dbConfigID') %in% names(args)) ||
+     any(vapply(args[c('dbConfigFile', 'dbConfigID')], function(x)
+       !is.character(x) || length(x) != 1L || is.na(x) || !nzchar(x) || x == 'none', logical(1))) ||
+     !file.exists(args$dbConfigFile))
+    stop('Error - pullDBfragments requires --dbConfigID and an existing --dbConfigFile.', call. = FALSE)
+  
+  conn <- createDBconnection()
+  on.exit(tryCatch(DBI::dbDisconnect(conn), error = function(e)
+    warning('Database disconnect failed: ', conditionMessage(e), call. = FALSE)), add = TRUE)
+  row_params <- function(x) unlist(lapply(seq_len(nrow(x)), function(i)
+    unname(as.list(x[i, , drop = FALSE]))), recursive = FALSE, use.names = FALSE)
+  input_match <- paste(rep(paste0('(', paste(paste(db_columns, '= ?'), collapse = ' AND '), ')'),
+                           nrow(input_keys)), collapse = ' OR ')
+  pair_match <- paste(rep('(trial = ? AND subject = ?)', nrow(pairs)), collapse = ' OR ')
+  # SQL marks existing input keys using the database's own comparison rules.
+  # One SELECT captures all requested records, without a trial/subject cross product.
+  query <- paste0('SELECT trial, subject, sample, replicate, ref_genome AS refGenome, mode, data_file_name, ',
+                  'CASE WHEN ', input_match, ' THEN 1 ELSE 0 END AS in_input ',
+                  'FROM fragments WHERE ', pair_match,
+                  ' ORDER BY trial, subject, sample, replicate, ref_genome, mode')
+  records <- as.data.frame(DBI::dbGetQuery(conn, query, params = c(row_params(input_keys), row_params(pairs))))
+  record_keys <- get_keys(records, 'Database records')
+  if(anyDuplicated(record_keys)) stop('Error - duplicate fragment keys returned by the database.', call. = FALSE)
+  if(nrow(dplyr::anti_join(unique(record_keys[c('trial', 'subject')]), pairs, by = c('trial', 'subject'))))
+    stop('Error - database trial/subject identifiers differ from the incoming identifiers; check spelling and capitalization.', call. = FALSE)
+  records[key_columns] <- record_keys
+  
+  data_path <- if(is.null(args$dataPath) || identical(args$dataPath, 'none')) '/data' else args$dataPath
+  pulled <- list()
+  for(i in seq_len(nrow(pairs))){
+    group <- records[records$trial == pairs$trial[i] & records$subject == pairs$subject[i], , drop = FALSE]
+    extra <- group[group$in_input == 0L, , drop = FALSE]
+    label <- paste0('trial="', pairs$trial[i], '", subject="', pairs$subject[i], '"')
+    updateLog(paste0('pullDBfragments: ', label, ': ', nrow(group), ' DB record(s) available; ',
+                     nrow(group) - nrow(extra), ' already represented in the incoming data.'))
+    group_rows <- 0L
+    if(nrow(extra)){
+      if(!is.character(data_path) || length(data_path) != 1L || is.na(data_path) || !dir.exists(data_path))
+        stop('Error - fragment data lake directory does not exist: ', data_path, call. = FALSE)
+      if(!requireNamespace('arrow', quietly = TRUE)) stop('Error - the arrow R package is required to read fragment Parquet files.', call. = FALSE)
+      for(j in seq_len(nrow(extra))){
+        name <- extra$data_file_name[j]
+        if(is.na(name) || !nzchar(name) || basename(name) != name || !grepl('[.]parquet$', name))
+          stop('Error - invalid fragment Parquet filename for ', label, '.', call. = FALSE)
+        path <- file.path(data_path, name)
+        if(!file.exists(path) || dir.exists(path) || file.access(path, 4L) != 0L)
+          stop('Error - fragment Parquet file is missing or unreadable: ', path, call. = FALSE)
+        x <- as.data.frame(arrow::read_parquet(path))
+        missing_columns <- setdiff(names(input), names(x))
+        if(length(missing_columns)) stop('Error - fragment Parquet file ', name, ' lacks input columns: ',
+                                         paste(missing_columns, collapse = ', '), call. = FALSE)
+        keys <- get_keys(x, paste0('Parquet file ', name))
+        if(any(vapply(key_columns, function(column) any(keys[[column]] != extra[[column]][j]), logical(1))))
+          stop('Error - fragment Parquet contents do not match their database key: ', path, call. = FALSE)
+        # Match the normalization at the start of buildStdFragments.
+        x[] <- lapply(x, function(column) if(is.factor(column)) as.character(column) else column)
+        x[key_columns] <- keys
+        pulled[[length(pulled) + 1L]] <- x
+        group_rows <- group_rows + nrow(x)
+      }
+    }
+    updateLog(paste0('pullDBfragments: ', label, ': pulled ', ppNum(group_rows),
+                     ' fragment rows from ', nrow(extra), ' DB record(s) into the analysis.'))
+  }
+  result <- if(length(pulled)) dplyr::bind_rows(pulled) else empty
+  updateLog(paste0('pullDBfragments: total ', ppNum(nrow(result)), ' additional fragment rows pulled for ',
+                   nrow(pairs), ' trial/subject group(s).'))
+  result
+}
+

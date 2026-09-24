@@ -55,7 +55,7 @@ requireCommandSuccess <- function(x, label){
 }
 
 
-startModule <- function(){
+startModule <- function(connectDB = TRUE){
   options(useFancyQuotes = FALSE)
   if(! file.access(args$ramDiskPath, mode = 2) == 0) args$ramDiskPath <- args$outputDir
   
@@ -82,7 +82,8 @@ startModule <- function(){
   if(! dir.exists(args$ramDisk)) dir.create(args$ramDisk, recursive = TRUE)
   if(! dir.exists(args$ramDisk)) stop('Error -- could not create ram disk.')
   
-  if(all(c('dbConfigFile', 'dbConfigID') %in% names(args))){
+  # Readers open their own connection and do not need a writable data lake.
+  if(connectDB && all(c('dbConfigFile', 'dbConfigID') %in% names(args))){
     if(args$dbConfigFile != 'none' & args$dbConfigID != 'none'){
       args$dbConn <<- createDBconnection()
       updateLog('Established conection with database.')
