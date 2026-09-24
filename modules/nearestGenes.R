@@ -1,5 +1,5 @@
 #!/usr/bin/env -S Rscript --vanilla
-for (p in c('argparse', 'tidyverse', 'data.table', 'GenomicRanges')) suppressPackageStartupMessages(library(p, character.only = TRUE))
+for (p in c('argparse', 'tidyverse', 'data.table', 'GenomicRanges', 'RMariaDB')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 if(!requireNamespace("GenomeInfoDb", quietly = TRUE)) stop("Error - required R package GenomeInfoDb is not installed.")
 
 parser <- ArgumentParser()
@@ -16,9 +16,9 @@ runModule <- function(){
   doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
   if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
   
-  startModule()
-
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
+  
+  startModule()
   
   on.exit({
     unlink(args$tmpDir, recursive = TRUE, force = TRUE)
@@ -27,6 +27,13 @@ runModule <- function(){
   }, add = TRUE)
   
   updateLog('Starting nearestGenes module.')
+  
+  if(xor(args$dbConfigFile != "none", args$dbConfigID != "none")){
+    msg <- "Error - supply both --dbConfigFile and --dbConfigID, or neither."
+    updateLog(msg)
+    stop(msg, call. = FALSE)
+  }
+  
   resource_overlay()
   
   if(!file.exists(args$inputData)) stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))
@@ -103,7 +110,7 @@ runModule <- function(){
   
   if(!is.null(args$dbConn)){
     updateLog("Database upload beginning.")
-    uploadSitesToDB(sites)
+    uploadSitesToDB(d)
   }
   
   saveRDS(d, file.path(args$outputDir, paste0(args$fileTag, '.rds')))

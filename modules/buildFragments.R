@@ -30,6 +30,12 @@ runModule <- function(){
     if(! is.null(args$dbConn)) dbDisconnect(args$dbConn)
   }, add = TRUE)
   
+  if(xor(args$dbConfigFile != "none", args$dbConfigID != "none")){
+    msg <- "Error - supply both --dbConfigFile and --dbConfigID, or neither."
+    updateLog(msg)
+    stop(msg, call. = FALSE)
+  }
+  
   updateLog('Starting buildFragment module.')
   
   if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))

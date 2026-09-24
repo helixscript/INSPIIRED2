@@ -1,5 +1,5 @@
 #!/usr/bin/env -S Rscript --vanilla
-for (p in c('argparse', 'tidyverse', 'data.table', 'stringi')) suppressPackageStartupMessages(library(p, character.only = TRUE))
+for (p in c('argparse', 'tidyverse', 'data.table', 'stringi', 'RMariaDB')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
 parser$add_argument("--outputDir",                    type = "character",     required = TRUE,         help = "Directory for output files")
@@ -24,9 +24,9 @@ runModule <- function(){
   doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
   if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
   
-  startModule()
-  
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
+  
+  startModule()
   
   on.exit({
     unlink(args$tmpDir,  recursive = TRUE, force = TRUE)
@@ -35,6 +35,12 @@ runModule <- function(){
   }, add = TRUE)
   
   updateLog('Starting buildSites module.')
+  
+  if(xor(args$dbConfigFile != "none", args$dbConfigID != "none")){
+    msg <- "Error - supply both --dbConfigFile and --dbConfigID, or neither."
+    updateLog(msg)
+    stop(msg, call. = FALSE)
+  }
   
   if(! args$sumSonicBreaksWithin %in% c('samples', 'replicates')) stop("Error - the flag --sumSonicBreaksWithin must be set to with 'samples' or 'replicates'.")
   if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))
