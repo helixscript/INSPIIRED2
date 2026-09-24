@@ -1,0 +1,13 @@
+[inspiired2_user]
+user=inspiired2_user
+password=user@+1
+host=130.91.17.44
+port=3307
+database=inspiired2
+
+[inspiired2_admin]
+user=inspiired2_admin
+password=admin@+2
+host=130.91.17.44
+port=3307
+database=inspiired2

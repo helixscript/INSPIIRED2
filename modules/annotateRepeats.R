@@ -2,12 +2,14 @@
 for (p in c('argparse', 'tidyverse', 'data.table', 'GenomicRanges')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
-parser$add_argument("--outputDir",     type = "character", required = TRUE,             help = "Directory for output files")
-parser$add_argument("--inputData",     type = "character", required = TRUE,             help = "Path to demultiplex module's rds output file.")
-parser$add_argument("--softwareRoot",  type = "character", required = TRUE,             help = "Path to INSPIIRED2 installation.")
-parser$add_argument("--threads",       type = "integer",   default = 50,                help = "Number of threads to use.")
-parser$add_argument("--fileTag",       type = "character", default = "annotateRepeats", help = "String appended to output files in the outpt directory.")
-parser$add_argument("--ramDiskPath",   type = "character", default = "/dev/shm",        help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--outputDir",     type = "character",  required = TRUE,             help = "Directory for output files")
+parser$add_argument("--inputData",     type = "character",  required = TRUE,             help = "Path to demultiplex module's rds output file.")
+parser$add_argument("--softwareRoot",  type = "character",  required = TRUE,             help = "Path to INSPIIRED2 installation.")
+parser$add_argument("--threads",       type = "integer",    default = 50,                help = "Number of threads to use.")
+parser$add_argument("--fileTag",       type = "character",  default = "annotateRepeats", help = "String appended to output files in the outpt directory.")
+parser$add_argument("--ramDiskPath",   type = "character",  default = "/dev/shm",        help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--dbConfigFile",  type = "character",  default = 'none',           help = "Path to db credential file.")
+parser$add_argument("--dbConfigID",    type = "character",  default = 'none',           help = "DB credential block identifier in db credential file.")
 
 runModule <- function(){
   doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
@@ -93,6 +95,11 @@ runModule <- function(){
   
   d <- dplyr::relocate(d, repeat_name, .after = posid)
   d <- dplyr::relocate(d, repeat_class, .after = repeat_name)
+  
+  if(!is.null(args$dbConn)){
+    updateLog("Database upload beginning.")
+    uploadSitesToDB(sites)
+  }
   
   saveRDS(d, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('Completed annotateRepeats module.')

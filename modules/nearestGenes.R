@@ -3,12 +3,14 @@ for (p in c('argparse', 'tidyverse', 'data.table', 'GenomicRanges')) suppressPac
 if(!requireNamespace("GenomeInfoDb", quietly = TRUE)) stop("Error - required R package GenomeInfoDb is not installed.")
 
 parser <- ArgumentParser()
-parser$add_argument("--outputDir",     type = "character", required = TRUE,          help = "Directory for output files")
-parser$add_argument("--inputData",     type = "character", required = TRUE,          help = "Path to demultiplex module's rds output file.")
-parser$add_argument("--softwareRoot",  type = "character", required = TRUE,          help = "Path to INSPIIRED2 installation.")
-parser$add_argument("--threads",       type = "integer",   default = 50,             help = "Number of threads to use.")
-parser$add_argument("--fileTag",       type = "character", default = "nearestGenes", help = "String appended to output files in the outpt directory.")
-parser$add_argument("--ramDiskPath",   type = "character", default = "/dev/shm",     help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--outputDir",     type = "character",  required = TRUE,          help = "Directory for output files")
+parser$add_argument("--inputData",     type = "character",  required = TRUE,          help = "Path to demultiplex module's rds output file.")
+parser$add_argument("--softwareRoot",  type = "character",  required = TRUE,          help = "Path to INSPIIRED2 installation.")
+parser$add_argument("--threads",       type = "integer",    default = 50,             help = "Number of threads to use.")
+parser$add_argument("--fileTag",       type = "character",  default = "nearestGenes", help = "String appended to output files in the outpt directory.")
+parser$add_argument("--ramDiskPath",   type = "character",  default = "/dev/shm",     help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--dbConfigFile",  type = "character",  default = 'none',         help = "Path to db credential file.")
+parser$add_argument("--dbConfigID",    type = "character",  default = 'none',         help = "DB credential block identifier in db credential file.")
 
 runModule <- function(){
   doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
@@ -98,6 +100,11 @@ runModule <- function(){
   d <- dplyr::relocate(d, nearestGeneDist, .after = nearestGene)
   d <- dplyr::relocate(d, nearestGeneStrand, .after = nearestGeneDist)
   d <- dplyr::relocate(d, beforeNearestGene, .after = nearestGeneStrand)
+  
+  if(!is.null(args$dbConn)){
+    updateLog("Database upload beginning.")
+    uploadSitesToDB(sites)
+  }
   
   saveRDS(d, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('Completed nearestGenes module.')

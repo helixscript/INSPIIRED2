@@ -14,6 +14,8 @@ parser$add_argument("--dualDetectWidth",              type = "integer",       de
 parser$add_argument("--integraseCorrectionDist",      type = "integer",       default = 2,             help = "Integrase correction value (NT) to account for gDNA duplication caused by integration.")
 parser$add_argument("--sumSonicBreaksWithin",         type = "character",     default = "replicates",  help = "Sum sonic breaks within either 'replicates' (default) or within sample 'samples'.") 
 parser$add_argument("--leadSeqClusteringParms",       type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
+parser$add_argument("--dbConfigFile",                 type = "character",     default = 'none',           help = "Path to db credential file.")
+parser$add_argument("--dbConfigID",                   type = "character",     default = 'none',           help = "DB credential block identifier in db credential file.")
 
 # Dev notes. 
 # --threads not implemented yet.
@@ -334,6 +336,11 @@ runModule <- function(){
   siteSummary <- rbind(names(siteSummary), siteSummary)
   siteSummary[1,1] <- ts
   write.table(siteSummary, file =  args$logFile, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE,  append = TRUE)
+  
+  if(!is.null(args$dbConn)){
+    updateLog("Database upload beginning.")
+    uploadSitesToDB(sites)
+  }
   
   saveRDS(sites, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('buildSites module completed.')

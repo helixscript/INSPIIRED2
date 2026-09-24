@@ -12,11 +12,16 @@ subparsers <- parser$add_subparsers(dest = "module", help = "inspiired2 modules"
 # Define parameters for each module.
 # The parameters must match the parameters defined at the top of each module except that --softwareRoot flags should be excluded here.
 
-testDB_parser <- subparsers$add_parser("showResources", help = "Output a tree of data resources.")
+resource_parser <- subparsers$add_parser("showResources", help = "Output a tree of data resources.")
 
 testDB_parser <- subparsers$add_parser("testDBconn", help = "Test the connection to the database.")
-testDB_parser$add_argument("--dbConfigFile", type = "character", default = 'none', help = "Path to db credential file.")
-testDB_parser$add_argument("--dbConfigID",   type = "character", default = 'none', help = "DB credential block identifier in db credential file.")
+testDB_parser$add_argument("--dbConfigFile", type = "character", required = TRUE, default = 'none', help = "Path to db credential file.")
+testDB_parser$add_argument("--dbConfigID",   type = "character", required = TRUE, default = 'none', help = "DB credential block identifier in db credential file.")
+testDB_parser$add_argument("--readData",    action = "store_true", default = FALSE, help = "Require an actual row to be read from both fragments and sites; empty tables fail.")
+testDB_parser$add_argument("--writeData",   action = "store_true", default = FALSE, help = "Insert and commit marked test rows in fragments and sites; retain them unless --deleteData is supplied.")
+testDB_parser$add_argument("--deleteData",  action = "store_true", default = FALSE, help = "Delete and commit marked test rows from both tables; fails if no test rows exist.")
+testDB_parser$add_argument("--verbose",     action = "store_true", default = FALSE, help = "Print diagnostic messages; by default only errors are printed.")
+
 
 pullDBrecords_parser <- subparsers$add_parser("pullDBrecords", help = "Pull fragment records from the database.")
 pullDBrecords_parser$add_argument("--dbConfigFile", type = "character", default = 'none', help = "Path to db credential file.")
@@ -161,18 +166,21 @@ bst_parser$add_argument("--fileTag",                      type = "character",   
 bst_parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",    help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
 bst_parser$add_argument("--disableDualDetect",            action = "store_true",  default = FALSE,         help = "Diable the merging of U5 and U3 samples into dual-detection sites.")
 bst_parser$add_argument("--disableOrientationCorrection", action = "store_true",  default = FALSE,         help = "Disable the changing of fragment strands to reflect integrated vector orientation.")
+bst_parser$add_argument("--dualDetectWidth",              type = "integer",       default = 6,             help = "Radius for searching for dual-detections.")
+bst_parser$add_argument("--integraseCorrectionDist",      type = "integer",       default = 2,             help = "Integrase correction value (NT) to account for gDNA duplication caused by integration.")
+bst_parser$add_argument("--sumSonicBreaksWithin",         type = "character",     default = "replicates",  help = "Sum sonic breaks within either 'replicates' (default) or within sample 'samples'.") 
+bst_parser$add_argument("--leadSeqClusteringParms",       type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
+bst_parser$add_argument("--dbConfigFile",                 type = "character",     default = 'none',           help = "Path to db credential file.")
+bst_parser$add_argument("--dbConfigID",                   type = "character",     default = 'none',           help = "DB credential block identifier in db credential file.")
 
-bst_parser$add_argument("--dualDetectWidth",         type = "integer",       default = 6,             help = "Radius for searching for dual-detections.")
-bst_parser$add_argument("--integraseCorrectionDist", type = "integer",       default = 2,             help = "Integrase correction value (NT) to account for gDNA duplication caused by integration.")
-bst_parser$add_argument("--sumSonicBreaksWithin",    type = "character",     default = "replicates",  help = "Sum sonic breaks within either 'replicates' (default) or within sample 'samples'.") 
-bst_parser$add_argument("--leadSeqClusteringParms",  type = "character",     default = "-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0", help = "CLustering parameters used to determine representative leaders sequence.")
-
-ngn_parser <- subparsers$add_parser("nearestGenes",   help = "Annotate nearest genes.")
-ngn_parser$add_argument("--outputDir",               type = "character",     required = TRUE,         help = "Directory for output files")
-ngn_parser$add_argument("--inputData",               type = "character",     required = TRUE,         help = "Path to demultiplex module's rds output file.")
-ngn_parser$add_argument("--threads",                 type = "integer",       default = 50,            help = "Number of threads to use.")
+ngn_parser <- subparsers$add_parser("nearestGenes",  help = "Annotate nearest genes.")
+ngn_parser$add_argument("--outputDir",               type = "character",     required = TRUE,           help = "Directory for output files")
+ngn_parser$add_argument("--inputData",               type = "character",     required = TRUE,           help = "Path to demultiplex module's rds output file.")
+ngn_parser$add_argument("--threads",                 type = "integer",       default = 50,              help = "Number of threads to use.")
 ngn_parser$add_argument("--fileTag",                 type = "character",     default = "nearestGenes",  help = "String appended to output files in the outpt directory.")
-ngn_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",    help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+ngn_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",      help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+ngn_parser$add_argument("--dbConfigFile",            type = "character",     default = 'none',          help = "Path to db credential file.")
+ngn_parser$add_argument("--dbConfigID",              type = "character",     default = 'none',          help = "DB credential block identifier in db credential file.")
 
 anr_parser <- subparsers$add_parser("annotateRepeats",   help = "Annotate repeats.")
 anr_parser$add_argument("--outputDir",               type = "character",     required = TRUE,              help = "Directory for output files")
@@ -180,6 +188,8 @@ anr_parser$add_argument("--inputData",               type = "character",     req
 anr_parser$add_argument("--threads",                 type = "integer",       default = 50,                 help = "Number of threads to use.")
 anr_parser$add_argument("--fileTag",                 type = "character",     default = "annotateRepeats",  help = "String appended to output files in the outpt directory.")
 anr_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",         help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+anr_parser$add_argument("--dbConfigFile",            type = "character",     default = 'none',             help = "Path to db credential file.")
+anr_parser$add_argument("--dbConfigID",              type = "character",     default = 'none',             help = "DB credential block identifier in db credential file.")
 
 if (length(commandArgs(trailingOnly = TRUE)) == 0) {
   parser$print_help()
