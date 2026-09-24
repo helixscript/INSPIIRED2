@@ -19,9 +19,9 @@ runModule <- function(){
   doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
   if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
   
-  yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
-  
   startModule()
+  
+  yaml::write_yaml(args[names(args) != "dbConn"], file.path(args$outputDir, paste0(args$fileTag, ".yml")))
   
   on.exit({
     unlink(args$tmpDir,  recursive = TRUE, force = TRUE)

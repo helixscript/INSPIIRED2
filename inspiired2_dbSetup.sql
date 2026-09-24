@@ -42,8 +42,8 @@ VALUES
      0, '2000-01-01 00:00:00', 'xxx');
 
 -- Create accounts and assign database privileges.
-CREATE USER 'inspiired2_user'@'%' IDENTIFIED BY 'user@+1';
-CREATE USER 'inspiired2_admin'@'%' IDENTIFIED BY 'admin@+2';
+CREATE USER 'inspiired2_user'@'%' IDENTIFIED BY 'neverMind1';
+CREATE USER 'inspiired2_admin'@'%' IDENTIFIED BY 'neverMind2';
 
 GRANT SELECT ON `inspiired2`.*
 TO 'inspiired2_user'@'%';
