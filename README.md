@@ -32,7 +32,7 @@ The documentation below focuses on using INSPIIRED2 within the provied Docker im
 
 ### Required inputs
 
-Inspiired2 requires three inputs. 
+INSPIIRED2 requires three inputs:
   - Paired end sequencing (R1, R2, I1) with readIDs in the same order between files.
   - A [sample data](sampleData.tsv) file matching sample replicates to I1 barcode sequecnes and linker sequences.
   - A [bash script](https://github.com/helixscript/INSPIIRED2/blob/main/run.sh) calling one or more INSPIIRED2 modules.  
@@ -92,8 +92,9 @@ By default, all output files will be owned by root. To change ownership to the u
 INSPIIRED2 is provided with a number of annotated reference genomes (hg38, hs1, sacCer3, mm10, canFam4, and macFas5) as well as U3 and U5 LTR HMMs created with data from Los Alamos National laboratories. The `showResources` command can be used to list available resources provided with the Docker image. All genomes and genome annotations were created with the included script `tools/buildRefGenomeObjects.R`. This script accepts UCSC genome IDs and pulls data from UCSC data portals to build required data objects. A local install of RepeatMasker is required to create *.repeatTable.gz files required by the `annotateRepeats` module.  
 
 ```
-%>docker run --rm inspiired2 bash -c 'inspiired2 showResources' 
-
+docker run --rm inspiired2 bash -c 'inspiired2 showResources' 
+```
+```
 +-- data 
 +-- genomeAnnotations 
 |   +-- hg38.TUs.rds 
@@ -193,7 +194,7 @@ Additional requirements:
 - Resource names are case-sensitive and must match installed reference genome identifiers, HMM, vector, and reference files.
 - Barcodes and linkers pairings should remain distinguishable after the configured mismatch allowances are applied.  
 
-It is strongly recommended that the optional `validateSampleData` module is ran near the start of pipelines:
+It is strongly recommended that the optional `validateSampleData` module is ran near the start of pipelines, eg.
 
 ```inspiired2 validateSampleData --outputDir out --sampleData sampleData.tsv```
 
@@ -210,7 +211,7 @@ set -euo pipefail
 inspiired2 testDBconn         --dbConfigFile my.cnf --dbConfigID inspiiried2_admin --readData --writeData
 inspiired2 validateSampleData --outputDir out --sampleData sampleData.tsv --dbConfigFile my.cnf --dbConfigID inspiiried2_admin
 
-# demultiplex and following modules will not run if validateSampleData fails.
+# demultiplex and following modules will NOT run if validateSampleData fails.
 
 inspiired2 demultiplex        --outputDir out --sampleData sampleData.tsv  \
                               --indexReads  I1.fastq.gz --adriftReads R1.fastq.gz --anchorReads R2.fastq.gz
@@ -260,7 +261,7 @@ Setting `set -euo pipefail` at the top of processing script instructs the script
 <br>
 
 ## Working with HMMs
-Anchor reads containing the ends of vector LTR sequences are recognized using vector specific HMMs. HMMs are used because them are particularly adept at recognizing mismatches and minor indels that can occur due to natural variation and sequencing error.  Vector HMMs are created with the HMMER software package for each vector used in your analysis. To create a vector specific HMM, first create a FASTA file with the expected vector sequence you expect to observe in your R2 read sequences. This will be the expected sequence observed before transitioning into genomic DNA, eg.
+Anchor reads containing the ends of vector LTR sequences are recognized using vector specific HMMs. An installed HMM identifier must be associated with each sample replicate in sampleData files. HMMs are used because themy are particularly adept at recognizing mismatches and minor indels that can occur due to natural variation and sequencing error.  Vector HMMs are created with the HMMER software package for each vector used in your analysis. To create a vector specific HMM, first create a FASTA file with the expected vector sequence you expect to observe in anchor read sequences. This will be the expected sequence observed before transitioning into genomic DNA, eg.
 
 ```
 docker run -it --rm  inspiired2 bash
@@ -352,17 +353,17 @@ inspiired2 testHMMs --outputDir out --outputDir INSPIIRED2   \
 
 ## Database and data lake
 
-INSPIIRED2 suports a databasebase and associated data lake to facilitate longitudinal analyses. The database requires a SQL server not provided with the software. 
+INSPIIRED2 suports an optional database and data lake systems to facilitate longitudinal analyses. The database requires a SQL server not provided with the software. 
 
 __This section can be skipped for users not using the provided database / data lake systems.__
 
-The required database and users can be created with the provided sql file:
+The required database and database users can be created with the provided sql file. The password for the two database users created should be updated in the provided SQL before running the commands.
 
 ```
 mysql -u myUser -p < inspiired2_dbSetup.sql
 ```
 
-This SQL file creates the inspiired2 database wich contains two tables:
+This SQL file creates the inspiired2 database which contains two tables:
 
 ```SQL
 MariaDB [inspiired2]> desc fragments;
@@ -396,15 +397,16 @@ MariaDB [inspiired2]> desc sites;
 
 ```
 
-The fragments table records sample and processing details and points to a files containing the output of the buildFragments module. `data_file_name` stores the name of the file stored in the associated data lake which stores the outputs of the `buildFragments` module using the Parquet data format rather than the pipeline's RDS format. Data files are named using their MD5 sum values, eg. 7c4b317642bbc9573f3c5850b7e104ab.parquet. Database functionality can be turned on by providing the `buildFragments` module both the `--dbConfigFile` and `--dbConfigID` flags. These flags store the path to an SQL credential file and the credential block id within that file, eg.
+The fragments table records sample and processing details and points to files containing fragment details. `data_file_name` stores the name of files in the associated data lake which stores the outputs of the `buildFragments` module using the Parquet data format rather than the default RDS format. Data files are named using their MD5 sum values, eg. 7c4b317642bbc9573f3c5850b7e104ab.parquet. Database functionality can be turned on by providing the `buildFragments` module both the `--dbConfigFile` and `--dbConfigID` flags. These flags store the path to an [SQL credential file](https://github.com/helixscript/INSPIIRED2/blob/main/inspiired2.cnf) and the credential block id within that file, eg.
 ```
-inspiired2 buildFragments --outputDir out --inputData out/alignReads.rds  --dbConfigFile my.cnf --dbConfigID inspiired2_admin
+inspiired2 buildFragments --outputDir out --inputData out/alignReads.rds --dbConfigFile my.cnf --dbConfigID inspiired2_admin
 ```
 
-Database functionality also requires the mounting of a file system to store the growing data lake. This files system needs to be mounted with the Docker call and mounted to /data within container, eg.
+Database functionality also requires the mounting of a file system to store the data lake. This file system needs to be mounted with the Docker call and mounted to /data within container, eg.
 ```
 docker run --rm                  \
   --shm-size=20g                 \
+  --user "$(id -u):$(id -g)"     \
   -v /opt/INSPIIRED2_data:/data  \
   -v ./:/workspace               \
   -w /workspace                  \
@@ -413,9 +415,9 @@ docker run --rm                  \
 
 Importantly, the mounted data lake directory must contain an empty file name `.inspiired`. This requirement is a safeguard against mounting a directory not intended to serve as your data lake. The `buildFragments` module will throw an error if you try to store a fragment record that has been stored earlier. The `validateSampleData` module, ran with database credential flags, will check to see if sample replicates have existing records in the database.
 
-The buildStdFragments module has an option to automatically pull all archived fragments associated with trial / subject pairings (--pullSubjectFragments). This feature allows all fragments associated with subjects to be standardized together and continue through the pipeline to update archived sites. This co-standardization ensures that integration site positions are consistent across samples.
+The buildStdFragments module has an option, `--pullSubjectFragments`, to automatically pull all archived fragments associated with incoming trial / subject pairings. This feature allows all fragments associated with a subject to be standardized together and continue through the pipeline to update archived sites. This co-standardization ensures that integration site positions are consistent across samples. These additional database fragments will continue to the `buildSites` module and update previous sites records in the database.
 
-The `buildSites`, `nearestGenes`, and `annotateRepeat` modules also support databasing. Providing the `--dbConfigFile` and `--dbConfigID` flags to these modules results in the population of the `sites` database table and storing additional site data in the data lake.  Populating the sites table is destructive. For example, the output of nearestGenes will overwrite sample sites written by `buildSites` and the output of `annotateRepeats` will overwrite sites written by `nearestGenes`.
+The `buildSites`, `nearestGenes`, and `annotateRepeat` modules also support databasing. Providing the `--dbConfigFile` and `--dbConfigID` flags to these modules results in the population of the `sites` database table and the storing of site data in the data lake.  Populating the sites table is destructive. For example, the output of `nearestGenes` will overwrite sample sites written by `buildSites` and the output of `annotateRepeats` will overwrite sites written by `nearestGenes`.
 
 <br>
 
@@ -1084,8 +1086,3 @@ Supply either flag by itself to skip that step. Use these flags to disable stand
 Source: [buildStdFragments module](modules/buildStdFragments.R) and [command-line options](inspiired2.R).
 
 <br>
-
-### Working with the database and data lake.
-
-INSPIIRED2 is provided with an SQL database and the ability to create a data warehouse to store data from multiple experiments. Databasing and warehousing is enabled by providing database credentials to the buildFragments module arguments: `--dbConfigFile --dbConfigID`
-
