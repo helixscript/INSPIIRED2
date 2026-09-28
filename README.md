@@ -402,7 +402,7 @@ The fragments table records sample and processing details and points to files co
 inspiired2 buildFragments --outputDir out --inputData out/alignReads.rds --dbConfigFile my.cnf --dbConfigID inspiired2_admin
 ```
 
-Database functionality also requires the mounting of a file system to store the data lake. This file system needs to be mounted with the Docker call and mounted to /data within the container, eg.
+Database functionality also requires the mounting of a file system to store the data lake. This file system needs to be mounted with the Docker call and mounted to /data within container, eg.
 ```
 docker run --rm                  \
   --shm-size=20g                 \
@@ -418,6 +418,13 @@ Importantly, the mounted data lake directory must contain an empty file name `.i
 The buildStdFragments module has an option, `--pullSubjectFragments`, to automatically pull all archived fragments associated with incoming trial / subject pairings. This feature allows all fragments associated with a subject to be standardized together and continue through the pipeline to update archived sites. This co-standardization ensures that integration site positions are consistent across samples. These additional database fragments will continue to the `buildSites` module and update previous sites records in the database.
 
 The `buildSites`, `nearestGenes`, and `annotateRepeat` modules also support databasing. Providing the `--dbConfigFile` and `--dbConfigID` flags to these modules results in the population of the `sites` database table and the storing of site data in the data lake.  Populating the sites table is destructive. For example, the output of `nearestGenes` will overwrite sample sites written by `buildSites` and the output of `annotateRepeats` will overwrite sites written by `nearestGenes`.
+
+<br>
+
+## Estimating clonal abundances
+
+Clonal abundance is estimated primarily using the [sonic abundance method](https://pubmed.ncbi.nlm.nih.gov/22238265), in which the number of distinct sheared fragments associated with an integration site serves as a proxy for abundance. INSPIIRED2 can also report UMI counts as a supplementary abundance measure. UMIs are extracted from the N-defined region of each adrift-read linker during demultiplex. To preserve the recovered sequences for downstream reporting, supply -`-captureUMIs`. Otherwise, after duplicate-sequence collapsing, UMI sequences are replaced internally with the placeholder AAAAAAAAAAAA, and buildSites reports UMI counts as NA.
+Because the common linker can promote PCR-mediated exchange of UMIs among fragments, counting every observed UMI may overestimate molecular abundance. buildStdFragments therefore consolidates UMI labels separately within each standardized fragment in each sample replicate. `--UMIprocessingMinSortReads` (default 10) specifies the minimum total number of distinct read IDs that a standardized fragment must contain before more than one UMI may be retained; it is not a per-UMI support threshold. For fragments meeting this requirement, `--UMIprocessingMinPercentTotal` (default 20) specifies the minimum percentage of read-level records that must carry a UMI for that UMI to be considered dominant. If the fragment contains fewer than the required number of read IDs, or no more than one UMI passes the percentage threshold, all records are assigned the most frequently observed UMI. If multiple UMIs qualify, low-frequency UMI observations are redistributed among the retained dominant UMIs. This procedure changes UMI assignments but removes no reads or fragments. buildSites subsequently reports the number of distinct processed UMI labels across the fragments supporting each integration site. Supplying --disableDominantUMIs bypasses this consolidation and retains the observed UMI labels.
 
 <br>
 
