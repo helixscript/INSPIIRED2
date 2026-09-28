@@ -1,6 +1,6 @@
 # INSPIIRED2
 
-INSPIIRED2 identifies vector integration sites in reference genomes from paired-end Illumina short-read data. It is designed for linker-mediated libraries created using the original [INSPIIRED protocol](https://pubmed.ncbi.nlm.nih.gov/28344990). The structure of generated genomic fragments is shown below. The software labels reads originating from the LTR/ITR side of fragments **anchor reads** because they are anchored to sites of vector integration.  Reads orginating from the linker side of fragments are labeled **adrift reads** because they their genomic align positions drift due random sonic sheering along the genome. 
+INSPIIRED2 identifies vector integration sites in reference genomes from paired-end Illumina short-read data. It is designed for linker-mediated libraries created using the original [INSPIIRED protocol](https://pubmed.ncbi.nlm.nih.gov/28344990). The structure of generated genomic fragments is shown below. The software labels reads originating from the LTR/ITR side of fragments **anchor reads** because they are anchored to sites of vector integration.  Reads originating from the linker side of fragments are labeled **adrift reads** because they their genomic align positions drift due random sonic sheering along the genome. 
 
 <p align="center">
   <img src="figures/fragmentStructure.png" alt="INSPIIRED fragment and read structure" />
@@ -193,7 +193,7 @@ Additional requirements:
 - Resource names are case-sensitive and must match installed reference genome identifiers, HMM, vector, and reference files.
 - Barcodes and linkers pairings should remain distinguishable after the configured mismatch allowances are applied.  
 
-It is strongly reccomended that the optional `validateSampleData` module is ran near the start of pipelines:
+It is strongly recommended that the optional `validateSampleData` module is ran near the start of pipelines:
 
 ```inspiired2 validateSampleData --outputDir out --sampleData sampleData.tsv```
 
@@ -412,9 +412,9 @@ docker run --rm                  \
   inspiired2 bash run.sh
 ```
 
-Importantly, the mounted data lake directory must contain an empty file name `.inspiired`. The requirement of this file is a safeguard against mounting a directory not intended to serve as your data lake. The `buildFragments` module will through an error if you try to store a fragment record that has been stored earlier. The `validateSampleData` module, ran with database credential flags, will check to see if sample replicates have existing records in the database.
+Importantly, the mounted data lake directory must contain an empty file name `.inspiired`. The requirement of this file is a safeguard against mounting a directory not intended to serve as your data lake. The `buildFragments` module will throw an error if you try to store a fragment record that has been stored earlier. The `validateSampleData` module, ran with database credential flags, will check to see if sample replicates have existing records in the database.
 
-The buildStdFragments module has an option to automatically pull all archived fragments assocaites with trial / subject pairings (--pullSubjectFragments). This feature allows all fragments associated with subjects to be standardized together and continue through the pipeline to update archived sites. This co-standardization ensures that integration site positions are consistent across samples.
+The buildStdFragments module has an option to automatically pull all archived fragments associated with trial / subject pairings (--pullSubjectFragments). This feature allows all fragments associated with subjects to be standardized together and continue through the pipeline to update archived sites. This co-standardization ensures that integration site positions are consistent across samples.
 
 The `buildSites`, `nearestGenes`, and `annotateRepeat` modules also support databasing. Providing the `--dbConfigFile` and `--dbConfigID` flags to these modules results in the population of the `sites` database table.  Populating the sites table is destructive. For example the output of nearestGenes will overwrite sample sites written by `buildSites` and `annotateRepeats` would overwrite sites written by `nearestGenes`.
 
