@@ -191,7 +191,17 @@ Every `adriftReadLinkerSeq` must contain one contiguous UMI region (Ns) and matc
 Additional requirements:
 
 - Resource names are case-sensitive and must match installed reference genome identifiers, HMM, vector, and reference files.
-- Barcodes and linkers pairings should remain distinguishable after the configured mismatch allowances are applied.
+- Barcodes and linkers pairings should remain distinguishable after the configured mismatch allowances are applied.  
+
+It is strongly reccomended that the otional `validateSampleData` module is ran near the start of pipelines:
+
+```inspiired2 validateSampleData --outputDir out --sampleData sampleData.tsv```
+
+This tool confirms that sampleData file have the expected format, column names, data formats and that barcodes and linkers pairings are unique for each sample replicate. If database credentials are provided, the module will confirm that sample replicates have not already been processed and archived:
+
+```inspiired2 validateSampleData --outputDir out --sampleData sampleData.tsv --dbConfigFile my.cnf --dbConfigID inspiiried_admin```
+
+The database system and associated data lake is dicussed later. 
 
 <br>
 
