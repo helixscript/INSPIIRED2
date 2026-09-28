@@ -22,6 +22,14 @@ testDB_parser$add_argument("--writeData",   action = "store_true", default = FAL
 testDB_parser$add_argument("--deleteData",  action = "store_true", default = FALSE, help = "Delete and commit marked test rows from both tables; fails if no test rows exist.")
 testDB_parser$add_argument("--verbose",     action = "store_true", default = FALSE, help = "Print diagnostic messages; by default only errors are printed.")
 
+validateSampleData_parser <- subparsers$add_parser("validateSampleData", help = "Validate sample data file -- check for errors and if any sample replicates are already in the database.")
+validateSampleData_parser$add_argument('--outputDir', type = 'character', required = TRUE, help = 'Directory for the validation report; created if necessary.')
+validateSampleData_parser$add_argument('--fileTag', type = 'character', default = 'validateSampleData', help = 'Report filename prefix; writes <outputDir>/<fileTag>.txt.')
+validateSampleData_parser$add_argument('--sampleData', type = 'character', required = TRUE, help = 'Sample definition TSV used by demultiplex.')
+validateSampleData_parser$add_argument('--dbConfigFile', type = 'character', default = 'none', help = 'Optional database credential file; requires --dbConfigID.')
+validateSampleData_parser$add_argument('--dbConfigID', type = 'character', default = 'none', help = 'Optional credential group; requires --dbConfigFile.')
+validateSampleData_parser$add_argument('--resourceDir', type = 'character', default = '/resources', help = 'Resource overlay containing hmms/, referenceGenomes/, and vectors/; bundled data/ is also checked.')
+validateSampleData_parser$add_argument('--verbose', action = 'store_true', default = FALSE, help = 'Include resource search locations in the report.')
 
 pullDBrecords_parser <- subparsers$add_parser("pullDBrecords", help = "Pull fragment records from the database.")
 pullDBrecords_parser$add_argument("--dbConfigFile", type = "character", default = 'none', help = "Path to db credential file.")

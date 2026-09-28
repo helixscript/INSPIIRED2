@@ -30,7 +30,7 @@ updateLog <- function(msg, logFile = NULL){
 
 createDBconnection <- function(){
   tryCatch({
-    message(paste0('Connecting to the INSPIIRED database using cnf file "',  args$dbConfigFile, '" and group ID "', args$dbConfigID, '".'))
+    ### message(paste0('Connecting to the INSPIIRED database using cnf file "',  args$dbConfigFile, '" and group ID "', args$dbConfigID, '".'))
     dbConnect(RMariaDB::MariaDB(), group = args$dbConfigID, default.file = args$dbConfigFile)
   },
   error=function(cond) {
@@ -328,18 +328,17 @@ uploadSitesToDB <- function(sites){
   conn <- if(own_connection) createDBconnection() else args$dbConn
   if(own_connection) on.exit(tryCatch(DBI::dbDisconnect(conn), error = function(e) warning(conditionMessage(e))), add = TRUE)
   if(!DBI::dbIsValid(conn)) stop("Error - database connection is not valid.", call. = FALSE)
-  locked <- transaction_open <- commit_attempted <- FALSE
-  created_files <- character()
+  locked <- transaction_open <- verified <- FALSE
+  published_files <- character()
   on.exit({
     if(transaction_open) tryCatch(DBI::dbRollback(conn), error = function(e) {
       warning("Upload rollback failed: ", conditionMessage(e), call. = FALSE)
     })
-    # Before COMMIT, these UUID-named files cannot be referenced by a committed
-    # upload. Once COMMIT is attempted its outcome may be uncertain; retain them.
-    if(!commit_attempted && length(created_files)){
-      if(unlink(created_files) != 0L || any(file.exists(created_files)))
-        warning("Uncommitted sites files could not all be removed: ", paste(created_files, collapse = ", "), call. = FALSE)
-    }
+    # A checksum-named file can be reused by another upload. As in buildFragments,
+    # retain finalized files on failure; only temporary/pending files are removed.
+    if(!verified && length(published_files))
+      message("Prepared Parquet files retained after an unsuccessful or unverified sites upload: ",
+              paste(published_files, collapse = ", "))
     if(locked) tryCatch(DBI::dbGetQuery(conn,
                                         "SELECT RELEASE_LOCK(CONCAT('INSPIIRED2.uploadSites:', MD5(DATABASE()))) AS released"
     ), error = function(e) warning("Upload lock release failed: ", conditionMessage(e), call. = FALSE))
@@ -370,8 +369,8 @@ uploadSitesToDB <- function(sites){
       stop("Error - sites.", db_columns[[i]], " is too short for the supplied identifiers.", hint, call. = FALSE)
     }
   }
-  if(is.na(lengths[["data_file_name"]]) || lengths[["data_file_name"]] < 46L)
-    stop("Error - sites.data_file_name must allow at least 46 characters.", call. = FALSE)
+  if(is.na(lengths[["data_file_name"]]) || lengths[["data_file_name"]] < 40L)
+    stop("Error - sites.data_file_name must allow at least 40 characters.", call. = FALSE)
   
   key_where <- paste(paste(db_columns, "= ?"), collapse = " AND ")
   select_sql <- paste("SELECT data_file_name, total_sites FROM sites WHERE", key_where)
@@ -384,33 +383,64 @@ uploadSitesToDB <- function(sites){
     target <- Sys.readlink(path)
     !is.na(target) && nzchar(target)
   }
-  stage_file <- function(x, path){
+  same_bytes <- function(left, right){
+    if(!isTRUE(file.info(left)$size == file.info(right)$size)) return(FALSE)
+    a <- file(left, open = "rb")
+    on.exit(close(a), add = TRUE)
+    b <- file(right, open = "rb")
+    on.exit(close(b), add = TRUE)
+    repeat {
+      x <- readBin(a, what = "raw", n = 1048576L)
+      y <- readBin(b, what = "raw", n = 1048576L)
+      if(!identical(x, y)) return(FALSE)
+      if(!length(x)) return(TRUE)
+    }
+  }
+  stage_file <- function(x){
     local <- tempfile("sites_", tmpdir = tmp_dir, fileext = ".parquet")
     pending <- tempfile(".sites_", tmpdir = data_lake, fileext = ".pending")
     on.exit(unlink(c(local, pending)), add = TRUE)
     arrow::write_parquet(x, local)
     checksum <- if(file.exists(local) && file.size(local) > 0) unname(tools::md5sum(local)) else NA_character_
-    if(length(checksum) != 1L || is.na(checksum)) stop("Error - failed to write sites Parquet file.", call. = FALSE)
+    if(length(checksum) != 1L || is.na(checksum) || !grepl("^[[:xdigit:]]{32}$", checksum))
+      stop("Error - failed to write and checksum sites Parquet file.", call. = FALSE)
+    checksum <- tolower(checksum)
+    filename <- paste0(checksum, ".parquet")
+    path <- file.path(data_lake, filename)
+    verify_file <- function(candidate){
+      if(is_symlink(candidate) || !utils::file_test("-f", candidate))
+        stop("Error - sites Parquet path is not a regular, non-symlink file: ", candidate, call. = FALSE)
+      if(!identical(unname(tools::md5sum(candidate)), checksum))
+        stop("Error - sites Parquet file does not match its checksum-derived name: ", path, call. = FALSE)
+      # Equal MD5 values alone cannot rule out an actual hash collision.
+      if(!same_bytes(local, candidate))
+        stop("Error - MD5 collision: different Parquet bytes have the same filename: ", path, call. = FALSE)
+    }
+    if(file.exists(path) || is_symlink(path)){
+      verify_file(path)
+      return(filename)
+    }
     if(!isTRUE(file.copy(local, pending, overwrite = FALSE)) ||
        !identical(unname(tools::md5sum(pending)), checksum))
       stop("Error - failed to copy and verify sites Parquet file in the data lake.", call. = FALSE)
-    if(!file.rename(pending, path) || !identical(unname(tools::md5sum(path)), checksum))
-      stop("Error - failed to install and verify sites Parquet file: ", path, call. = FALSE)
+    # Both paths are in the lake. A hard link publishes the complete file
+    # atomically and cannot overwrite an existing name (unlike POSIX rename).
+    # If another uploader won the race, verify its file before reusing it.
+    if(isTRUE(suppressWarnings(file.link(pending, path)))){
+      published_files <<- c(published_files, path)
+    } else if(!file.exists(path) && !is_symlink(path)){
+      stop("Error - could not publish sites Parquet without overwriting; the data-lake filesystem must support hard links: ",
+           path, call. = FALSE)
+    }
+    verify_file(path)
+    filename
   }
   
-  # Prepare every file before deleting any database records. UUID names prevent
-  # a failed replacement from overwriting the old file or another upload's file.
+  # Prepare every file before deleting any database records. Existing content
+  # is verified and reused; it is never overwritten by this uploader.
   for(i in seq_along(groups)){
     indices <- groups[[i]]
-    token <- DBI::dbGetQuery(conn, "SELECT REPLACE(UUID(), '-', '') AS id")$id
-    if(length(token) != 1L || is.na(token) || !grepl("^[[:xdigit:]]{32}$", token))
-      stop("Error - could not allocate a unique sites Parquet filename.", call. = FALSE)
-    filename <- paste0("sites_", tolower(token), ".parquet")
-    path <- file.path(data_lake, filename)
-    if(file.exists(path) || is_symlink(path))
-      stop("Error - new sites Parquet path already exists: ", path, call. = FALSE)
-    created_files <- c(created_files, path)
-    stage_file(data[indices, , drop = FALSE], path)
+    filename <- stage_file(data[indices, , drop = FALSE])
     uploads[[i]] <- list(params = unname(as.list(keys[indices[[1L]], , drop = FALSE])),
                          total = length(unique(data$posid[indices])), file = filename)
     log_message(paste0("Prepared sites Parquet: ", filename))
@@ -437,24 +467,26 @@ uploadSitesToDB <- function(sites){
   
   DBI::dbBegin(conn)
   transaction_open <- TRUE
+  # Delete all old rows before inserting any replacements. If two input groups
+  # compare equal under the DB collation, the primary key rejects the second
+  # INSERT and the entire batch rolls back. Filenames cannot detect this: an
+  # unchanged re-upload legitimately has the same filename as the old record.
   for(upload in uploads){
     old <- DBI::dbGetQuery(conn, paste(select_sql, "FOR UPDATE"), params = upload$params)
     if(nrow(old) > 1L)
       stop("Error - multiple sites records found for one primary key.", call. = FALSE)
     if(nrow(old)){
-      # Detect input keys that are distinct in R but equal under the DB collation.
-      if(!is.na(old$data_file_name[[1L]]) && old$data_file_name[[1L]] %in% new_names)
-        stop("Error - supplied site groups collide under the database key collation.", call. = FALSE)
       old_path(as.character(old$data_file_name[[1L]]))
       old_files <- c(old_files, as.character(old$data_file_name[[1L]]))
     }
     deleted <- DBI::dbExecute(conn, paste("DELETE FROM sites WHERE", key_where), params = upload$params)
     if(!isTRUE(deleted == nrow(old))) stop("Error - unexpected sites deletion count.", call. = FALSE)
+  }
+  for(upload in uploads){
     inserted <- DBI::dbExecute(conn, insert_sql, params = c(upload$params, list(upload$total, upload$file)))
     if(!isTRUE(inserted == 1L)) stop("Error - failed to insert a sites record.", call. = FALSE)
     verify_record(conn, upload)
   }
-  commit_attempted <- TRUE
   tryCatch({
     # Older RMariaDB dbCommit() methods ignore C API errors. The SQL query path
     # checks the server's response; dbCommit() then clears driver bookkeeping.
@@ -476,10 +508,12 @@ uploadSitesToDB <- function(sites){
     stop("Error - sites COMMIT completed but independent verification failed. Old and new Parquet files were retained. ",
          conditionMessage(e), call. = FALSE)
   })
+  verified <- TRUE
   
   for(name in unique(old_files[!is.na(old_files) & nzchar(old_files)])){
     path <- old_path(name)
     if(!file.exists(path)) next
+    if(basename(path) %in% new_names) next
     aliases <- unique(c(name, basename(path), path, file.path(.sitesDBDataLake, basename(path))))
     placeholders <- paste(rep("?", length(aliases)), collapse = ", ")
     referenced <- FALSE
@@ -499,5 +533,3 @@ uploadSitesToDB <- function(sites){
   log_message(paste0("Sites upload committed and verified: ", length(uploads), " record(s)."))
   invisible(TRUE)
 }
-
-

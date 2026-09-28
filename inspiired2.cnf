@@ -1,13 +1,13 @@
 [inspiired2_user]
 user=inspiired2_user
 password=neverMind1
-host=130.91.17.44
-port=3307
+host=121.91.17.34
+port=3306
 database=inspiired2
 
 [inspiired2_admin]
 user=inspiired2_admin
 password=neverMind2
-host=130.91.17.44
-port=3307
+host=121.91.17.34
+port=3306
 database=inspiired2

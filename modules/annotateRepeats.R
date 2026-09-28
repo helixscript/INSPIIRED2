@@ -15,6 +15,16 @@ runModule <- function(){
   doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
   if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
   
+  on.exit({
+    if(!is.null(args$dbConn)) tryCatch({
+      if(DBI::dbIsValid(args$dbConn))
+        DBI::dbDisconnect(args$dbConn)
+    }, error = function(e) {
+      warning("Database disconnect failed: ",
+              conditionMessage(e), call. = FALSE)
+    })
+  }, add = TRUE)
+  
   startModule()
   
   yaml::write_yaml(args[names(args) != "dbConn"], file.path(args$outputDir, paste0(args$fileTag, ".yml")))

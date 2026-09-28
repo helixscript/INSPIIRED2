@@ -63,10 +63,6 @@ runModule <- function(){
     stop(msg, call. = FALSE)
   }
   
-  if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
-    stop("Error - chromosome names cannot contain '+' or '-' because these characters delimit posid strand.")
-  }
-  
   # Drop factors to ensure split.data.table works as expected.
   frags$trial     <- as.character(frags$trial)
   frags$subject   <- as.character(frags$subject)
@@ -80,7 +76,10 @@ runModule <- function(){
   
   if(isTRUE(args$pullSubjectFragments)){
     newFrags <- pullDBfragments(frags)
+    updateLog(paste0('Done pulling fragments. Number of fragment reads pulled: ', ppNum(n_distinct(newFrags$readID))))
+    updateLog(paste0('Number of fragments reads before merging input and pulled reads: ', ppNum(n_distinct(frags$readID))))
     if(nrow(newFrags) > 0L) frags <- data.table::as.data.table(dplyr::bind_rows(frags, newFrags))
+    updateLog(paste0('Number of fragments reads after merging input and pulled reads: ', ppNum(n_distinct(frags$readID))))
   }
   
   if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
