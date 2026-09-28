@@ -193,7 +193,7 @@ Additional requirements:
 - Resource names are case-sensitive and must match installed reference genome identifiers, HMM, vector, and reference files.
 - Barcodes and linkers pairings should remain distinguishable after the configured mismatch allowances are applied.  
 
-It is strongly reccomended that the otional `validateSampleData` module is ran near the start of pipelines:
+It is strongly reccomended that the optional `validateSampleData` module is ran near the start of pipelines:
 
 ```inspiired2 validateSampleData --outputDir out --sampleData sampleData.tsv```
 
@@ -201,7 +201,20 @@ This tool confirms that sampleData file have the expected format, column names, 
 
 ```inspiired2 validateSampleData --outputDir out --sampleData sampleData.tsv --dbConfigFile my.cnf --dbConfigID inspiiried_admin```
 
-The database system and associated data lake is dicussed later. 
+The database system and associated data lake is dicussed later. If the `validateSampleData` module detects an error, it will stop processing scripts, eg.
+
+```
+#!/usr/bin/env bash
+set -euo pipefail
+
+inspiired2 testDBconn         --dbConfigFile my.cnf --dbConfigID inspiiried2_admin --readData --writeData
+inspiired2 validateSampleData --outputDir out --sampleData sampleData.tsv --dbConfigFile my.cnf --dbConfigID inspiiried2_admin
+
+# demultiplex and following modules will not run if validateSampleData fails.
+
+inspiired2 demultiplex        --outputDir out --sampleData sampleData.tsv  \
+                              --indexReads  I1.fastq.gz --adriftReads R1.fastq.gz --anchorReads R2.fastq.gz
+```
 
 <br>
 
