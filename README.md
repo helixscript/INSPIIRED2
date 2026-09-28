@@ -402,7 +402,7 @@ The fragments table records sample and processing details and points to files co
 inspiired2 buildFragments --outputDir out --inputData out/alignReads.rds --dbConfigFile my.cnf --dbConfigID inspiired2_admin
 ```
 
-Database functionality also requires the mounting of a file system to store the data lake. This file system needs to be mounted with the Docker call and mounted to /data within container, eg.
+Database functionality also requires the mounting of a file system to store the data lake. This file system needs to be mounted with the Docker call and mounted to /data within the container, eg.
 ```
 docker run --rm                  \
   --shm-size=20g                 \
