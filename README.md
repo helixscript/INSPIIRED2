@@ -396,27 +396,26 @@ MariaDB [inspiired2]> desc sites;
 
 ```
 
-The fragments table records sample and processing details and points to a file which contains the output of the buildFragments module. `data_file_name` is the name of the file stored in the associated data lake and stores the output of `buildFragments` using the Parquet data format. Database functionality can be turned on by providing the `buildFragments` module both the `--dbConfigFile` and `--dbConfigID` flags.
-These flags store the path to an SQL credential file and the credential block id within that file, eg.
+The fragments table records sample and processing details and points to a files containing the output of the buildFragments module. `data_file_name` stores the name of the file stored in the associated data lake which stores the outputs of the `buildFragments` module using the Parquet data format rather than the pipeline's RDS format. Data files are named using their MD5 sum values, eg. 7c4b317642bbc9573f3c5850b7e104ab.parquet. Database functionality can be turned on by providing the `buildFragments` module both the `--dbConfigFile` and `--dbConfigID` flags. These flags store the path to an SQL credential file and the credential block id within that file, eg.
 ```
 inspiired2 buildFragments --outputDir out --inputData out/alignReads.rds  --dbConfigFile my.cnf --dbConfigID inspiired2_admin
 ```
 
-Database functionality also required mounting a filesytem to store the growing data lake. This filesystem needs to be mounted with the Docker call and mounted to /data within container, eg.
+Database functionality also requires the mounting of a file system to store the growing data lake. This files system needs to be mounted with the Docker call and mounted to /data within container, eg.
 ```
 docker run --rm                  \
   --shm-size=20g                 \
-  -v /opt/myINSPIIRED2data:/data \
+  -v /opt/INSPIIRED2_data:/data  \
   -v ./:/workspace               \
   -w /workspace                  \
   inspiired2 bash run.sh
 ```
 
-Importantly, the mounted data lake directory must contain an empty file name `.inspiired`. The requirement of this file is a safeguard against mounting a directory not intended to serve as your data lake. The `buildFragments` module will throw an error if you try to store a fragment record that has been stored earlier. The `validateSampleData` module, ran with database credential flags, will check to see if sample replicates have existing records in the database.
+Importantly, the mounted data lake directory must contain an empty file name `.inspiired`. This requirement is a safeguard against mounting a directory not intended to serve as your data lake. The `buildFragments` module will throw an error if you try to store a fragment record that has been stored earlier. The `validateSampleData` module, ran with database credential flags, will check to see if sample replicates have existing records in the database.
 
 The buildStdFragments module has an option to automatically pull all archived fragments associated with trial / subject pairings (--pullSubjectFragments). This feature allows all fragments associated with subjects to be standardized together and continue through the pipeline to update archived sites. This co-standardization ensures that integration site positions are consistent across samples.
 
-The `buildSites`, `nearestGenes`, and `annotateRepeat` modules also support databasing. Providing the `--dbConfigFile` and `--dbConfigID` flags to these modules results in the population of the `sites` database table.  Populating the sites table is destructive. For example the output of nearestGenes will overwrite sample sites written by `buildSites` and `annotateRepeats` would overwrite sites written by `nearestGenes`.
+The `buildSites`, `nearestGenes`, and `annotateRepeat` modules also support databasing. Providing the `--dbConfigFile` and `--dbConfigID` flags to these modules results in the population of the `sites` database table and storing additional site data in the data lake.  Populating the sites table is destructive. For example, the output of nearestGenes will overwrite sample sites written by `buildSites` and the output of `annotateRepeats` will overwrite sites written by `nearestGenes`.
 
 <br>
 
