@@ -344,9 +344,9 @@ Core modules accept the following options:
 
 ## Core analysis modules
 
-INSPIIRED2 identifies vector integration sites from paired-end sequencing data. **Anchor reads** begin on the vector side of a fragment and cross the vector–genome junction. **Adrift reads** begin at the linker attached to the sheared genomic end. Different shearing boundaries provide evidence of independent recovered DNA fragments.
+The standard workflow contains eight core modules.  
+Each saves an RDS result which serves as the input for the next module.  
 
-The standard workflow contains eight core modules. Each saves an RDS result that can be used to restart the workflow at the next stage.
 
 | Module | Main input | Default main output | Purpose |
 |---|---|---|---|
@@ -359,23 +359,21 @@ The standard workflow contains eight core modules. Each saves an RDS result that
 | `nearestGenes` | `buildSites.rds` | `nearestGenes.rds` | Add gene, exon, and nearest-gene annotations. |
 | `annotateRepeats` | `nearestGenes.rds` | `annotateRepeats.rds` | Add overlapping repeat annotations. |
 
-### Command conventions and shared behavior
+<br>
+
+## Command conventions and shared behavior
 
 Use `inspiired2 <module> [options]`.
 
 Options marked **Required** have no default. Boolean flags default to `FALSE`: supply the flag by itself to set it to `TRUE`, and omit it to keep `FALSE`. Do not append `TRUE` or `FALSE` to a flag. String values containing spaces, regular expressions, or a pipe must be quoted. The value `none` is a literal sentinel string where shown.
 
-The default `--fileTag` is the module name. Each core module writes `<fileTag>.rds`, a `<fileTag>.log` execution log, a `<fileTag>.yml` parameter record, and a `<fileTag>.done` marker after successful completion. Additional outputs are listed under the relevant module. Existing RDS files are not an automatic skip/resume mechanism: an invoked module runs again.
+The default `--fileTag` is the module name. Each core module writes `<fileTag>.rds`, a `<fileTag>.log` execution log, a `<fileTag>.yml` parameter record, and a `<fileTag>.done` marker after successful completion. Additional outputs are listed under the relevant module. Existing RDS files are not an automatic skip/resume mechanism: an invoked module overwrites previous results.
 
-Temporary working files use `--ramDiskPath`, normally `/dev/shm`; an unwritable path falls back to the output directory. Some intermediate files also use a `<fileTag>_tmp` directory under the output directory. Temporary working directories are cleaned up when a module exits. The shared initialization sets data.table's thread count, but individual modules differ in how much work they parallelize; each table explains the actual use of `--threads`.
+Temporary working files use `--ramDiskPath`, normally `/dev/shm`; an unwritable path falls back to the output directory. Some intermediate files also use a `<fileTag>_tmp` directory under the output directory. Temporary working directories are cleaned up when a module exits. 
 
-The following options apply to the **top-level command**, before any module name:
+<br>
 
-| Option | Example | Effect |
-|---|---|---|
-| `--help` | `inspiired2 --help` | Print launcher help and the available subcommands. |
-| `--version` | `inspiired2 --version` | Print the installed INSPIIRED2 version and exit. |
-
+## Module overviews
 ### demultiplex: assign read pairs to sample replicates
 
 `demultiplex` assigns synchronized read pairs to the libraries defined in a sample table. Assignment normally requires a matching Index 1 barcode and matching linker segments before and after the UMI on the adrift read.
@@ -444,6 +442,8 @@ The two linker-matching switches are independent. Disabling the pre-UMI linker t
 
 Sources: [modules/demultiplex.R](modules/demultiplex.R), [lib/demultiplex.R](lib/demultiplex.R).
 
+<br>
+
 ### prepReads: trim sequencing reads and recognize the vector sequences
 
 `prepReads` locates the vector-terminal at the beginning of each anchor read, saves it separately, and removes it to expose the genomic sequence for alignment. It also trims reads that extend through short inserts and filters likely internal-vector reads.
@@ -493,18 +493,6 @@ By default, `data/hmms/<name>.hmm` uses the matching `data/hmms/<name>.cfg`. A c
 | `HMMmatchTerminalSeq` | sequence or `none` | Exact terminal sequence required near the alignment endpoint on the read. Its final base sets the leader endpoint. `none` disables this check. Matching is literal; `N` is not a wildcard. |
 | `HMMmatchEndRadius` | integer ≥ 0 | Tolerance in bases for the model-end check and for shifting the terminal motif's final base relative to the read alignment endpoint. |
 
-A data/hmms/<name>.cfg configuration file has this format:
-
-```text
-HMMminStartPos	1
-HMMmaxStartPos	5
-HMMminFullBitScore	10
-HMMmaxFullBitScore	30
-HMMmatchEnd	TRUE
-HMMmatchTerminalSeq	CA
-HMMmatchEndRadius	2
-```
-
 For `--HMMparams`, an entry contains the HMM filename followed by the seven values in the table order:
 
 ```text
@@ -524,6 +512,8 @@ Terminal matching uses the first exact motif match from left to right within its
 The supporting `testHMMs` command can inspect score/start-position distributions before choosing settings.
 
 Sources: [modules/prepReads.R](modules/prepReads.R), [supplied U5 configuration](data/hmms/HIV1_LTR_U5_v1.0.cfg).
+
+<br>
 
 ### alignReads: align both mates to reference genomes
 
@@ -567,6 +557,8 @@ Insertion **event counts** and inserted **base totals** are separate filters. Fo
 
 Sources: [modules/alignReads.R](modules/alignReads.R), [BLAT parsing in lib/common.R](lib/common.R), [bin/pslScore.pl](bin/pslScore.pl).
 
+<br>
+
 ### buildFragments: reconstruct candidate genomic fragments
 
 `buildFragments` combines anchor and adrift alignments from the same read pair into rationale fragments spanning the vector–genome junction and a shearing boundary.
@@ -608,6 +600,8 @@ Candidate fragments are grouped by trial, subject, sample, replicate, reference 
 The supporting `pullDBrecords` command can select stored fragment groups and rebuild an RDS input for `buildStdFragments`.
 
 Sources: [modules/buildFragments.R](modules/buildFragments.R), [database initialization in lib/common.R](lib/common.R).
+
+<br>
 
 ### buildStdFragments: standardize boundaries and filter fragment evidence
 
@@ -665,25 +659,6 @@ The module requires at least one uniquely mapped integration position before mul
 | `--help` | flag | — | Print this module's command-line help and exit. |
 | `-h` | flag | — | Short form of the module help option. |
 
-**How position-standardization parameters work together**
-
-At each observed coordinate, the standardizer sums supporting `nReads`. A coordinate is a candidate local maximum when its support is at least that of every coordinate within the configured local radius. For each observed position, candidate maxima inside the configured search window compete using:
-
-```text
-sigma = window / sd_shrink
-weight = candidate_read_count × exp(−distance² / (2 × sigma²))
-```
-
-The observed coordinate is mapped to the candidate with the highest weight. If no valid candidate mapping is available, it retains its original coordinate. The window limits the candidate search distance; the local radius determines which coordinates qualify as maxima; the shrink divisor controls the penalty for distance. A larger shrink divisor does not change the search window or forbid a distant candidate from winning if its read support is sufficiently strong.
-
-The two coordinate types have separate parameter sets:
-
-| Coordinate type | Search radius | Local-maximum radius | Shrink divisor | Resulting Gaussian sigma |
-|---|---|---|---|---|
-| Integration boundary | 8 bases | 4 bases | 4 | 2 bases |
-| Shearing breakpoint | 5 bases | 2 bases | 4 | 1.25 bases |
-
-Use positive search windows and shrink divisors for this calculation. Use the corresponding disable flag to turn a standardization step off. Its numeric parameters then have no effect.
 
 **Anchor-cluster decisions**
 
@@ -709,6 +684,8 @@ This step changes UMI labels; it does not discard the fragment's read records. T
 In the multi-hit summaries, `reads` counts distinct read IDs, `clusterSonicLengths` counts adrift sequence clusters in the network, and `nodeSonicLengths` gives that count for each candidate position. These are separate from the main site table's coordinate-based `sonicLengths` and summed read-pair totals. Placeholder UMIs can appear as a count of one in these diagnostic summaries; that is not evidence for a biological UMI.
 
 Sources: [modules/buildStdFragments.R](modules/buildStdFragments.R), [lib/buildStdFragments.R](lib/buildStdFragments.R).
+
+<br>
 
 ### buildSites: assemble integration sites and calculate abundance
 
@@ -744,6 +721,8 @@ For the usual unmerged U3/U5 detections, coordinate correction adds the configur
 | `--help` | flag | — | Print this module's command-line help and exit. |
 | `-h` | flag | — | Short form of the module help option. |
 
+<br>
+
 **Abundance and leader summaries**
 
 For each site, `repLeaderSeq` is the fragment-level leader supported by the most distinct fragment lengths; total reads break a tie. `repLeaderSeqClusters` is calculated separately by clustering the unique fragment-level leader sequences. Changing leader-clustering settings therefore changes the cluster-count diagnostic, not the rule for choosing the representative leader.
@@ -770,9 +749,9 @@ For example, lengths `{100, 120}` in replicate 1 and `{100, 140, 160}` in replic
 
 To keep both raw junction positions and their original strand signs, disable both dual detection and orientation correction. Disabling orientation correction alone does not suppress the corrections inside an accepted dual-detection pair. Set the correction distance to suit the integration system being studied.
 
-**Non-U3/U5 mode limitation:** if any U3/U5 records are present and orientation correction is enabled, the current correction branch reconstructs unmerged records using only the U3/U5 subsets. Other modes in that input can be dropped. Disable orientation correction when preserving such mixed-mode records, and assess the desired coordinate convention separately.
-
 Source: [modules/buildSites.R](modules/buildSites.R).
+
+<br>
 
 ### nearestGenes: annotate gene, exon, and nearest-gene context
 
@@ -810,6 +789,8 @@ The module processes each reference genome independently and ignores strand for 
 Distance is measured to the gene interval, not specifically to the transcription start site. `beforeNearestGene` describes genomic coordinate order; it does not by itself mean transcriptionally upstream. If there is no nearest annotation on the site's reference sequence, nearest-gene fields remain missing. The module verifies that the annotation join preserves the input row count.
 
 Source: [modules/nearestGenes.R](modules/nearestGenes.R).
+
+<br>
 
 ### annotateRepeats: annotate overlapping repetitive elements
 
