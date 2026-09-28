@@ -197,7 +197,7 @@ It is strongly reccomended that the optional `validateSampleData` module is ran 
 
 ```inspiired2 validateSampleData --outputDir out --sampleData sampleData.tsv```
 
-This tool confirms that sampleData file have the expected format, column names, data formats and that barcodes and linkers pairings are unique for each sample replicate. If database credentials are provided, the module will confirm that sample replicates have not already been processed and archived:
+This tool confirms that sampleData files have the expected format, column names, data formats and that barcodes and linkers pairings are unique for each sample replicate. If database credentials are provided, the module will confirm that sample replicates have not already been processed and archived:
 
 ```inspiired2 validateSampleData --outputDir out --sampleData sampleData.tsv --dbConfigFile my.cnf --dbConfigID inspiiried_admin```
 
@@ -347,6 +347,76 @@ inspiired2 testHMMs --outputDir out --outputDir INSPIIRED2   \
 <p align="center">
   <img src="figures/testHMMs.png" alt="INSPIIRED HMM test" />
 </p>
+
+<br>
+
+## Database and data lake
+
+INSPIIRED2 suports a databasebase and associated data lake to facilitate longitudinal analyses. The database requires a SQL server not provided with the software. 
+
+__This section can be skipped for users not using the provided database / data lake systems.__
+
+The required database and users can be created with the provided sql file:
+
+```
+mysql -u myUser -p < inspiired2_dbSetup.sql
+```
+
+This SQL file creates the inspiired2 database wich contains two tables:
+
+```SQL
+MariaDB [inspiired2]> desc fragments;
++-----------------+--------------+------+-----+---------------------+-------+
+| Field           | Type         | Null | Key | Default             | Extra |
++-----------------+--------------+------+-----+---------------------+-------+
+| trial           | varchar(100) | NO   | PRI | NULL                |       |
+| subject         | varchar(100) | NO   | PRI | NULL                |       |
+| sample          | varchar(100) | NO   | PRI | NULL                |       |
+| replicate       | int(11)      | NO   | PRI | NULL                |       |
+| ref_genome      | varchar(10)  | NO   | PRI | NULL                |       |
+| mode            | varchar(20)  | NO   | PRI | NULL                |       |
+| total_fragments | int(11)      | YES  |     | NULL                |       |
+| processed_date  | timestamp    | YES  |     | current_timestamp() |       |
+| data_file_name  | varchar(50)  | YES  |     | NULL                |       |
++-----------------+--------------+------+-----+---------------------+-------+
+
+MariaDB [inspiired2]> desc sites;
++----------------+--------------+------+-----+---------------------+-------+
+| Field          | Type         | Null | Key | Default             | Extra |
++----------------+--------------+------+-----+---------------------+-------+
+| trial          | varchar(100) | NO   | PRI | NULL                |       |
+| subject        | varchar(100) | NO   | PRI | NULL                |       |
+| sample         | varchar(100) | NO   | PRI | NULL                |       |
+| ref_genome     | varchar(10)  | NO   | PRI | NULL                |       |
+| mode           | varchar(20)  | NO   | PRI | NULL                |       |
+| total_sites    | int(11)      | YES  |     | NULL                |       |
+| processed_date | timestamp    | YES  |     | current_timestamp() |       |
+| data_file_name | varchar(50)  | YES  |     | NULL                |       |
++----------------+--------------+------+-----+---------------------+-------+
+
+```
+
+The fragments table records sample and processing details and points to a file which contains the output of the buildFragments module. `data_file_name` is the name of the file stored in the associated data lake and stores the output of `buildFragments` using the Parquet data format. Database functionality can be turned on by providing the `buildFragments` module both the `--dbConfigFile` and `--dbConfigID` flags.
+These flags store the path to an SQL credential file and the credential block id within that file, eg.
+```
+inspiired2 buildFragments --outputDir out --inputData out/alignReads.rds  --dbConfigFile my.cnf --dbConfigID inspiired2_admin
+```
+
+Database functionality also required mounting a filesytem to store the growing data lake. This filesystem needs to be mounted with the Docker call and mounted to /data within container, eg.
+```
+docker run --rm                  \
+  --shm-size=20g                 \
+  -v /opt/myINSPIIRED2data:/data \
+  -v ./:/workspace               \
+  -w /workspace                  \
+  inspiired2 bash run.sh
+```
+
+Importantly, the mounted data lake directory must contain an empty file name `.inspiired`. The requirement of this file is a safeguard against mounting a directory not intended to serve as your data lake. The `buildFragments` module will through an error if you try to store a fragment record that has been stored earlier. The `validateSampleData` module, ran with database credential flags, will check to see if sample replicates have existing records in the database.
+
+The buildStdFragments module has an option to automatically pull all archived fragments assocaites with trial / subject pairings (--pullSubjectFragments). This feature allows all fragments associated with subjects to be standardized together and continue through the pipeline to update archived sites. This co-standardization ensures that integration site positions are consistent across samples.
+
+The `buildSites`, `nearestGenes`, and `annotateRepeat` modules also support databasing. Providing the `--dbConfigFile` and `--dbConfigID` flags to these modules results in the population of the `sites` database table.  Populating the sites table is destructive. For example the output of nearestGenes will overwrite sample sites written by `buildSites` and `annotateRepeats` would overwrite sites written by `nearestGenes`.
 
 <br>
 
