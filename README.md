@@ -357,7 +357,7 @@ INSPIIRED2 suports an optional database and data lake systems to facilitate long
 
 __This section can be skipped for users not using the provided database / data lake systems.__
 
-The required database and database users can be created with the provided sql file. The password for the two database users created should be updated in the provided SQL before running the commands.
+The required database and database users can be created with the [provided SQL file](https://github.com/helixscript/INSPIIRED2/blob/main/inspiired2_dbSetup.sql). The password for the two database users and server details should be updated in the provided SQL before running the commands.
 
 ```
 mysql -u myUser -p < inspiired2_dbSetup.sql
