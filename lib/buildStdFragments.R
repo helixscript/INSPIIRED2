@@ -350,3 +350,304 @@ pullDBfragments <- function(frags){
   result
 }
 
+
+
+
+# Database-only archiving; the analysis helpers and source objects are unchanged.
+.multiHitDBDataLake <- "/data"
+
+.multiHitKeys <- function(x, label){
+  columns <- c("trial", "subject", "sample", "refGenome", "mode")
+  if(!is.data.frame(x) || anyDuplicated(names(x)) || !all(columns %in% names(x)))
+    stop("Error - ", label, " must include trial, subject, sample, refGenome and mode.", call. = FALSE)
+  keys <- as.data.frame(x)[columns]
+  for(column in columns){
+    v <- keys[[column]]
+    if(!is.atomic(v) || !is.null(dim(v)) || is.complex(v) || anyNA(v))
+      stop("Error - ", label, ".", column, " contains invalid identifiers.", call. = FALSE)
+    v <- as.character(v)
+    if(any(!nzchar(trimws(v))) || any(v != trimws(v)))
+      stop("Error - ", label, ".", column, " contains blank or whitespace-padded identifiers.", call. = FALSE)
+    keys[[column]] <- v
+  }
+  keys
+}
+
+# Only used on the existing no-unique-position error path, with DB flags enabled.
+# No rescue is possible without a unique position. Run the existing cluster
+# builder on a copy, archive its summary, then let the module keep its error.
+archiveMultiHitOnlyToDB <- function(frags, processedGroups){
+  clusters <- data.table::rbindlist(lapply(
+    split(data.table::copy(frags), by = c("trial", "subject"),
+          flatten = TRUE, sorted = TRUE), function(x){
+            result <- build_multiHit_clusters(x)
+            if("cdhitAssignments" %in% names(result))
+              result[, cdhitAssignments := NULL]
+            result
+          }),
+    use.names = TRUE, fill = TRUE)
+  uploadMultiHitClustersToDB(clusters, processedGroups)
+}
+
+uploadMultiHitClustersToDB <- function(clusters, processedGroups){
+  if(!is.list(args) || !all(c("dbConfigFile", "dbConfigID") %in% names(args)) ||
+     any(vapply(args[c("dbConfigFile", "dbConfigID")], function(x)
+       !is.character(x) || length(x) != 1L || is.na(x) || !nzchar(x) || x == "none", logical(1))) ||
+     !file.exists(args$dbConfigFile))
+    stop("Error - uploadMultiHitClustersToDB requires args$dbConfigID and an existing args$dbConfigFile.", call. = FALSE)
+  key_columns <- c("trial", "subject", "sample", "refGenome", "mode")
+  db_columns <- c("trial", "subject", "sample", "ref_genome", "mode")
+  keys <- .multiHitKeys(processedGroups, "Processed groups")
+  if(!nrow(keys) || anyDuplicated(keys))
+    stop("Error - processed groups must be non-empty and unique.", call. = FALSE)
+  if(!is.data.frame(clusters) || anyDuplicated(names(clusters)))
+    stop("Error - clusters must be a data frame with unique column names.", call. = FALSE)
+  data <- data.table::copy(clusters)
+  if(nrow(data)){
+    cluster_keys <- .multiHitKeys(data, "Clusters")
+    if(!"clusterID" %in% names(data) ||
+       !(is.character(data$clusterID) || is.factor(data$clusterID)) ||
+       anyNA(data$clusterID) || any(!nzchar(trimws(as.character(data$clusterID)))))
+      stop("Error - clusters must contain non-empty clusterID values.", call. = FALSE)
+    if(anyDuplicated(cbind(cluster_keys, clusterID = as.character(data$clusterID))))
+      stop("Error - duplicate clusterID within a sample/genome/mode group.", call. = FALSE)
+    key_ids <- function(x) do.call(paste0, lapply(x, function(v)
+      paste0(nchar(v, type = "bytes"), ":", v)))
+    group_id <- match(key_ids(cluster_keys), key_ids(keys))
+    if(anyNA(group_id))
+      stop("Error - clusters include a group absent from processedGroups.", call. = FALSE)
+  } else {
+    group_id <- integer()
+  }
+  if(!dir.exists(.multiHitDBDataLake) || !file.exists(file.path(.multiHitDBDataLake, ".inspiired")) ||
+     file.access(.multiHitDBDataLake, 2L) != 0L)
+    stop("Error - data lake must be writable and contain its .inspiired marker: ", .multiHitDBDataLake, call. = FALSE)
+  data_lake <- normalizePath(.multiHitDBDataLake, mustWork = TRUE)
+  tmp_dir <- if(is.null(args$tmpDir)) tempdir() else args$tmpDir
+  if(!dir.exists(tmp_dir) || file.access(tmp_dir, 2L) != 0L)
+    stop("Error - upload temporary directory is missing or not writable: ", tmp_dir, call. = FALSE)
+  log_message <- function(text){
+    if(is.null(args$logFile)) message(text) else updateLog(text)
+  }
+  
+  conn <- createDBconnection()
+  on.exit(tryCatch(DBI::dbDisconnect(conn), error = function(e) warning(conditionMessage(e))), add = TRUE)
+  if(!DBI::dbIsValid(conn)) stop("Error - database connection is not valid.", call. = FALSE)
+  locked <- transaction_open <- verified <- FALSE
+  published_files <- character()
+  on.exit({
+    if(transaction_open) tryCatch(DBI::dbRollback(conn), error = function(e) {
+      warning("Upload rollback failed: ", conditionMessage(e), call. = FALSE)
+    })
+    # A checksum-named file can be reused by another upload. As in buildFragments,
+    # retain finalized files on failure; only temporary/pending files are removed.
+    if(!verified && length(published_files))
+      message("Prepared RDS files retained after an unsuccessful or unverified multihit_clusters upload: ",
+              paste(published_files, collapse = ", "))
+    if(locked) tryCatch(DBI::dbGetQuery(conn,
+                                        "SELECT RELEASE_LOCK(CONCAT('INSPIIRED2.uploadMHC:', MD5(DATABASE()))) AS released"
+    ), error = function(e) warning("Upload lock release failed: ", conditionMessage(e), call. = FALSE))
+  }, add = TRUE, after = FALSE)
+  
+  lock <- DBI::dbGetQuery(conn,
+                          "SELECT GET_LOCK(CONCAT('INSPIIRED2.uploadMHC:', MD5(DATABASE())), 30) AS acquired")
+  if(nrow(lock) != 1L || !isTRUE(lock$acquired[[1L]] == 1L))
+    stop("Error - could not acquire the multihit_clusters upload lock; check the selected database and retry after other uploads finish.", call. = FALSE)
+  locked <- TRUE
+  engine <- DBI::dbGetQuery(conn, paste(
+    "SELECT ENGINE AS engine FROM information_schema.TABLES",
+    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multihit_clusters'"))
+  if(nrow(engine) != 1L || !isTRUE(toupper(engine$engine[[1L]]) == "INNODB"))
+    stop("Error - multihit_clusters must be an InnoDB table.", call. = FALSE)
+  schema <- DBI::dbGetQuery(conn, paste(
+    "SELECT COLUMN_NAME AS column_name, CHARACTER_MAXIMUM_LENGTH AS max_length, IS_NULLABLE AS nullable",
+    "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multihit_clusters'"))
+  required <- c(db_columns, "total_clusters", "processed_date", "data_file_name")
+  if(!all(required %in% schema$column_name))
+    stop("Error - the multihit_clusters table is missing required columns.", call. = FALSE)
+  primary <- DBI::dbGetQuery(conn, paste(
+    "SELECT COLUMN_NAME AS column_name FROM information_schema.KEY_COLUMN_USAGE",
+    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multihit_clusters'",
+    "AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY ORDINAL_POSITION"))
+  if(!identical(as.character(primary$column_name), db_columns))
+    stop("Error - multihit_clusters must have the five-column sample-level primary key.", call. = FALSE)
+  if(!isTRUE(schema$nullable[match("data_file_name", schema$column_name)] == "YES"))
+    stop("Error - multihit_clusters.data_file_name must allow NULL for zero-cluster results.", call. = FALSE)
+  lengths <- setNames(as.numeric(schema$max_length), schema$column_name)
+  for(i in seq_along(key_columns)){
+    limit <- lengths[[db_columns[[i]]]]
+    if(is.na(limit) || any(nchar(keys[[i]], type = "chars") > limit)){
+      stop("Error - multihit_clusters.", db_columns[[i]], " is too short for the supplied identifiers.", call. = FALSE)
+    }
+  }
+  if(is.na(lengths[["data_file_name"]]) || lengths[["data_file_name"]] < 36L)
+    stop("Error - multihit_clusters.data_file_name must allow at least 36 characters.", call. = FALSE)
+  
+  key_where <- paste(paste(db_columns, "= ?"), collapse = " AND ")
+  select_sql <- paste("SELECT data_file_name, total_clusters FROM multihit_clusters WHERE", key_where)
+  insert_sql <- paste(
+    "INSERT INTO multihit_clusters (trial, subject, sample, ref_genome, mode, total_clusters, processed_date, data_file_name)",
+    "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)"
+  )
+  uploads <- vector("list", nrow(keys))
+  is_symlink <- function(path){
+    target <- Sys.readlink(path)
+    !is.na(target) && nzchar(target)
+  }
+  same_bytes <- function(left, right){
+    if(!isTRUE(file.info(left)$size == file.info(right)$size)) return(FALSE)
+    a <- file(left, open = "rb")
+    on.exit(close(a), add = TRUE)
+    b <- file(right, open = "rb")
+    on.exit(close(b), add = TRUE)
+    repeat {
+      x <- readBin(a, what = "raw", n = 1048576L)
+      y <- readBin(b, what = "raw", n = 1048576L)
+      if(!identical(x, y)) return(FALSE)
+      if(!length(x)) return(TRUE)
+    }
+  }
+  stage_file <- function(x){
+    local <- tempfile("multihit_clusters_", tmpdir = tmp_dir, fileext = ".rds")
+    pending <- tempfile(".multihit_clusters_", tmpdir = data_lake, fileext = ".pending")
+    on.exit(unlink(c(local, pending)), add = TRUE)
+    saveRDS(x, local, version = 3)
+    checksum <- if(file.exists(local) && file.size(local) > 0) unname(tools::md5sum(local)) else NA_character_
+    if(length(checksum) != 1L || is.na(checksum) || !grepl("^[[:xdigit:]]{32}$", checksum))
+      stop("Error - failed to write and checksum multihit_clusters RDS file.", call. = FALSE)
+    checksum <- tolower(checksum)
+    filename <- paste0(checksum, ".rds")
+    path <- file.path(data_lake, filename)
+    verify_file <- function(candidate){
+      if(is_symlink(candidate) || !utils::file_test("-f", candidate))
+        stop("Error - multihit_clusters RDS path is not a regular, non-symlink file: ", candidate, call. = FALSE)
+      if(!identical(unname(tools::md5sum(candidate)), checksum))
+        stop("Error - multihit_clusters RDS file does not match its checksum-derived name: ", path, call. = FALSE)
+      # Equal MD5 values alone cannot rule out an actual hash collision.
+      if(!same_bytes(local, candidate))
+        stop("Error - MD5 collision: different RDS bytes have the same filename: ", path, call. = FALSE)
+    }
+    if(file.exists(path) || is_symlink(path)){
+      verify_file(path)
+      return(filename)
+    }
+    if(!isTRUE(file.copy(local, pending, overwrite = FALSE)) ||
+       !identical(unname(tools::md5sum(pending)), checksum))
+      stop("Error - failed to copy and verify multihit_clusters RDS file in the data lake.", call. = FALSE)
+    # Both paths are in the lake. A hard link publishes the complete file
+    # atomically and cannot overwrite an existing name (unlike POSIX rename).
+    # If another uploader won the race, verify its file before reusing it.
+    if(isTRUE(suppressWarnings(file.link(pending, path)))){
+      published_files <<- c(published_files, path)
+    } else if(!file.exists(path) && !is_symlink(path)){
+      stop("Error - could not publish multihit_clusters RDS without overwriting; the data-lake filesystem must support hard links: ",
+           path, call. = FALSE)
+    }
+    verify_file(path)
+    filename
+  }
+  
+  # Prepare every file before deleting any database records. Existing content
+  # is verified and reused; it is never overwritten by this uploader.
+  for(i in seq_len(nrow(keys))){
+    indices <- which(group_id == i)
+    filename <- NA_character_
+    if(length(indices)){
+      subset <- if(data.table::is.data.table(data)) data[indices] else data[indices, , drop = FALSE]
+      filename <- stage_file(subset)
+      log_message(paste0("Prepared multi-hit RDS: ", filename))
+    }
+    uploads[[i]] <- list(params = unname(as.list(keys[i, , drop = FALSE])),
+                         total = length(indices), file = filename)
+  }
+  new_names <- vapply(uploads, `[[`, character(1), "file")
+  old_files <- character()
+  old_path <- function(name){
+    if(is.na(name) || !nzchar(name)) return(NULL)
+    path <- if(startsWith(name, "/")) name else file.path(data_lake, name)
+    if(is_symlink(path)) stop("Error - refusing to remove an unsafe multihit_clusters file path: ", name, call. = FALSE)
+    path <- normalizePath(path, mustWork = FALSE)
+    if(dirname(path) != data_lake || dir.exists(path))
+      stop("Error - refusing to remove an unsafe multihit_clusters file path: ", name, call. = FALSE)
+    if(file.exists(path) && !grepl("[.]rds$", path))
+      stop("Error - existing multihit_clusters file is not a RDS file: ", name, call. = FALSE)
+    path
+  }
+  verify_record <- function(connection, upload){
+    stored <- DBI::dbGetQuery(connection, select_sql, params = upload$params)
+    valid_file <- nrow(stored) == 1L && if(is.na(upload$file))
+      is.na(stored$data_file_name[[1L]]) else
+        isTRUE(as.character(stored$data_file_name[[1L]]) == upload$file)
+    if(!valid_file || !isTRUE(as.numeric(stored$total_clusters[[1L]]) == upload$total))
+      stop("Error - multihit_clusters database verification failed for ", paste(upload$params, collapse = "/"), call. = FALSE)
+  }
+  
+  DBI::dbBegin(conn)
+  transaction_open <- TRUE
+  # Delete all old rows before inserting any replacements. If two input groups
+  # compare equal under the DB collation, the primary key rejects the second
+  # INSERT and the entire batch rolls back. Filenames cannot detect this: an
+  # unchanged re-upload legitimately has the same filename as the old record.
+  for(upload in uploads){
+    old <- DBI::dbGetQuery(conn, paste(select_sql, "FOR UPDATE"), params = upload$params)
+    if(nrow(old) > 1L)
+      stop("Error - multiple multihit_clusters records found for one primary key.", call. = FALSE)
+    if(nrow(old)){
+      old_path(as.character(old$data_file_name[[1L]]))
+      old_files <- c(old_files, as.character(old$data_file_name[[1L]]))
+    }
+    deleted <- DBI::dbExecute(conn, paste("DELETE FROM multihit_clusters WHERE", key_where), params = upload$params)
+    if(!isTRUE(deleted == nrow(old))) stop("Error - unexpected multihit_clusters deletion count.", call. = FALSE)
+  }
+  for(upload in uploads){
+    inserted <- DBI::dbExecute(conn, insert_sql, params = c(upload$params, list(upload$total, upload$file)))
+    if(!isTRUE(inserted == 1L)) stop("Error - failed to insert a multihit_clusters record.", call. = FALSE)
+    verify_record(conn, upload)
+  }
+  tryCatch({
+    # Older RMariaDB dbCommit() methods ignore C API errors. The SQL query path
+    # checks the server's response; dbCommit() then clears driver bookkeeping.
+    DBI::dbExecute(conn, "COMMIT", immediate = TRUE)
+    DBI::dbCommit(conn)
+  }, error = function(e) {
+    stop("Error - multihit_clusters COMMIT failed; its outcome may be uncertain. Old and new RDS files were retained. ",
+         conditionMessage(e), call. = FALSE)
+  })
+  transaction_open <- FALSE
+  
+  # A new connection must see the replacements before old files can be removed.
+  tryCatch({
+    verify <- createDBconnection()
+    tryCatch({
+      for(upload in uploads) verify_record(verify, upload)
+    }, finally = DBI::dbDisconnect(verify))
+  }, error = function(e) {
+    stop("Error - multihit_clusters COMMIT completed but independent verification failed. Old and new RDS files were retained. ",
+         conditionMessage(e), call. = FALSE)
+  })
+  verified <- TRUE
+  
+  for(name in unique(old_files[!is.na(old_files) & nzchar(old_files)])){
+    path <- old_path(name)
+    if(!file.exists(path)) next
+    if(basename(path) %in% new_names) next
+    aliases <- unique(c(name, basename(path), path, file.path(.multiHitDBDataLake, basename(path))))
+    placeholders <- paste(rep("?", length(aliases)), collapse = ", ")
+    referenced <- FALSE
+    for(table in c("multihit_clusters", "sites", "fragments")){
+      refs <- tryCatch(DBI::dbGetQuery(conn, paste0("SELECT data_file_name FROM ", table,
+                                                    " WHERE data_file_name IN (", placeholders, ") LIMIT 1"), params = as.list(aliases)),
+                       error = function(e) stop("Error - multihit_clusters upload committed, but old-file reference checking failed. Retained ",
+                                                path, ": ", conditionMessage(e), call. = FALSE))
+      referenced <- referenced || nrow(refs) > 0L
+    }
+    if(referenced){
+      log_message(paste0("Retained RDS still referenced by another record: ", path))
+    } else if(unlink(path) != 0L || file.exists(path)){
+      stop("Error - multihit_clusters upload committed, but could not remove obsolete RDS file: ", path, call. = FALSE)
+    }
+  }
+  log_message(paste0("Multi-hit clusters upload committed and verified: ", length(uploads), " record(s)."))
+  invisible(TRUE)
+}
+

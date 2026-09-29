@@ -41,6 +41,9 @@ runModule <- function(){
   if(isTRUE(args$pullSubjectFragments) && args$dbConfigFile == 'none') stop('Error - --pullSubjectFragments requires --dbConfigFile and --dbConfigID.', call. = FALSE)
   
   startModule(connectDB = FALSE)
+  # Optional database archiving uses its own short-lived connections.
+  useDB <- args$dbConfigFile != 'none' && args$dbConfigID != 'none'
+  if(useDB) source(file.path(args$softwareRoot, 'lib', 'multiHitClustersDB.R'))
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   
@@ -85,6 +88,10 @@ runModule <- function(){
   if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
     stop("Error - chromosome names cannot contain '+' or '-' because these characters delimit posid strand.")
   }
+  
+  # Include input and pulled groups, even when every multi-hit read is rescued.
+  if(useDB) dbMultiHitGroups <- unique(as.data.frame(
+    frags[, .(trial, subject, sample, refGenome, mode)]))
   
   frags$real_UMI <- frags$UMI 
   frags$UMI <- "AAAAAAAAAAAA" 
@@ -326,6 +333,10 @@ runModule <- function(){
   
   # Do not continue unless we have at least one uniquely called fragment.
   if(nrow(frags_uniqPosIDs) == 0){
+    if(useDB){
+      updateLog('Archiving multi-hit clusters before the no-unique-position exit.')
+      archiveMultiHitOnlyToDB(frags_multPosIDs, dbMultiHitGroups)
+    }
     msg <- 'Error - No unique position remain after filtering.'
     updateLog(msg)
     stop(msg)
@@ -442,6 +453,7 @@ runModule <- function(){
   }
   
   saveRDS(multiHit_clusters, file.path(args$outputDir, paste0(args$fileTag, "_multiHitClusters.rds")))
+  if(useDB) uploadMultiHitClustersToDB(multiHit_clusters, dbMultiHitGroups)
   
   
   # Anchor read cluster filter
