@@ -91,6 +91,8 @@ demux_parser$add_argument("--adriftReadLinkerMaxMismatch",  type = "integer",   
 demux_parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",             help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
 demux_parser$add_argument("--disableSequenceCollapse",      action = "store_true",  default = FALSE,                  help = "Disable the collapse of duplicate sequences.")
 demux_parser$add_argument("--captureUMIs",                  action = "store_true",  default = FALSE,                  help = "Capture and use UMIs in abundance calculations.")
+demux_parser$add_argument("--dbConfigFile",                 type = "character",     default = "none",                 help = "Optional database credential file; requires --dbConfigID.")
+demux_parser$add_argument("--dbConfigID",                   type = "character",     default = "none",                 help = "Optional credential group; requires --dbConfigFile.")
 
 prp_parser <- subparsers$add_parser("prepReads", help = "Prepare demultiplexed reads for alignment to a reference genome.")
 prp_parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")

@@ -1,6 +1,18 @@
 CREATE DATABASE IF NOT EXISTS inspiired2;
 USE inspiired2;
 
+CREATE TABLE samples (
+    trial VARCHAR(100) NOT NULL,
+    subject VARCHAR(100) NOT NULL,
+    sample VARCHAR(100) NOT NULL,
+    replicate INT NOT NULL,
+    ref_genome VARCHAR(10) NOT NULL,
+    mode VARCHAR(20) NOT NULL,
+    demultiplexed_reads BIGINT NULL DEFAULT NULL,
+    processed_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (trial, subject, sample, replicate, ref_genome, mode)
+) ENGINE=InnoDB;
+
 CREATE TABLE fragments (
     trial VARCHAR(100) NOT NULL,
     subject VARCHAR(100) NOT NULL,
@@ -12,6 +24,18 @@ CREATE TABLE fragments (
     processed_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     data_file_name VARCHAR(50),
     PRIMARY KEY (trial, subject, sample, replicate, ref_genome, mode)
+) ENGINE=InnoDB;
+
+CREATE TABLE multihit_clusters (
+    trial VARCHAR(100) NOT NULL,
+    subject VARCHAR(100) NOT NULL,
+    sample VARCHAR(100) NOT NULL,
+    ref_genome VARCHAR(10) NOT NULL,
+    mode VARCHAR(20) NOT NULL,
+    total_clusters INT NOT NULL,
+    processed_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    data_file_name VARCHAR(50) NULL,
+    PRIMARY KEY (trial, subject, sample, ref_genome, mode)
 ) ENGINE=InnoDB;
 
 CREATE TABLE sites (

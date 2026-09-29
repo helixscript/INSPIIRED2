@@ -25,12 +25,19 @@ parser$add_argument("--disableSequenceCollapse",      action = "store_true",  de
 parser$add_argument("--adriftReadLinkerMaxMismatch",  type = "integer",       default = 1,                      help = "Number of allowed mismatches to the linker sequence.")
 parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",             help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
 parser$add_argument("--captureUMIs",                  action = "store_true",  default = FALSE,                  help = "Capture and use UMIs in abundance calculations.")
+parser$add_argument("--dbConfigFile", type = "character", default = "none", help = "Optional database credential file; requires --dbConfigID.")
+parser$add_argument("--dbConfigID", type = "character", default = "none", help = "Optional credential group; requires --dbConfigFile.")
 
 runModule <- function(){
   doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
   if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
+  if(xor(args$dbConfigFile != "none", args$dbConfigID != "none"))
+    stop('Error - supply both --dbConfigFile and --dbConfigID, or neither.', call. = FALSE)
+  useDB <- args$dbConfigFile != "none" && args$dbConfigID != "none"
   
-  startModule()
+  # Sample metadata needs no data-lake mount. DB helpers own short-lived
+  # connections, closed before demultiplex workers are started.
+  startModule(connectDB = FALSE)
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   
@@ -56,6 +63,16 @@ runModule <- function(){
   
   if(!nrow(sampleData))
     stop('Error - sampleData contains no sample rows.', call. = FALSE)
+  
+  if(useDB){
+    dbSamples <- validateDemultiplexSampleKeys(sampleData)
+    registerSamplesInDB(dbSamples)
+    updateLog(paste0('Registered ', nrow(dbSamples), ' sample replicate(s) with unknown demultiplexed counts.'))
+    recordDBcounts <- function(counts = NULL){
+      updateSampleCountsInDB(buildDemultiplexSampleReport(dbSamples, counts))
+      updateLog(paste0('Committed demultiplexed counts for ', nrow(dbSamples), ' sample replicate(s).'))
+    }
+  }
   
   if(anyNA(sampleData$mode) || any(!sampleData$mode %in% c("U3", "U5", "NA")))
     stop("Error - sampleData mode values must be exactly 'U3', 'U5', or 'NA'.")
@@ -97,7 +114,7 @@ runModule <- function(){
     updateLog(msg)
     stop(msg)
   }
- 
+  
   if(! all(sampleData$vectorFastaFile %in% knownVectors)){
     missingVectors <- paste0(unique(sampleData$vectorFastaFile)[! unique(sampleData$vectorFastaFile) %in% knownVectors], collapse = ', ')
     msg <- paste0('Error - These vector file names in the sample data file were not found in ', file.path(args$softwareRoot, 'data', 'vectors'), ': ', missingVectors)
@@ -177,7 +194,7 @@ runModule <- function(){
     
     if(! dir.exists(file.path(args$logDir, paste0('chunk_', chunk_num)))) dir.create(file.path(args$logDir, paste0('chunk_', chunk_num)))
     logFile <- file.path(args$logDir, paste0('chunk_', chunk_num), 'log')
-
+    
     if(args$reverseComplementI1) cI1 <- reverseComplement(cI1)
     
     updateLog(paste0('<data chunk #', chunk_num, '>\tSeparated reads into groups (', ppNum(length(cI1)), ' reads).'), logFile = logFile)
@@ -298,7 +315,7 @@ runModule <- function(){
         # Poly-G trim.
         if(! args$disablePolyGfilter){
           sR1 <- stri_replace_first_regex(as.character(subseq(sR1@sread, coords$post_n[2]+1, width(sR1))), args$polyGfilterPattern, "")
-
+          
           start_pos <- coords$post_n[2] + 1
           sR1_qual <- substr(sR1_qual, start_pos, start_pos + nchar(sR1) - 1)
           
@@ -310,7 +327,7 @@ runModule <- function(){
           
           start_pos <- coords$post_n[2] + 1
           sR1_qual <- substr(sR1_qual, start_pos, start_pos + nchar(sR1) - 1)
-        
+          
           sR2 <- as.character(sR2@sread)
         }
         
@@ -381,6 +398,7 @@ runModule <- function(){
   files <- list.files(args$tmpDir, pattern = '*.fst$', full.names = TRUE)
   
   if(length(files) == 0){
+    if(useDB) recordDBcounts()
     msg <- 'Error -- no fst files found, no reads were demultiplexed.'
     updateLog(msg)
     stop(msg)
@@ -389,17 +407,18 @@ runModule <- function(){
   updateLog(paste0('Collating ', length(files), ' data files from ', args$tmpDir, '/'))
   
   o <- rbindlist(lapply(files, function(x){
-         updateLog(paste0('   Loading ', x, ' ...'))
-         read_fst(x, as.data.table = TRUE)
-       }), use.names = TRUE, fill = TRUE)
+    updateLog(paste0('   Loading ', x, ' ...'))
+    read_fst(x, as.data.table = TRUE)
+  }), use.names = TRUE, fill = TRUE)
   
   if(nrow(o) == 0){
+    if(useDB) recordDBcounts()
     msg <- 'Error - no reads demultiplexed.'
     updateLog(msg)
     stop(msg)
   }
   
-
+  
   # Remove every occurrence of read IDs seen more than once in the output.
   duplicateReadIDs <- o[, .N, by = readID][N > 1L, readID]
   if(length(duplicateReadIDs)){
@@ -408,9 +427,17 @@ runModule <- function(){
   }
   
   if(nrow(o) == 0){
+    if(useDB) recordDBcounts()
     msg <- 'Error - no reads remain after removing read IDs demultiplexed more than once.'
     updateLog(msg)
     stop(msg)
+  }
+  
+  # Count retained read pairs independently, before sequence collapse, using
+  # the complete DB identity. This does not change the existing output tables.
+  if(useDB){
+    dbCounts <- o[, .(demultiplexedReads = as.numeric(.N)),
+                  by = .(trial, subject, sample, replicate, refGenome, mode)]
   }
   
   group_vars <- c("trial", "subject", "sample", "replicate")
@@ -455,12 +482,12 @@ runModule <- function(){
   ), by = .(trial, subject, sample, replicate)]
   
   invisible(gc(verbose = FALSE))
-
+  
   o$trial     <- as.factor(o$trial)
   o$subject   <- as.factor(o$subject)
   o$sample    <- as.factor(o$sample)
   o$replicate <- as.factor(o$replicate)
-
+  
   
   # UMIs have been shown to be too problematic to track reliably.
   # Here are are discarding recovered sequences and setting to poly-A.
@@ -491,6 +518,7 @@ runModule <- function(){
   sampleData[is.na(demultiplexedReads), demultiplexedReads := 0]
   
   write_tsv(sampleData, file.path(args$outputDir, paste0(args$fileTag, '.tbl')))
+  if(useDB) recordDBcounts(dbCounts)
   
   updateLog('Demultiplex module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
@@ -501,6 +529,8 @@ runModule <- function(){
 args <- parser$parse_args()
 args$qualTrimCode <- rawToChar(as.raw(args$qualTrimScore + 33))
 source(file.path(args$softwareRoot, 'lib', 'common.R'))
+if(args$dbConfigFile != 'none' && args$dbConfigID != 'none')
+  source(file.path(args$softwareRoot, 'lib', 'demultiplex.R'))
 
 tryCatch({
   runModule()
