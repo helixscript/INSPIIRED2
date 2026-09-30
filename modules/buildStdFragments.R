@@ -43,7 +43,6 @@ runModule <- function(){
   startModule(connectDB = FALSE)
   # Optional database archiving uses its own short-lived connections.
   useDB <- args$dbConfigFile != 'none' && args$dbConfigID != 'none'
-  if(useDB) source(file.path(args$softwareRoot, 'lib', 'multiHitClustersDB.R'))
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   

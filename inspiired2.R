@@ -1,9 +1,12 @@
 #!/usr/bin/env -S Rscript --vanilla
 for (p in c('argparse', 'dplyr')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
+pipeline_root <- this.path::this.dir()
+source(file.path(pipeline_root, "lib", "memoryMonitoring.R"))
+
 parser <- ArgumentParser(prog = "inspiired2", description = "inspiired2: Automated Vector Integration Analysis")
 
-version_file <- file.path(this.path::this.dir(), "VERSION")
+version_file <- file.path(pipeline_root, "VERSION")
 version <- if (file.exists(version_file)) readLines(version_file, n = 1) else NA
 parser$add_argument("-v", "--version", action = "version", version = paste("inspiired2", version))
 
@@ -204,6 +207,14 @@ anr_parser$add_argument("--ramDiskPath",             type = "character",     def
 anr_parser$add_argument("--dbConfigFile",            type = "character",     default = 'none',             help = "Path to db credential file.")
 anr_parser$add_argument("--dbConfigID",              type = "character",     default = 'none',             help = "DB credential block identifier in db credential file.")
 
+# These options are consumed by the launcher and are intentionally not passed
+# to individual module scripts. Registering them on each applicable subparser
+# permits the natural `inspiired2 <module> --memory...` command-line syntax.
+monitorParsers <- list(validateSampleData_parser, testHMM_parser, bsdm_parser,
+                       demux_parser, prp_parser, alr_parser, bdf_parser,
+                       bsf_parser, bst_parser, ngn_parser, anr_parser)
+invisible(lapply(monitorParsers, addMemoryMonitorArgs))
+
 if (length(commandArgs(trailingOnly = TRUE)) == 0) {
   parser$print_help()
   quit(status = 0)
@@ -216,11 +227,9 @@ if (is.null(args$module)) {
   quit(status = 1)
 }
 
-pipeline_root <- this.path::this.dir()
-
 module_script <- file.path(pipeline_root, "modules", paste0(args$module, ".R"))
 
-clean_args <- args[names(args)!= "module"]
+clean_args <- args[!names(args) %in% c("module", memoryMonitorArgs)]
 
 cmd_args <- sapply(names(clean_args), function(n) {
   val <- clean_args[[n]]
@@ -233,6 +242,16 @@ cmd_args <- sapply(names(clean_args), function(n) {
 
 final_cmd <- paste(cmd_args[cmd_args != ""], collapse = " ")
 
-message('Starting module: ', args$module)
-status <- system2("Rscript", args = c("--vanilla", module_script, final_cmd, "--softwareRoot", shQuote(pipeline_root)))
+runModuleCommand <- function(){
+  status <- 1L
+  monitor <- startMemoryMonitor(args, pipeline_root)
+  on.exit(stopMemoryMonitor(monitor, status), add = TRUE)
+  
+  message('Starting module: ', args$module)
+  status <- system2("Rscript", args = c("--vanilla", module_script, final_cmd,
+                                        "--softwareRoot", shQuote(pipeline_root)))
+  status
+}
+
+status <- runModuleCommand()
 quit(status = status)
