@@ -21,7 +21,8 @@ fi
 
 fake_cgroup="$test_root/cgroup"
 output_dir="$test_root/output with spaces"
-control_dir="$output_dir/control"
+memory_dir="$output_dir/memory"
+control_dir="$memory_dir/control"
 mkdir -p "$fake_cgroup" "$control_dir"
 
 printf '%s\n' 209715200 > "$fake_cgroup/memory.current"
@@ -39,10 +40,10 @@ printf '%s\n' \
   'oom 0' \
   'oom_kill 0' > "$fake_cgroup/memory.events"
 
-trace="$output_dir/INSPIIRED2_memoryUsage.tsv"
-svg="$output_dir/INSPIIRED2_memoryUsage.svg"
-html="$output_dir/INSPIIRED2_memoryUsage.html"
-summary="$output_dir/INSPIIRED2_memoryUsage_summary.tsv"
+trace="$memory_dir/INSPIIRED2_memoryUsage.tsv"
+png="$memory_dir/INSPIIRED2_memoryUsage.png"
+pdf="$memory_dir/INSPIIRED2_memoryUsage.pdf"
+summary="$memory_dir/INSPIIRED2_memoryUsage_summary.tsv"
 ready="$control_dir/test.ready"
 stop="$control_dir/test.stop"
 status_file="$control_dir/test.status"
@@ -50,7 +51,7 @@ done="$control_dir/test.done"
 error_file="$control_dir/test.error"
 
 INSPIIRED2_CGROUP_DIR="$fake_cgroup" bash "$sampler" \
-  --trace "$trace" --svg "$svg" --html "$html" --summary "$summary" \
+  --trace "$trace" --png "$png" --pdf "$pdf" --summary "$summary" \
   --run-id run_test --invocation-id invocation_test --module buildFragments \
   --file-tag buildFragments --sample-seconds 0.2 --plot-seconds 1 \
   --parent-pid $$ --ready-file "$ready" --stop-file "$stop" \
@@ -65,8 +66,7 @@ done
 
 printf '%s\n' 314572800 > "$fake_cgroup/memory.current"
 sleep 1.3
-[[ -s "$svg" ]]
-((using_fake_renderer == 0)) || grep -q '0.27 GiB' "$svg"
+[[ -s "$png" && -s "$pdf" ]]
 
 # A competing sampler for the same output directory must fail softly without
 # touching the shared trace. The biological module would continue unmonitored.
@@ -74,7 +74,7 @@ locked_ready="$control_dir/locked.ready"
 locked_done="$control_dir/locked.done"
 locked_error="$control_dir/locked.error"
 INSPIIRED2_CGROUP_DIR="$fake_cgroup" bash "$sampler" \
-  --trace "$trace" --svg "$svg" --html "$html" --summary "$summary" \
+  --trace "$trace" --png "$png" --pdf "$pdf" --summary "$summary" \
   --run-id competing_run --invocation-id competing_invocation --module prepReads \
   --file-tag prepReads --sample-seconds 0.2 --plot-seconds 1 --parent-pid $$ \
   --ready-file "$locked_ready" --stop-file "$control_dir/locked.stop" \
@@ -88,12 +88,17 @@ printf '%s\n' 7 > "$status_file"
 : > "$stop"
 wait "$sampler_pid"
 
-[[ -s "$trace" && -s "$svg" && -s "$html" && -s "$summary" && -e "$done" ]]
-[[ -z $(find "$output_dir" -type f -name '*.tmp_*' -print -quit) ]]
-((using_fake_renderer == 0)) || grep -q 'buildFragments' "$svg"
-grep -q 'This page refreshes every 1 seconds' "$html"
-if command -v python3 >/dev/null 2>&1; then
-  python3 -c 'import sys, xml.etree.ElementTree as ET; ET.parse(sys.argv[1])' "$svg"
+[[ -d "$memory_dir" ]]
+[[ -s "$trace" && -s "$png" && -s "$pdf" && -s "$summary" && -e "$done" ]]
+[[ -z $(find "$memory_dir" -type f \( -name '*.html' -o -name '*.svg' \) -print -quit) ]]
+[[ -z $(find "$output_dir" -maxdepth 1 -type f -name 'INSPIIRED2_memoryUsage*' -print -quit) ]]
+[[ ! -e "$output_dir/memoryMonitoring" ]]
+[[ -z $(find "$memory_dir" -type f -name '*.tmp_*' -print -quit) ]]
+[[ $(LC_ALL=C od -An -tx1 -N8 "$png" | tr -d '[:space:]') == 89504e470d0a1a0a ]]
+[[ $(LC_ALL=C od -An -tx1 -N5 "$pdf" | tr -d '[:space:]') == 255044462d ]]
+tail -c 1024 "$pdf" | grep -aq '%%EOF'
+if ((using_fake_renderer == 0)) && command -v pdfinfo >/dev/null 2>&1; then
+  pdfinfo "$pdf" >/dev/null
 fi
 
 awk -F '\t' '
@@ -130,8 +135,8 @@ discovery_done="$discovery_control/discovery.done"
 discovery_error="$discovery_control/discovery.error"
 INSPIIRED2_TEST_PROC_CGROUP="$discovery_proc" \
 INSPIIRED2_TEST_PROC_MOUNTINFO="$discovery_mountinfo" bash "$sampler" \
-  --trace "$output_dir/discovery.tsv" --svg "$output_dir/discovery.svg" \
-  --html "$output_dir/discovery.html" --summary "$output_dir/discovery_summary.tsv" \
+  --trace "$memory_dir/discovery.tsv" --png "$memory_dir/discovery.png" \
+  --pdf "$memory_dir/discovery.pdf" --summary "$memory_dir/discovery_summary.tsv" \
   --run-id run_discovery --invocation-id invocation_discovery --module demultiplex \
   --file-tag demultiplex --sample-seconds 0.2 --plot-seconds 1 --parent-pid $$ \
   --ready-file "$discovery_ready" --stop-file "$discovery_stop" \
@@ -146,7 +151,7 @@ done
 printf '%s\n' 0 > "$discovery_status"
 : > "$discovery_stop"
 wait "$sampler_pid"
-grep -q $'\t2\t' "$output_dir/discovery.tsv"
+grep -q $'\t2\t' "$memory_dir/discovery.tsv"
 
 # A second module invocation must append to the same run and update the plot.
 ready2="$control_dir/test2.ready"
@@ -156,7 +161,7 @@ done2="$control_dir/test2.done"
 error2="$control_dir/test2.error"
 printf '%s\n' 419430400 > "$fake_cgroup/memory.current"
 INSPIIRED2_CGROUP_DIR="$fake_cgroup" bash "$sampler" \
-  --trace "$trace" --svg "$svg" --html "$html" --summary "$summary" \
+  --trace "$trace" --png "$png" --pdf "$pdf" --summary "$summary" \
   --run-id run_test --invocation-id invocation_test2 --module prepReads \
   --file-tag prepReads --sample-seconds 0.2 --plot-seconds 1 \
   --parent-pid $$ --ready-file "$ready2" --stop-file "$stop2" \
@@ -171,12 +176,10 @@ printf '%s\n' 0 > "$status2"
 : > "$stop2"
 wait "$sampler_pid"
 
-if ((using_fake_renderer == 1)); then
-  grep -q 'buildFragments' "$svg"
-  grep -q 'prepReads' "$svg"
-fi
 [[ $(grep -c '^run_id' "$trace") -eq 1 ]]
 [[ $(grep -c '^run_test' "$summary") -eq 2 ]]
+awk -F '\t' 'NR == 2 && $3 != "buildFragments" { exit 1 }
+              NR == 3 && $3 != "prepReads" { exit 1 }' "$summary"
 
 # A new run ID keeps old measurements in the TSV but excludes them from the live plot.
 run2_ready="$control_dir/run2.ready"
@@ -185,7 +188,7 @@ run2_status="$control_dir/run2.status"
 run2_done="$control_dir/run2.done"
 run2_error="$control_dir/run2.error"
 INSPIIRED2_CGROUP_DIR="$fake_cgroup" bash "$sampler" \
-  --trace "$trace" --svg "$svg" --html "$html" --summary "$summary" \
+  --trace "$trace" --png "$png" --pdf "$pdf" --summary "$summary" \
   --run-id run_test2 --invocation-id invocation_run2 --module demultiplex \
   --file-tag demultiplex --sample-seconds 0.2 --plot-seconds 1 \
   --parent-pid $$ --ready-file "$run2_ready" --stop-file "$run2_stop" \
@@ -199,12 +202,8 @@ done
 printf '%s\n' 0 > "$run2_status"
 : > "$run2_stop"
 wait "$sampler_pid"
-if ((using_fake_renderer == 1)); then
-  grep -q 'demultiplex' "$svg"
-  ! grep -q 'buildFragments' "$svg"
-  ! grep -q 'prepReads' "$svg"
-fi
 [[ $(grep -c '^run_test2' "$summary") -eq 1 ]]
+awk -F '\t' 'NR == 2 && $3 != "demultiplex" { exit 1 }' "$summary"
 
 # The cgroup-v1 fallback must normalize its unlimited sentinel and mem+swap value.
 fake_v1="$test_root/cgroup_v1"
@@ -219,15 +218,17 @@ printf '%s\n' \
   'total_shmem 5242880' \
   'total_inactive_file 10485760' > "$fake_v1/memory.stat"
 
-v1_trace="$output_dir/v1.tsv"
+v1_trace="$memory_dir/v1.tsv"
 v1_ready="$control_dir/v1.ready"
 v1_stop="$control_dir/v1.stop"
 v1_status="$control_dir/v1.status"
 v1_done="$control_dir/v1.done"
 v1_error="$control_dir/v1.error"
+v1_png="$memory_dir/v1.png"
+v1_pdf="$memory_dir/v1.pdf"
 INSPIIRED2_CGROUP_DIR="$fake_v1" bash "$sampler" \
-  --trace "$v1_trace" --svg "$output_dir/v1.svg" --html "$output_dir/v1.html" \
-  --summary "$output_dir/v1_summary.tsv" --run-id run_v1 --invocation-id invocation_v1 \
+  --trace "$v1_trace" --png "$v1_png" --pdf "$v1_pdf" \
+  --summary "$memory_dir/v1_summary.tsv" --run-id run_v1 --invocation-id invocation_v1 \
   --module alignReads --file-tag alignReads --sample-seconds 0.2 --plot-seconds 1 \
   --parent-pid $$ --ready-file "$v1_ready" --stop-file "$v1_stop" \
   --status-file "$v1_status" --done-file "$v1_done" --error-file "$v1_error" &
@@ -240,6 +241,7 @@ done
 printf '%s\n' 0 > "$v1_status"
 : > "$v1_stop"
 wait "$sampler_pid"
+[[ -s "$v1_png" && -s "$v1_pdf" && ! -e "$v1_error" ]]
 
 awk -F '\t' '
   NR == 1 { for(i = 1; i <= NF; i++) col[$i] = i; next }
@@ -258,15 +260,15 @@ render_stop="$control_dir/render.stop"
 render_status="$control_dir/render.status"
 render_done="$control_dir/render.done"
 render_error="$control_dir/render.error"
-render_trace="$output_dir/render_failure.tsv"
+render_trace="$memory_dir/render_failure.tsv"
 INSPIIRED2_CGROUP_DIR="$fake_cgroup" bash "$sampler" \
-  --trace "$render_trace" --svg "/proc/INSPIIRED2_unwritable.svg" \
-  --html "$output_dir/render_failure.html" --summary "$output_dir/render_failure_summary.tsv" \
+  --trace "$render_trace" --png "$memory_dir/render_failure.png" \
+  --pdf "/proc/INSPIIRED2_unwritable.pdf" --summary "$memory_dir/render_failure_summary.tsv" \
   --run-id run_render --invocation-id invocation_render --module prepReads \
   --file-tag prepReads --sample-seconds 0.2 --plot-seconds 1 --parent-pid $$ \
   --ready-file "$render_ready" --stop-file "$render_stop" \
   --status-file "$render_status" --done-file "$render_done" --error-file "$render_error" \
-  2> "$output_dir/render_failure.stderr" &
+  2> "$memory_dir/render_failure.stderr" &
 sampler_pid=$!
 for _ in $(seq 1 100); do
   [[ -e "$render_ready" ]] && break
@@ -277,15 +279,15 @@ printf '%s\n' 0 > "$render_status"
 : > "$render_stop"
 wait "$sampler_pid"
 [[ -e "$render_done" && -s "$render_error" ]]
-grep -q 'SVG plot' "$render_error"
+grep -q 'PNG/PDF report' "$render_error"
 awk -F '\t' '$8 == "end" && $9 == 0 { found = 1 } END { exit !found }' "$render_trace"
 
 missing="$test_root/missing"
 missing_done="$control_dir/missing.done"
 missing_error="$control_dir/missing.error"
 INSPIIRED2_CGROUP_DIR="$missing" bash "$sampler" \
-  --trace "$output_dir/missing.tsv" --svg "$output_dir/missing.svg" \
-  --html "$output_dir/missing.html" --summary "$output_dir/missing_summary.tsv" \
+  --trace "$memory_dir/missing.tsv" --png "$memory_dir/missing.png" \
+  --pdf "$memory_dir/missing.pdf" --summary "$memory_dir/missing_summary.tsv" \
   --run-id run_missing --invocation-id invocation_missing --module prepReads \
   --file-tag prepReads --sample-seconds 1 --plot-seconds 1 --parent-pid $$ \
   --ready-file "$control_dir/missing.ready" --stop-file "$control_dir/missing.stop" \

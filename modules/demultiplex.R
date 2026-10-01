@@ -11,7 +11,7 @@ parser$add_argument("--softwareRoot",                 type = "character",     re
 parser$add_argument("--threads",                      type = "integer",       default = 50,                     help = "Number of threads to use.")
 parser$add_argument("--fileTag",                      type = "character",     default = "demultiplex",          help = "String appended to output files in the outpt directory.")
 parser$add_argument("--index1ReadMaxMismatch",        type = "integer",       default = 1,                      help = "Number of allowed mismatches to the I1 barcode sequence.")
-parser$add_argument("--disableAutoBarcodeOrt",        action = "store_true",  default = FALSE,                  help = "Subsample the data an automatically determine if I1 barcodes need to be reverse complimented.")
+parser$add_argument("--autoBarcodeOrt",               action = "store_true",  default = FALSE,                  help = "Subsample the data an automatically determine if I1 barcodes need to be reverse complimented.")
 parser$add_argument("--disablePostUmiLinker",         action = "store_true",  default = FALSE,                  help = "Disable the requirement to match the post-UMI linker sequence.")
 parser$add_argument("--postUmiLinkerMaxMismatch",     type = "integer",       default = 1,                      help = "Number of allowed mismatches to the linker sequence following the UMI sequence.")
 parser$add_argument("--qualTrimHalfWidth",            type = "integer",       default = 3,                      help = "Half width of NT window slid along sequence during quality trimming.")
@@ -139,7 +139,7 @@ runModule <- function(){
   args$reverseComplementI1 <- FALSE
   dataStreamChunkSize <- 1e6
   
-  if(! args$disableAutoBarcodeOrt){
+  if(args$autoBarcodeOrt){
     updateLog('Determining if I1 barcodes need to be reverse-complimented.')
     
     stream_I1 <- FastqStreamer(args$indexReads, n = dataStreamChunkSize)
@@ -440,81 +440,71 @@ runModule <- function(){
                   by = .(trial, subject, sample, replicate, refGenome, mode)]
   }
   
-  group_vars <- c("trial", "subject", "sample", "replicate")
+  # Ignored UMIs should not distinguish otherwise identical read pairs.
+  o[, UMI := as.character(UMI)]
   
-  if (! args$disableSequenceCollapse) {
+  if(!args$captureUMIs){
+    updateLog('Masking UMI sequences because --captureUMIs was not supplied.')
+    o[, UMI := rep("AAAAAAAAAAAA", .N)]
+  }
+  
+  group_vars <- c("trial", "subject", "sample", "replicate", "mode",
+                  "refGenome", "vectorFastaFile", "leaderSeqHMM")
+  
+  if(!args$disableSequenceCollapse){
     updateLog('Collapsing duplicate reads.')
-    group_vars <- c(group_vars, "UMI", "anchorReadSeq", "adriftReadSeq")
+    collapse_vars <- c(group_vars, "UMI", "anchorReadSeq", "adriftReadSeq")
     
-    # readID is pulled here because it is NOT in group_vars
     o <- o[, .(
-      nReads          = .N, 
-      readID          = readID[1],
-      linker1         = linker1[1],
-      linker2         = linker2[1],
-      mode            = mode[1],
-      refGenome       = refGenome[1],
-      vectorFastaFile = vectorFastaFile[1],
-      leaderSeqHMM    = leaderSeqHMM[1]
-    ), by = group_vars]
-    
+      nReads = .N, readID = readID[1L],
+      linker1 = linker1[1L], linker2 = linker2[1L]
+    ), by = collapse_vars]
   } else {
     updateLog('Reads will not be collapsed - each demultiplexed read will be included in output.')
-    group_vars <- c(group_vars, "readID")
+    read_vars <- c(group_vars, "readID")
     
-    # Sequences are pulled here because they are NOT in group_vars
     o <- o[, .(
-      nReads          = .N, 
-      UMI             = UMI[1],
-      anchorReadSeq   = anchorReadSeq[1],
-      adriftReadSeq   = adriftReadSeq[1],
-      linker1         = linker1[1],
-      linker2         = linker2[1],
-      mode            = mode[1],
-      refGenome       = refGenome[1],
-      vectorFastaFile = vectorFastaFile[1],
-      leaderSeqHMM    = leaderSeqHMM[1]
-    ), by = group_vars]
+      nReads = .N, UMI = UMI[1L],
+      anchorReadSeq = anchorReadSeq[1L], adriftReadSeq = adriftReadSeq[1L],
+      linker1 = linker1[1L], linker2 = linker2[1L]
+    ), by = read_vars]
   }
+  
+  # Build the summary using the complete sample identity. Demultiplex workers
+  # store replicate as a factor, so restore its numeric value for the join.
+  summary_vars <- c("trial", "subject", "sample", "replicate", "refGenome", "mode")
   
   demux_summary <- o[, .(
     demultiplexedReads = sum(as.numeric(nReads), na.rm = TRUE)
-  ), by = .(trial, subject, sample, replicate)]
+  ), by = summary_vars]
   
-  invisible(gc(verbose = FALSE))
+  demux_summary[, replicate := as.numeric(as.character(replicate))]
   
+  # Format and write the main demultiplex output.
   o$trial     <- as.factor(o$trial)
   o$subject   <- as.factor(o$subject)
   o$sample    <- as.factor(o$sample)
   o$replicate <- as.factor(o$replicate)
+  o$UMI       <- as.character(o$UMI)
   
+  updateLog(paste0('Writing ', ppNum(nrow(o)), ' read-pair records representing ',
+                   ppNum(sum(o$nReads)), ' reads.'))
   
-  # UMIs have been shown to be too problematic to track reliably.
-  # Here are are discarding recovered sequences and setting to poly-A.
-  # They can be re-introduced in later versions once the wet-side has greatly suppressed rearrangements.
-  
-  if(!args$captureUMIs) o$UMI <- "AAAAAAAAAAAA"
-  o$UMI <- as.character(o$UMI)
-  
-  updateLog(paste0('Writing ', ppNum(n_distinct(o$readID)), ' reads.'))
   saveRDS(o, file.path(args$outputDir, paste0(args$fileTag, '.rds')), compress = FALSE)
   
   # Summary table
   setDT(sampleData)
   sampleData[, original_order := .I]
   
-  demux_summary[, replicate := as.numeric(as.character(replicate))]
-  
   sampleData <- merge(
-    sampleData, 
-    demux_summary, 
-    by = c("trial", "subject", "sample", "replicate"), 
-    all.x = TRUE
+    sampleData, demux_summary,
+    by = summary_vars,
+    all.x = TRUE,
+    sort = FALSE
   )
   
   setorder(sampleData, original_order)
   sampleData[, original_order := NULL]
-  
   sampleData[is.na(demultiplexedReads), demultiplexedReads := 0]
   
   write_tsv(sampleData, file.path(args$outputDir, paste0(args$fileTag, '.tbl')))

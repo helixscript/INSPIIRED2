@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 # Lightweight container-wide memory sampler used by the INSPIIRED2 launcher.
-# Plot updates use a short-lived R/ggplot2 process between memory samples.
+# Report updates use a short-lived R/ggplot2 process between memory samples.
 
 set -u
 
 trace_file=""
-svg_file=""
-html_file=""
+png_file=""
+pdf_file=""
 summary_file=""
 run_id=""
 invocation_id=""
@@ -25,8 +25,8 @@ error_file=""
 while (($#)); do
   case "$1" in
     --trace) trace_file=$2; shift 2 ;;
-    --svg) svg_file=$2; shift 2 ;;
-    --html) html_file=$2; shift 2 ;;
+    --png) png_file=$2; shift 2 ;;
+    --pdf) pdf_file=$2; shift 2 ;;
     --summary) summary_file=$2; shift 2 ;;
     --run-id) run_id=$2; shift 2 ;;
     --invocation-id) invocation_id=$2; shift 2 ;;
@@ -57,7 +57,7 @@ fail_monitor(){
   exit 0
 }
 
-for required in trace_file svg_file html_file summary_file run_id invocation_id module \
+for required in trace_file png_file pdf_file summary_file run_id invocation_id module \
                 parent_pid ready_file stop_file status_file done_file error_file; do
   [[ -n "${!required}" ]] || fail_monitor "missing required sampler argument: $required"
 done
@@ -181,7 +181,7 @@ else
 fi
 
 start_epoch=$(date +%s)
-last_plot_epoch=0
+last_report_epoch=0
 termination_requested=0
 finished=0
 
@@ -262,63 +262,30 @@ sample_memory(){
 
 
 render_outputs(){
-  local svg_tmp summary_tmp html_tmp updated svg_name trace_name summary_name render_message
+  local png_tmp pdf_tmp summary_tmp render_message
   local render_failures=""
-  svg_tmp="${svg_file}.tmp_${invocation_id}"
+  png_tmp="${png_file}.tmp_${invocation_id}"
+  pdf_tmp="${pdf_file}.tmp_${invocation_id}"
   summary_tmp="${summary_file}.tmp_${invocation_id}"
-  html_tmp="${html_file}.tmp_${invocation_id}"
-
-  if [[ -n "$rscript_bin" && -r "$plotter" ]] &&
-     "$rscript_bin" --vanilla "$plotter" "$trace_file" "$svg_tmp" "$run_id" >/dev/null &&
-     [[ -s "$svg_tmp" ]] && mv -f "$svg_tmp" "$svg_file"; then
-    :
-  else
-    rm -f "$svg_tmp"
-    render_failures="SVG plot"
-  fi
 
   if awk -v runID="$run_id" -f "$summarizer" "$trace_file" > "$summary_tmp" &&
      [[ -s "$summary_tmp" ]] && mv -f "$summary_tmp" "$summary_file"; then
     :
   else
     rm -f "$summary_tmp"
-    [[ -n "$render_failures" ]] && render_failures+=", "
-    render_failures+="summary"
+    render_failures="summary"
   fi
 
-  updated=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-  svg_name=$(basename "$svg_file")
-  trace_name=$(basename "$trace_file")
-  summary_name=$(basename "$summary_file")
-  if ! cat > "$html_tmp" <<EOF
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="refresh" content="$plot_seconds">
-  <title>INSPIIRED2 memory use</title>
-  <style>
-    body { margin: 1rem; font-family: Arial, Helvetica, sans-serif; color: #222; }
-    object { width: 100%; max-width: 1200px; min-height: 720px; border: 1px solid #ddd; }
-    p { color: #555; }
-  </style>
-</head>
-<body>
-  <object data="$svg_name?v=$updated" type="image/svg+xml">Live memory plot</object>
-  <p>Updated $updated UTC. This page refreshes every $plot_seconds seconds.
-     <a href="$trace_name">Raw measurements</a> &middot;
-     <a href="$summary_name">Module summary</a></p>
-</body>
-</html>
-EOF
-  then
-    rm -f "$html_tmp"
+  if [[ -z "$render_failures" && -n "$rscript_bin" && -r "$plotter" ]] &&
+     "$rscript_bin" --vanilla "$plotter" "$trace_file" "$summary_file" \
+       "$png_tmp" "$pdf_tmp" "$run_id" >/dev/null &&
+     [[ -s "$png_tmp" && -s "$pdf_tmp" ]] &&
+     mv -f "$pdf_tmp" "$pdf_file" && mv -f "$png_tmp" "$png_file"; then
+    :
+  else
+    rm -f "$png_tmp" "$pdf_tmp"
     [[ -n "$render_failures" ]] && render_failures+=", "
-    render_failures+="HTML report"
-  elif ! mv -f "$html_tmp" "$html_file"; then
-    rm -f "$html_tmp"
-    [[ -n "$render_failures" ]] && render_failures+=", "
-    render_failures+="HTML report"
+    render_failures+="PNG/PDF report"
   fi
 
   if [[ -n "$render_failures" ]]; then
@@ -330,7 +297,7 @@ EOF
        grep -q '^memory report update failed for:' "$error_file"; then
     rm -f "$error_file"
   fi
-  last_plot_epoch=$(date +%s)
+  last_report_epoch=$(date +%s)
 }
 
 
@@ -370,7 +337,7 @@ while :; do
     break
   fi
   now_epoch=$(date +%s)
-  ((now_epoch - last_plot_epoch >= plot_seconds)) && render_outputs
+  ((now_epoch - last_report_epoch >= plot_seconds)) && render_outputs
 done
 
 exit 0

@@ -3,11 +3,11 @@ memoryMonitorArgs <- c("disableMemoryMonitor", "memorySampleSeconds", "memoryPlo
 
 addMemoryMonitorArgs <- function(parser){
   parser$add_argument("--disableMemoryMonitor", action = "store_true", default = FALSE,
-                      help = "Disable container memory monitoring and the live memory-use plot.")
+                      help = "Disable container memory monitoring and memory-use reports.")
   parser$add_argument("--memorySampleSeconds", type = "double", default = 2,
                       help = "Seconds between container memory measurements.")
   parser$add_argument("--memoryPlotUpdateSeconds", type = "double", default = 30,
-                      help = "Seconds between updates of the live memory-use plot.")
+                      help = "Seconds between updates of the memory-use PNG and PDF reports.")
   invisible(parser)
 }
 
@@ -40,22 +40,24 @@ startMemoryMonitor <- function(args, pipelineRoot){
     stop("Error - memoryPlotUpdateSeconds must be one finite number greater than zero.", call. = FALSE)
 
   outputDir <- normalizePath(args$outputDir, mustWork = FALSE)
-  monitorDir <- file.path(outputDir, "memoryMonitoring")
+  monitorDir <- file.path(outputDir, "memory")
+  controlDir <- file.path(monitorDir, "control")
   if(!dir.exists(monitorDir)) dir.create(monitorDir, recursive = TRUE, showWarnings = FALSE)
-  if(!dir.exists(monitorDir)){
-    warning("Container memory monitoring disabled: could not create ", monitorDir, ".",
+  if(!dir.exists(controlDir)) dir.create(controlDir, recursive = TRUE, showWarnings = FALSE)
+  if(!dir.exists(monitorDir) || !dir.exists(controlDir)){
+    warning("Container memory monitoring disabled: could not create ", controlDir, ".",
             call. = FALSE)
     return(NULL)
   }
 
   runID <- memoryMonitorID("run")
   invocationID <- memoryMonitorID(args$module)
-  controlPrefix <- file.path(monitorDir, invocationID)
+  controlPrefix <- file.path(controlDir, invocationID)
   paths <- list(
-    trace = file.path(outputDir, "INSPIIRED2_memoryUsage.tsv"),
-    svg = file.path(outputDir, "INSPIIRED2_memoryUsage.svg"),
-    html = file.path(outputDir, "INSPIIRED2_memoryUsage.html"),
-    summary = file.path(outputDir, "INSPIIRED2_memoryUsage_summary.tsv"),
+    trace = file.path(monitorDir, "INSPIIRED2_memoryUsage.tsv"),
+    png = file.path(monitorDir, "INSPIIRED2_memoryUsage.png"),
+    pdf = file.path(monitorDir, "INSPIIRED2_memoryUsage.pdf"),
+    summary = file.path(monitorDir, "INSPIIRED2_memoryUsage_summary.tsv"),
     ready = paste0(controlPrefix, ".ready"),
     stop = paste0(controlPrefix, ".stop"),
     status = paste0(controlPrefix, ".status"),
@@ -73,8 +75,8 @@ startMemoryMonitor <- function(args, pipelineRoot){
 
   scriptArgs <- c(
     shQuote(script),
-    "--trace", shQuote(paths$trace), "--svg", shQuote(paths$svg),
-    "--html", shQuote(paths$html), "--summary", shQuote(paths$summary),
+    "--trace", shQuote(paths$trace), "--png", shQuote(paths$png),
+    "--pdf", shQuote(paths$pdf), "--summary", shQuote(paths$summary),
     "--run-id", shQuote(runID), "--invocation-id", shQuote(invocationID),
     "--module", shQuote(cleanText(args$module)),
     "--file-tag", shQuote(cleanText(if(is.null(args$fileTag)) args$module else args$fileTag)),
@@ -115,12 +117,19 @@ startMemoryMonitor <- function(args, pipelineRoot){
     return(NULL)
   }
 
-  runFile <- file.path(monitorDir, "currentRunID.txt")
-  recordedRunID <- tryCatch(trimws(readLines(runFile, n = 1L, warn = FALSE)),
-                            error = function(e) "")
+  ### runFile <- file.path(monitorDir, "currentRunID.txt")
+  ### recordedRunID <- tryCatch(trimws(readLines(runFile, n = 1L, warn = FALSE)), error = function(e) "")
+
+  runFile <- file.path(controlDir, "currentRunID.txt")
+  recordedRunID <- if(file.exists(runFile)){
+    tryCatch(trimws(readLines(runFile, n = 1L, warn = FALSE)),
+             error = function(e) "")
+  } else ""
+
+
   if(length(recordedRunID) == 1L && nzchar(recordedRunID)) runID <- recordedRunID
 
-  message("Container memory monitoring enabled. Live report: ", paths$html)
+  ### message("Container memory monitoring enabled. Live plot: ", paths$png, "; PDF report: ", paths$pdf)
   c(paths, list(active = TRUE, sampleSeconds = sampleSeconds, runID = runID,
                 invocationID = invocationID))
 }
