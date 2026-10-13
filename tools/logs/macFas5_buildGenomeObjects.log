@@ -1,0 +1,53 @@
+2026-09-02 14:00:01  Genome: macFas5 
+2026-09-02 14:00:01  2bit source: https://hgdownload.soe.ucsc.edu/goldenPath/macFas5/bigZips/macFas5.2bit 
+2026-09-02 14:00:02  Downloading: https://hgdownload.soe.ucsc.edu/goldenPath/macFas5/bigZips/macFas5.2bit 
+2026-09-02 14:00:42  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/macFas5_output/.macFas5_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/macFas5_output/.macFas5_build/source.chromInfo.txt' 
+2026-09-02 14:00:42  Sequences in source genome: 7,601 
+2026-09-02 14:00:42  Chromosome selection: regex 
+2026-09-02 14:00:42  Chromosome filter: ^chr([1-9][0-9]*|X|Y)$ 
+2026-09-02 14:00:42  Sequences retained: 21 
+2026-09-02 14:00:42  Sequences excluded: 7,580 
+2026-09-02 14:00:42  Reference size: 2,871,826,009 bp 
+2026-09-02 14:00:42  Sequences: chr1, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr2, chr20, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chrX 
+2026-09-02 14:00:42  Checking annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/macFas5/database/ncbiRefSeqCurated.txt.gz 
+2026-09-02 14:00:43  Annotation source selected: https://hgdownload.soe.ucsc.edu/goldenPath/macFas5/database/ncbiRefSeqCurated.txt.gz 
+2026-09-02 14:00:43  Reading annotation. 
+2026-09-02 14:00:43  Annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/macFas5/database/ncbiRefSeqCurated.txt.gz 
+2026-09-02 14:00:43  Annotation source type: UCSC ncbiRefSeqCurated 
+2026-09-02 14:00:43  Annotation format: UCSC bin + genePredExt (16 columns) 
+2026-09-02 14:00:43  Source transcript records: 1,807 
+2026-09-02 14:00:43  Retained transcript records: 1,739 
+2026-09-02 14:00:43  Source gene symbols: 1,761 
+2026-09-02 14:00:43  Retained gene symbols: 1,720 
+2026-09-02 14:00:43  Genome and annotation preflight passed. 
+2026-09-02 14:00:43  RepeatMasker: RepeatMasker version 4.2.4 
+2026-09-02 14:00:43  Running RepeatMasker preflight. 
+2026-09-02 14:01:09  RepeatMasker version 4.2.4 
+2026-09-02 14:01:09  Search Engine: NCBI/RMBLAST [ 2.14.1+ ] 
+2026-09-02 14:01:09  Using FamDB: /usr/local/RM424_install/FamDB 
+2026-09-02 14:01:09  Families : 30,659 
+2026-09-02 14:01:09  1343/1343 families in ancestor taxa; 0/0 lineage-specific families 
+2026-09-02 14:01:09  RepeatMasker preflight passed. 
+2026-09-02 14:01:09  Extracting retained chromosomes. 
+2026-09-02 14:01:09  Running: twoBitToFa '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/macFas5_output/.macFas5_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/macFas5_output/.macFas5_build/macFas5.fa' '-seqList=/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/macFas5_output/.macFas5_build/chromosomes.txt' 
+2026-09-02 14:01:17  Building filtered 2bit. 
+2026-09-02 14:01:17  Running: faToTwoBit '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/macFas5_output/.macFas5_build/macFas5.fa' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/macFas5_output/.macFas5_build/macFas5.2bit' 
+2026-09-02 14:01:35  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/macFas5_output/.macFas5_build/macFas5.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/macFas5_output/.macFas5_build/final.chromInfo.txt' 
+2026-09-02 14:01:35  Final 2bit verified. 
+2026-09-02 14:01:35  RepeatMasker species: Macaca fasciculari 
+2026-09-02 14:01:35  RepeatMasker sensitivity: standard 
+2026-09-02 14:01:35  RepeatMasker engine: rmblast 
+2026-09-02 14:01:35  Requested threads: 120 
+2026-09-02 14:01:35  Assumed cores per RepeatMasker -pa 1 job: 5 
+2026-09-02 14:01:35  Concurrent RepeatMasker jobs: 21 
+2026-09-02 14:01:35  Estimated peak RMBlast cores: 105 
+2026-09-02 14:01:35  Starting 21 chromosome/scaffold-level RepeatMasker jobs, largest sequences first. 
+2026-09-02 21:24:37  Reading RepeatMasker outputs. 
+2026-09-02 21:25:33  RepeatMasker records: 5,195,275 
+2026-09-02 21:26:23  Building transcript GRanges. 
+2026-09-02 21:26:23  Transcript GRanges: 1,739 ranges 
+2026-09-02 21:26:23  Building exon GRanges. 
+2026-09-02 21:26:23  Exon GRanges: 13,924 ranges 
+2026-09-02 21:26:23  Publishing completed genome build. 
+2026-09-02 21:26:26  Done. 
+2026-09-02 21:26:26  Output directory: /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/macFas5_output 

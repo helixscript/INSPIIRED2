@@ -1,0 +1,42 @@
+./
+├── genomeAnnotations
+│   ├── canFam4.TUs.rds
+│   ├── canFam4.exons.rds
+│   ├── canFam4.repeatTable.gz
+│   ├── hg38.TUs.rds
+│   ├── hg38.exons.rds
+│   ├── hg38.repeatTable.gz
+│   ├── hs1.TUs.rds
+│   ├── hs1.exons.rds
+│   ├── hs1.repeatTable.gz
+│   ├── macFas5.TUs.rds
+│   ├── macFas5.exons.rds
+│   ├── macFas5.repeatTable.gz
+│   ├── mm10.TUs.rds
+│   ├── mm10.exons.rds
+│   ├── mm10.repeatTable.gz
+│   ├── sacCer3.TUs.rds
+│   ├── sacCer3.exons.rds
+│   └── sacCer3.repeatTable.gz
+├── hmms
+│   ├── HIV1_LTR_U3_v1.0.cfg
+│   ├── HIV1_LTR_U3_v1.0.hmm
+│   ├── HIV1_LTR_U5_v1.0.cfg
+│   ├── HIV1_LTR_U5_v1.0.hmm
+│   ├── customHmm.hmm
+│   ├── generic_CART19_v1.0.cfg
+│   ├── generic_CART19_v1.0.hmm
+│   ├── validation.cfg
+│   └── validation.hmm
+├── referenceGenomes
+│   ├── canFam4.2bit
+│   ├── hg38.2bit
+│   ├── hs1.2bit
+│   ├── macFas5.2bit
+│   ├── mm10.2bit
+│   ├── sacCer3.2bit
+│   └── x.2bit
+└── vectors
+    ├── CART19.fasta
+    ├── HXB2.fasta
+    └── synDataTest.fasta

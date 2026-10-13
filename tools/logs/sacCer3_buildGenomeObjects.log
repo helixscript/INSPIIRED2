@@ -1,0 +1,49 @@
+2026-08-28 14:12:21  Genome: sacCer3 
+2026-08-28 14:12:21  2bit source: https://hgdownload.soe.ucsc.edu/goldenPath/sacCer3/bigZips/sacCer3.2bit 
+2026-08-28 14:12:21  Downloading: https://hgdownload.soe.ucsc.edu/goldenPath/sacCer3/bigZips/sacCer3.2bit 
+2026-08-28 14:12:23  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/sacCer3_output/.sacCer3_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/sacCer3_output/.sacCer3_build/source.chromInfo.txt' 
+2026-08-28 14:12:23  Sequences in source genome: 17 
+2026-08-28 14:12:23  Chromosome selection: all sequences (--all-chromosomes) 
+2026-08-28 14:12:23  Sequences retained: 17 
+2026-08-28 14:12:23  Sequences excluded: 0 
+2026-08-28 14:12:23  Reference size: 12,157,105 bp 
+2026-08-28 14:12:23  Sequences: chrI, chrII, chrIII, chrIV, chrIX, chrV, chrVI, chrVII, chrVIII, chrX, chrXI, chrXII, chrXIII, chrXIV, chrXV, chrXVI, chrM 
+2026-08-28 14:12:23  Checking annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/sacCer3/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 14:12:24  Annotation source selected: https://hgdownload.soe.ucsc.edu/goldenPath/sacCer3/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 14:12:24  Reading annotation. 
+2026-08-28 14:12:24  Annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/sacCer3/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 14:12:24  Annotation source type: UCSC ncbiRefSeqCurated 
+2026-08-28 14:12:24  Annotation format: UCSC bin + genePredExt (16 columns) 
+2026-08-28 14:12:24  Source transcript records: 6,125 
+2026-08-28 14:12:24  Retained transcript records: 6,125 
+2026-08-28 14:12:24  Source gene symbols: 6,125 
+2026-08-28 14:12:24  Retained gene symbols: 6,125 
+2026-08-28 14:12:24  Genome and annotation preflight passed. 
+2026-08-28 14:12:24  RepeatMasker: RepeatMasker version 4.2.4 
+2026-08-28 14:12:24  Running RepeatMasker preflight. 
+2026-08-28 14:12:31  RepeatMasker version 4.2.4 
+2026-08-28 14:12:31  Search Engine: NCBI/RMBLAST [ 2.14.1+ ] 
+2026-08-28 14:12:31  Using FamDB: /usr/local/RM424_install/FamDB 
+2026-08-28 14:12:31  Families : 30,659 
+2026-08-28 14:12:31  9/9 families in ancestor taxa; 0/0 lineage-specific families 
+2026-08-28 14:12:31  RepeatMasker preflight passed. 
+2026-08-28 14:12:31  Copying complete source 2bit. 
+2026-08-28 14:12:31  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/sacCer3_output/.sacCer3_build/sacCer3.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/sacCer3_output/.sacCer3_build/final.chromInfo.txt' 
+2026-08-28 14:12:31  Final 2bit verified. 
+2026-08-28 14:12:31  RepeatMasker species: Saccharomyces cerevisiae 
+2026-08-28 14:12:31  RepeatMasker sensitivity: standard 
+2026-08-28 14:12:31  RepeatMasker engine: rmblast 
+2026-08-28 14:12:31  Requested threads: 20 
+2026-08-28 14:12:31  Assumed cores per RepeatMasker -pa 1 job: 4 
+2026-08-28 14:12:31  Concurrent RepeatMasker jobs: 5 
+2026-08-28 14:12:31  Estimated peak RMBlast cores: 20 
+2026-08-28 14:12:31  Starting 17 chromosome/scaffold-level RepeatMasker jobs, largest sequences first. 
+2026-08-28 14:14:11  Reading RepeatMasker outputs. 
+2026-08-28 14:14:11  RepeatMasker records: 3,588 
+2026-08-28 14:14:11  Building transcript GRanges. 
+2026-08-28 14:14:11  Transcript GRanges: 6,125 ranges 
+2026-08-28 14:14:11  Building exon GRanges. 
+2026-08-28 14:14:11  Exon GRanges: 6,483 ranges 
+2026-08-28 14:14:11  Publishing completed genome build. 
+2026-08-28 14:14:11  Done. 
+2026-08-28 14:14:11  Output directory: /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/sacCer3_output 

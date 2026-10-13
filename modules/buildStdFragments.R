@@ -1,0 +1,695 @@
+#!/usr/bin/env -S Rscript --vanilla
+for (p in c('argparse', 'tidyverse', 'parallel', 'data.table', 'BiocParallel', 'stringi', 'igraph', 'RMariaDB')) suppressPackageStartupMessages(library(p, character.only = TRUE))
+
+parser <- ArgumentParser()
+parser$add_argument("--outputDir",                         type = "character",     required = TRUE,                help = "Directory for output files")
+parser$add_argument("--inputData",                         type = "character",     required = TRUE,                help = "Path to demultiplex module's rds output file.")
+parser$add_argument("--softwareRoot",                      type = "character",     required = TRUE,                help = "Path to INSPIIRED2 installation.")
+parser$add_argument("--threads",                           type = "integer",       default  = 50,                  help = "Number of threads to use.")
+parser$add_argument("--fileTag",                           type = "character",     default  = "buildStdFragments", help = "String appended to output files in the outpt directory.")
+parser$add_argument("--ramDiskPath",                       type = "character",     default  = "/dev/shm",          help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
+parser$add_argument("--dbConfigFile",                      type = "character",     default  = "none",              help = "Path to db credential file.")
+parser$add_argument("--dbConfigID",                        type = "character",     default  = "none",              help = "DB credential block identifier in db credential file.")
+parser$add_argument("--pullSubjectFragments",              action = "store_true",  default  = FALSE,               help = "Append database fragments for incoming trial/subject pairs, excluding full fragment keys already supplied.")
+parser$add_argument("--disableBreakPointPosStd",           action = "store_true",  default  = FALSE,               help = 'Disable break point standardization.')
+parser$add_argument("--disableIntSitePosStd",              action = "store_true",  default  = FALSE,               help = 'Disable intSite position standardization.')
+parser$add_argument("--disableAnchorReadClusteringFilter", action = "store_true",  default  = FALSE,               help = 'Disable the anchor read clustering filter.')
+parser$add_argument("--anchorReadClusterLen",              type = "integer",       default  = 30,                  help = 'Length of anchor read sequences to test for rearrangments.')
+parser$add_argument("--anchorReadClusterGrouping",         type = "character",     default  = 'sample',           help = 'Grouping within which anchorRead sequences are clusteres. Must be trial, subject, or sample.')
+parser$add_argument("--anchorReadClusterMinAbundDiff",     type = "integer",       default  = 5,                   help = 'When clustering anchor read sequences, min. difference between 1st and 2nd most abundant sequence clusters to pick a winner.')
+parser$add_argument("--anchorReadClusterMinReadMult",      type = "integer",       default  = 10,                  help = 'When clustering anchor read sequences, multiplier for 1st and 2nd most read sequence clusters to pick a winner.')
+parser$add_argument("--minReadsPerFrag",                   type = "integer",       default  = 1,                   help = 'Min. number of reads to accept a fragment.')
+parser$add_argument("--intSite_sp_window",                 type = "integer",       default  = 8,                   help = 'Max search distance (in NT) for intSites candidate anchor points.')
+parser$add_argument("--intSite_sp_local_radius",           type = "integer",       default  = 4,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
+parser$add_argument("--intSite_sp_sd_shrink",              type = "double",        default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
+parser$add_argument("--breakPoint_sp_window",              type = "integer",       default  = 5,                   help = 'Max search distance (in NT) for breakpoint candidate anchor points.')
+parser$add_argument("--breakPoint_sp_local_radius",        type = "integer",       default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
+parser$add_argument("--breakPoint_sp_sd_shrink",           type = "double",        default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
+parser$add_argument("--multiHitclusteringParams",          type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
+parser$add_argument("--saveMultiHitClusteringDetails", action = "store_true", default = FALSE, help = "Save per-read CD-HIT assignments for each multi-hit network.")
+parser$add_argument("--anchorReadClusterParams",           type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
+parser$add_argument("--multiHitclusteringNTlen",           type = "integer",       default = 30L,                 help = "Number of linker-adjacent adrift read nucleotides used for multi-hit clustering.")
+parser$add_argument("--disableDominantUMIs",               action = "store_true",  default  = FALSE,               help = 'Disable the removal of spurious, likley rearranged UMIs')  
+parser$add_argument("--UMIprocessingMinSortReads",         type = "integer",       default  = 10,                  help = 'Min. number of reads to attempt isolating dominant UMIs.')  
+parser$add_argument("--UMIprocessingMinPercentTotal",      type = "double",        default  = 20,                  help = 'Min. percentage (0-100) that an UMI needs to reach within a replicate to be considered dominant.')  
+
+runModule <- function(){
+  doneFile <- file.path(args$outputDir, paste0(args$fileTag, '.done'))
+  if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
+  
+  if(xor(args$dbConfigFile != 'none', args$dbConfigID != 'none')) stop('Error - supply both --dbConfigFile and --dbConfigID, or neither.', call. = FALSE)
+  if(isTRUE(args$pullSubjectFragments) && args$dbConfigFile == 'none') stop('Error - --pullSubjectFragments requires --dbConfigFile and --dbConfigID.', call. = FALSE)
+  
+  startModule(connectDB = FALSE)
+  # Optional database archiving uses its own short-lived connections.
+  useDB <- args$dbConfigFile != 'none' && args$dbConfigID != 'none'
+  
+  yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
+  
+  on.exit({
+    unlink(args$tmpDir,  recursive = TRUE, force = TRUE)
+    unlink(args$logDir,  recursive = TRUE, force = TRUE) 
+    unlink(args$ramDisk, recursive = TRUE, force = TRUE)
+  }, add = TRUE)
+  
+  updateLog('Starting buildStdFragment module.')
+  
+  if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))
+  if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
+  
+  frags <- setDT(readRDS(args$inputData))
+  
+  if(!nrow(frags)){
+    msg <- 'Error - buildStdFragments input contains no fragment records.'
+    updateLog(msg)
+    stop(msg, call. = FALSE)
+  }
+  
+  # Drop factors to ensure split.data.table works as expected.
+  frags$trial     <- as.character(frags$trial)
+  frags$subject   <- as.character(frags$subject)
+  frags$sample    <- as.character(frags$sample)
+  frags$UMI       <- as.character(frags$UMI)
+  frags$replicate <- as.integer(as.character(frags$replicate))
+  frags$refGenome <- as.character(frags$refGenome)
+  frags$mode      <- as.character(frags$mode)
+  frags$leaderSeqHMM    <- as.character(frags$leaderSeqHMM)
+  frags$vectorFastaFile <- as.character(frags$vectorFastaFile)
+  
+  if(isTRUE(args$pullSubjectFragments)){
+    newFrags <- pullDBfragments(frags)
+    updateLog(paste0('Done pulling fragments. Number of fragment reads pulled: ', ppNum(n_distinct(newFrags$readID))))
+    updateLog(paste0('Number of fragments reads before merging input and pulled reads: ', ppNum(n_distinct(frags$readID))))
+    if(nrow(newFrags) > 0L) frags <- data.table::as.data.table(dplyr::bind_rows(frags, newFrags))
+    updateLog(paste0('Number of fragments reads after merging input and pulled reads: ', ppNum(n_distinct(frags$readID))))
+  }
+  
+  if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
+    stop("Error - chromosome names cannot contain '+' or '-' because these characters delimit posid strand.")
+  }
+  
+  # Include input and pulled groups, even when every multi-hit read is rescued.
+  if(useDB) dbMultiHitGroups <- unique(as.data.frame(
+    frags[, .(trial, subject, sample, refGenome, mode)]))
+  
+  frags$real_UMI <- frags$UMI 
+  frags$UMI <- "AAAAAAAAAAAA" 
+  
+  frags$leaderSeqGroupNum <- 1
+  
+  # Build fragment ids and separate reads for position standardization.
+  #-----------------------------------------------------------------------------
+  frags[, fragID := paste(trial, subject, sample, replicate, refGenome, mode,
+                          fragChromosome, fragStrand, fragStart, fragEnd,
+                          leaderSeqGroupNum, UMI, sep = ":")]
+  
+  posFrags <- frags[frags$fragStrand == '+']
+  negFrags <- frags[frags$fragStrand == '-']
+  rm(frags)
+  
+  
+  if(args$disableIntSitePosStd){
+    if(nrow(posFrags) > 0) posFrags$newFragStart <- posFrags$fragStart
+    if(nrow(negFrags) > 0) negFrags$newFragEnd   <- negFrags$fragEnd
+  }
+  
+  posSubjectFrags <- list()
+  negSubjectFrags <- list()
+  
+  if(nrow(posFrags) > 0) posSubjectFrags <- split(posFrags, by = c('trial', 'subject', 'refGenome', 'mode', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+  if(nrow(negFrags) > 0) negSubjectFrags <- split(negFrags, by = c('trial', 'subject', 'refGenome', 'mode', 'fragChromosome', 'leaderSeqGroupNum'), flatten = TRUE, sorted = TRUE)
+  
+  # Standardize intSite positions.
+  #-----------------------------------------------------------------------------
+  if(! args$disableIntSitePosStd){
+    if(length(posSubjectFrags) > 0){
+      posSubjectFrags <- lapply(posSubjectFrags, function(x){
+        tab <- group_by(x, seqnames = fragChromosome, 
+                        strand = fragStrand, 
+                        start = fragStart, 
+                        end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(start, end, reads)
+        
+        tab2 <- standardize_positions(tab, side = 'left', window = args$intSite_sp_window, local_radius = args$intSite_sp_local_radius, sd_shrink = args$intSite_sp_sd_shrink)
+        update <- unique(data.table(fragStart = tab$start, newFragStart = tab2$start))
+        
+        preJoinRows <- nrow(x)
+        x <- left_join(x, update, by = 'fragStart')
+        if(nrow(x) != preJoinRows) stop('intSite posRepFrags join Error')
+        if(any(is.na(x$newFragStart))) stop('intSite posRepFrags NA Error')
+        x
+      })
+    }
+    
+    if(length(negSubjectFrags) > 0){
+      negSubjectFrags <- lapply(negSubjectFrags, function(x){
+        tab <- group_by(x, seqnames = fragChromosome, 
+                        strand = fragStrand, 
+                        start = fragStart, 
+                        end = fragEnd) %>% summarise(reads = sum(nReads), .groups = "drop") %>% arrange(end, start, reads)
+        tab2 <- standardize_positions(tab, side = 'right', window = args$intSite_sp_window, local_radius = args$intSite_sp_local_radius, sd_shrink = args$intSite_sp_sd_shrink)
+        
+        update <- unique(data.table(fragEnd = tab$end, newFragEnd = tab2$end))
+        
+        preJoinRows <- nrow(x)
+        x <- left_join(x, update, by = 'fragEnd')
+        if(nrow(x) != preJoinRows) stop('intSite negRepFrags join Error')
+        if(any(is.na(x$newFragEnd))) stop('intSite posRepFrags NA Error')
+        x
+      })
+    }
+  }
+  
+  posSubjectFrags <- rbindlist(posSubjectFrags)
+  
+  posMaxUpdatedDist <- NA
+  posPercentUpdated <- NA
+  
+  if(nrow(posSubjectFrags) > 0){  
+    posMaxUpdatedDist <- abs(max(posSubjectFrags$newFragStart - posSubjectFrags$fragStart))
+    posPercentUpdated <- sprintf("%.2f%%", (sum(posSubjectFrags$fragStart != posSubjectFrags$newFragStart) / nrow(posSubjectFrags))*100)
+  }
+  
+  updateLog(paste0('Intsite positions updated for positive strand fragments. Max position shift: ', posMaxUpdatedDist, 
+                   ', percent fragments updated: ', posPercentUpdated))
+  
+  negSubjectFrags <- rbindlist(negSubjectFrags)
+  
+  negMaxUpdatedDist <- NA
+  negPercentUpdated <- NA
+  
+  if(nrow(negSubjectFrags) > 0){
+    negMaxUpdatedDist <- abs(max(negSubjectFrags$newFragEnd - negSubjectFrags$fragEnd))
+    negPercentUpdated <- sprintf("%.2f%%", (sum(negSubjectFrags$fragEnd != negSubjectFrags$newFragEnd) / nrow(negSubjectFrags))*100)
+  }
+  
+  updateLog(paste0('Intsite positions updated for negative strand fragments. Max position shift: ', negMaxUpdatedDist, 
+                   ', percent fragments updated: ', negPercentUpdated))
+  
+  # Assign updated coordinates.
+  if(nrow(posSubjectFrags) > 0) posSubjectFrags$fragStart <- posSubjectFrags$newFragStart
+  if(nrow(negSubjectFrags) > 0) negSubjectFrags$fragEnd   <- negSubjectFrags$newFragEnd
+  
+  if(nrow(posSubjectFrags) > 0) posSubjectFrags$newFragStart <- NULL
+  if(nrow(negSubjectFrags) > 0) negSubjectFrags$newFragEnd   <- NULL
+  
+  posRepFrags <- list()
+  negRepFrags <- list()
+  breakSplitCols <- c('trial', 'subject', 'sample', 'replicate', 'refGenome',
+                      'mode', 'fragChromosome', 'leaderSeqGroupNum')
+  
+  # Keep standardized sites isolated inside standardize_positions by using posid
+  # as its seqnames grouping key, without creating one R object per posid.
+  if(nrow(posSubjectFrags) > 0){
+    posSubjectFrags[, posid := paste0(fragChromosome, fragStrand, fragStart)]
+    posRepFrags <- split(posSubjectFrags, by = breakSplitCols, flatten = TRUE, sorted = TRUE)
+  }
+  
+  if(nrow(negSubjectFrags) > 0){
+    negSubjectFrags[, posid := paste0(fragChromosome, fragStrand, fragEnd)]
+    negRepFrags <- split(negSubjectFrags, by = breakSplitCols, flatten = TRUE, sorted = TRUE)
+  }
+  
+  updateLog(paste0('Breakpoint standardization batches: ', length(posRepFrags),
+                   ' positive and ', length(negRepFrags), ' negative.'))
+  
+  # Standardize break point positions. Sites supported by only one readID or
+  # containing only one distinct break point retain their original coordinates.
+  #-----------------------------------------------------------------------------
+  if(args$disableBreakPointPosStd){
+    posRepFrags <- lapply(posRepFrags, function(x){ x[, newFragEnd := as.numeric(fragEnd)]; x })
+    negRepFrags <- lapply(negRepFrags, function(x){ x[, newFragStart := as.numeric(fragStart)]; x })
+  } else {
+    posRepFrags <- lapply(posRepFrags, function(x){
+      x[, newFragEnd := as.numeric(fragEnd)]
+      stdPosids <- x[, .(nReadIDs = uniqueN(readID), nBreaks = uniqueN(fragEnd)), by = posid
+      ][nReadIDs > 1L & nBreaks > 1L, posid]
+      if(!length(stdPosids)) return(x)
+      
+      tab <- x[posid %chin% stdPosids, .(reads = sum(nReads)),
+               by = .(seqnames = posid, strand = fragStrand, start = fragStart, end = fragEnd)]
+      tab[, origFragEnd := end]
+      tab2 <- standardize_positions(tab, side = 'right', window = args$breakPoint_sp_window,
+                                    local_radius = args$breakPoint_sp_local_radius,
+                                    sd_shrink = args$breakPoint_sp_sd_shrink)
+      
+      update <- unique(tab2[, .(posid = seqnames, fragEnd = origFragEnd, newFragEnd = end)])
+      if(anyDuplicated(update, by = c('posid', 'fragEnd')))
+        stop('Error - non-unique positive breakpoint update key.')
+      
+      expected <- unique(x[posid %chin% stdPosids, .(posid, fragEnd)])
+      if(nrow(expected[!update, on = .(posid, fragEnd)]))
+        stop('Error - incomplete positive breakpoint updates.')
+      
+      x[update, on = .(posid, fragEnd), newFragEnd := i.newFragEnd]
+      if(anyNA(x$newFragEnd)) stop('breakPoint posRepFrags NA Error')
+      x
+    })
+    
+    negRepFrags <- lapply(negRepFrags, function(x){
+      x[, newFragStart := as.numeric(fragStart)]
+      stdPosids <- x[, .(nReadIDs = uniqueN(readID), nBreaks = uniqueN(fragStart)), by = posid
+      ][nReadIDs > 1L & nBreaks > 1L, posid]
+      if(!length(stdPosids)) return(x)
+      
+      tab <- x[posid %chin% stdPosids, .(reads = sum(nReads)),
+               by = .(seqnames = posid, strand = fragStrand, start = fragStart, end = fragEnd)]
+      tab[, origFragStart := start]
+      tab2 <- standardize_positions(tab, side = 'left', window = args$breakPoint_sp_window,
+                                    local_radius = args$breakPoint_sp_local_radius,
+                                    sd_shrink = args$breakPoint_sp_sd_shrink)
+      
+      update <- unique(tab2[, .(posid = seqnames, fragStart = origFragStart, newFragStart = start)])
+      if(anyDuplicated(update, by = c('posid', 'fragStart')))
+        stop('Error - non-unique negative breakpoint update key.')
+      
+      expected <- unique(x[posid %chin% stdPosids, .(posid, fragStart)])
+      if(nrow(expected[!update, on = .(posid, fragStart)]))
+        stop('Error - incomplete negative breakpoint updates.')
+      
+      x[update, on = .(posid, fragStart), newFragStart := i.newFragStart]
+      if(anyNA(x$newFragStart)) stop('breakPoint negRepFrags NA Error')
+      x
+    })
+  }
+  
+  posRepFrags <- rbindlist(posRepFrags)
+  posMaxUpdatedDist <- NA
+  posPercentUpdated <- NA
+  
+  if(nrow(posRepFrags) > 0){
+    posMaxUpdatedDist <- abs(max(posRepFrags$newFragEnd - posRepFrags$fragEnd))
+    posPercentUpdated <- sprintf("%.2f%%", (sum(posRepFrags$fragEnd != posRepFrags$newFragEnd) / nrow(posRepFrags))*100)
+  }
+  
+  updateLog(paste0('Intsite break points updated for positive strand fragments. Max position shift: ', posMaxUpdatedDist, 
+                   ', percent fragments updated: ', posPercentUpdated))
+  
+  negRepFrags <- rbindlist(negRepFrags)
+  
+  negMaxUpdatedDist <- NA
+  negPercentUpdated <- NA
+  
+  if(nrow(negRepFrags) > 0){
+    negMaxUpdatedDist <- abs(max(negRepFrags$newFragStart - negRepFrags$fragStart))
+    negPercentUpdated <- sprintf("%.2f%%", (sum(negRepFrags$fragStart != negRepFrags$newFragStart) / nrow(negRepFrags))*100)
+  }
+  
+  updateLog(paste0('Intsite break points updated for negative strand fragments. Max position shift: ', negMaxUpdatedDist, 
+                   ', percent fragments updated: ', negPercentUpdated))
+  
+  # Assign updated coordinates.
+  if(nrow(posRepFrags) > 0) posRepFrags$fragEnd <- posRepFrags$newFragEnd
+  if(nrow(negRepFrags) > 0) negRepFrags$fragStart <- negRepFrags$newFragStart
+  
+  if(nrow(posRepFrags) > 0) posRepFrags$newFragEnd <- NULL
+  if(nrow(negRepFrags) > 0) negRepFrags$newFragStart <- NULL
+  
+  frags <- rbindlist(list(posRepFrags, negRepFrags))
+  
+  # Create position ids.
+  frags$posid <- paste0(frags$fragChromosome, frags$fragStrand, ifelse(frags$fragStrand == '+', frags$fragStart, frags$fragEnd))
+  
+  
+  # Rebuild frag ids.
+  frags[, fragID := paste(trial, subject, sample, replicate, refGenome, mode,
+                          fragChromosome, fragStrand, fragStart, fragEnd,
+                          leaderSeqGroupNum, UMI, sep = ":")]
+  
+  # Identify uniquely called reads.
+  #-----------------------------------------------------------------------------
+  
+  updateLog('Identifying uniquely called positions.')
+  
+  u <- group_by(frags, readID) %>% 
+    mutate(nPosIDs = n_distinct(posid)) %>% 
+    ungroup() %>% filter(nPosIDs == 1)  %>% 
+    pull(readID)
+  
+  frags_uniqPosIDs <- frags[frags$readID %in% u,] 
+  frags_multPosIDs <- frags[! frags$readID %in% u,]
+  
+  updateLog(paste0(sprintf("%.2f%%", (n_distinct(frags_uniqPosIDs$readID) / n_distinct(frags$readID))*100), ' of fragment reads mapped uniquely to the genome.'))
+  
+  # Do not continue unless we have at least one uniquely called fragment.
+  if(nrow(frags_uniqPosIDs) == 0){
+    if(useDB){
+      updateLog('Archiving multi-hit clusters before the no-unique-position exit.')
+      archiveMultiHitOnlyToDB(frags_multPosIDs, dbMultiHitGroups)
+    }
+    msg <- 'Error - No unique position remain after filtering.'
+    updateLog(msg)
+    stop(msg)
+  }
+  
+  
+  # Correct for instances where a read maps to more than fragment but all fragments 
+  # have the same integration position. These are instances of fuzzy break points 
+  # and here we select the shortest fragments lengths.
+  #-----------------------------------------------------------------------------
+  z <- frags_uniqPosIDs$readID[duplicated(frags_uniqPosIDs$readID)]
+  
+  if(length(z) > 0){
+    updateLog('Correcting fuzzy break points.')
+    
+    a <- subset(frags_uniqPosIDs, readID %in% z)
+    b <- subset(frags_uniqPosIDs, ! readID %in% z)
+    
+    a2 <- rbindlist(lapply(split(a, a$readID), function(x){
+      if(n_distinct(x$fragID) > 1 & n_distinct(x$posid) == 1){
+        if(x$fragStrand[1] == '+'){
+          i <- which(x$fragEnd == min(x$fragEnd))[1]
+          x <- x[i,]
+        } else {
+          i <- which(x$fragStart == max(x$fragStart))[1]
+          x <- x[i,]
+        }
+      } else {
+        # Only one frag.
+        x <- x[1,]
+      }
+      x
+    }))
+    
+    frags_uniqPosIDs <- bind_rows(a2, b)
+    
+    invisible(rm(a, b, a2))
+  }
+  
+  # Multi-hit read rescue.
+  #-----------------------------------------------------------------------------
+  updateLog('Rescuing multihit reads using list on uniquely called positions.') 
+  
+  if(nrow(frags_multPosIDs) > 0){
+    rescueGroups <- c("trial", "subject", "refGenome", "mode")
+    
+    frags_multPosIDs <- rbindlist(lapply(
+      split(frags_multPosIDs, by = rescueGroups, flatten = TRUE, sorted = TRUE),
+      function(x){
+        supportedPosids <- unique(frags_uniqPosIDs[
+          trial == x$trial[1] & subject == x$subject[1] &
+            refGenome == x$refGenome[1] & mode == x$mode[1], posid
+        ])
+        
+        rbindlist(lapply(split(x, by = "readID", flatten = TRUE, sorted = TRUE), function(xx){
+          xx[, rescue := FALSE]
+          matchedPosids <- intersect(unique(xx$posid), supportedPosids)
+          
+          if(length(matchedPosids) == 1L){
+            i <- which(xx$posid == matchedPosids[1L])
+            if(length(i) > 1L) i <- i[which.min(xx$fragEnd[i] - xx$fragStart[i] + 1L)]
+            xx[i[1L], rescue := TRUE]
+          }
+          
+          xx
+        }), use.names = TRUE, fill = TRUE)
+      }
+    ), use.names = TRUE, fill = TRUE)
+    
+    if(any(frags_multPosIDs$rescue)){
+      r <- frags_multPosIDs[rescue == TRUE]
+      updateLog(paste0(ppNum(nrow(r)), " reads rescued from multihit read table."))
+      frags_uniqPosIDs <- rbindlist(list(frags_uniqPosIDs, r[, rescue := NULL]))
+      frags_multPosIDs <- frags_multPosIDs[!readID %in% frags_uniqPosIDs$readID]
+    }
+  }
+  
+  saveRDS(frags_multPosIDs, file = file.path(args$outputDir, paste0(args$fileTag, '_multiHitFrags.rds')))
+  
+  
+  # Build multihit clusters
+  #-----------------------------------------------------------------------------
+  updateLog('Building multi-hit clusters.')
+  
+  multiHit_clusters <- rbindlist(
+    lapply(split(frags_multPosIDs, by = c("trial", "subject"),
+                 flatten = TRUE, sorted = TRUE), build_multiHit_clusters),
+    use.names = TRUE, fill = TRUE
+  )
+  
+  if(args$saveMultiHitClusteringDetails){
+    assignment_cols <- c("trial", "subject", "sample", "refGenome", "mode", "clusterID",
+                         "readID", "adriftSeqSegment", "cdhitClusterID", "isRep", "clusterSize")
+    
+    if(nrow(multiHit_clusters) > 0 && "cdhitAssignments" %in% names(multiHit_clusters)){
+      multiHit_assignments <- multiHit_clusters[, cdhitAssignments[[1]],
+                                                by = .(trial, subject, sample, refGenome, mode, clusterID)]
+      setcolorder(multiHit_assignments, assignment_cols)
+    } else {
+      multiHit_assignments <- data.table(
+        trial = character(), subject = character(), sample = character(),
+        refGenome = character(), mode = character(), clusterID = character(),
+        readID = character(), adriftSeqSegment = character(),
+        cdhitClusterID = character(), isRep = logical(), clusterSize = integer()
+      )
+    }
+    
+    fwrite(multiHit_assignments,
+           file.path(args$outputDir, paste0(args$fileTag, "_multiHitClusterAssignments.tsv.gz")),
+           sep = "\t")
+    
+    if("cdhitAssignments" %in% names(multiHit_clusters))
+      multiHit_clusters[, cdhitAssignments := NULL]
+  }
+  
+  saveRDS(multiHit_clusters, file.path(args$outputDir, paste0(args$fileTag, "_multiHitClusters.rds")))
+  if(useDB) uploadMultiHitClustersToDB(multiHit_clusters, dbMultiHitGroups)
+  
+  
+  # Anchor read cluster filter
+  #-----------------------------------------------------------------------------
+  if(! args$disableAnchorReadClusteringFilter){
+    updateLog('Cluster the beginnings of anchor read sequences.')
+    anchorReadClusterDecisionTable <- tibble()
+    
+    frags_uniqPosIDs_rowCount <- nrow(frags_uniqPosIDs)
+    
+    split_cols <- switch(args$anchorReadClusterGrouping ,
+                         "trial"   = c('trial', 'refGenome', 'mode'),
+                         "subject" = c('trial', 'subject', 'refGenome', 'mode'),
+                         "sample"  = c('trial', 'subject', 'sample', 'refGenome', 'mode'),
+                         stop(paste("Error: Invalid groupLevel '", args$anchorReadClusterGrouping, "'. Must be 'trial', 'subject', or 'sample'.")))
+    
+    frags_uniqPosIDs <- bind_rows(lapply(split(frags_uniqPosIDs, by = split_cols, flatten = TRUE, sorted = TRUE), function(s){ 
+      
+      # Sort fragment records so that fragments likely to contribute to high abund / high read count fragments apart first.
+      s <- dplyr::group_by(s, posid) %>%
+        dplyr::mutate(potentialAbund = n_distinct(abs(fragEnd - fragStart))) %>%
+        dplyr::ungroup() %>%
+        dplyr::group_by(anchor_seq) %>%
+        dplyr::mutate(anchorReadSeqReads = n()) %>%
+        dplyr::ungroup() %>%
+        dplyr::mutate(anchorReadSeqLen = nchar(anchor_seq)) %>%
+        dplyr::arrange(desc(potentialAbund), desc(anchorReadSeqReads), desc(anchorReadSeqLen)) %>%
+        dplyr::select(-potentialAbund, -anchorReadSeqReads, -anchorReadSeqLen)
+      
+      # Determine anchor read test sequences, write to disk, cluster, and parse.
+      s$testSeq <- substr(s$anchor_seq, 1, args$anchorReadClusterLen)
+      ts <- tmpString()
+      write(paste0('>', s$readID, '\n', s$testSeq), file = file.path(args$ramDisk, paste0(ts, '.fasta')))
+      out_prefix <- file.path(args$ramDisk, paste0(ts, "_cdhit"))
+      cmd <- paste0("cd-hit-est ", args$anchorReadClusterParams, " -T ", args$threads, " -i ", file.path(args$ramDisk, paste0(ts, '.fasta')), " -o ", out_prefix)
+      status <- system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
+      requireCommandSuccess(status, "cd-hit-est")
+      
+      clstr_path <- paste0(out_prefix, ".clstr")
+      if(! file.exists(clstr_path)) stop(paste0('Error - cd-hit-est failed to return a clstr file: ', file.exists(clstr_path)))
+      
+      r <- parse_cdhit_clstr(clstr_path)
+      s <- left_join(s, dplyr::select(r, readID, cluster_id), by = 'readID')
+      s$remove <- FALSE
+      clusterNum <- 1
+      
+      s <- bind_rows(lapply(split(s, s$cluster_id), function(x){
+        seqs <- s[s$readID %in% x$readID,]$testSeq
+        repSeq <- names(sort(table(as.character(seqs)), decreasing = TRUE)[1])
+        clusterNum <<- clusterNum + 1
+        
+        if(n_distinct(x$posid) > 1){
+          
+          x$anchorReadCluster <- TRUE
+          
+          z <- x %>%
+            dplyr::group_by(trial, subject, sample, refGenome, mode, posid) %>%
+            dplyr::summarise(frags = dplyr::n_distinct(fragStart, fragEnd), reads = dplyr::n(),
+                             readIDs = list(readID), .groups = "drop") %>%
+            dplyr::arrange(dplyr::desc(frags), dplyr::desc(reads)) %>%
+            dplyr::mutate(clusterNum = clusterNum - 1, clusterRepSeq = repSeq,
+                          selected = FALSE, remove = TRUE, criteria = NA_character_)
+          
+          z2 <- arrange(z, desc(reads), desc(frags)) # Re-sort table for read based decisions.
+          
+          if((z[1,]$frags - z[2,]$frags) >= args$anchorReadClusterMinAbundDiff){
+            x$remove <- ifelse(x$posid == z[1,]$posid, FALSE, TRUE)
+            z$remove <- ifelse(z$posid == z[1,]$posid, FALSE, TRUE)
+            z$criteria <- ifelse(z$posid == z[1,]$posid, 'fragment counts', NA)
+            z$selected <- z$posid == z[1,]$posid
+            anchorReadClusterDecisionTable <<- bind_rows(anchorReadClusterDecisionTable, z)
+          } else if(z2[1,]$reads >= (z2[2,]$reads * args$anchorReadClusterMinReadMult)){
+            x$remove  <- ifelse(x$posid == z2[1,]$posid,  FALSE, TRUE)
+            z2$remove <- ifelse(z2$posid == z2[1,]$posid, FALSE, TRUE)
+            z2$criteria <- ifelse(z2$posid == z2[1,]$posid, 'read counts', NA)
+            z2$selected <- z2$posid == z2[1,]$posid
+            anchorReadClusterDecisionTable <<- bind_rows(anchorReadClusterDecisionTable, z2)
+          } else {
+            x$remove <- TRUE
+            z$remove <- TRUE
+            z$selected <- FALSE
+            anchorReadClusterDecisionTable <<- bind_rows(anchorReadClusterDecisionTable, z)
+          }
+        } else {
+          x$anchorReadCluster <- FALSE
+          x$remove <- FALSE
+        }
+        
+        x
+      }))
+      
+      s
+    }))
+    
+    if(nrow(frags_uniqPosIDs) != frags_uniqPosIDs_rowCount) stop('Error -- the number of fragment data rows was changed while clustering anchor read start sequences.')
+    
+    saveRDS(anchorReadClusterDecisionTable, file.path(args$outputDir, paste0(args$fileTag, '_anchorReadClusters.rds')))
+    
+    updateLog(paste0('Anchor read filter - removing ', 
+                     ppNum(n_distinct(subset(frags_uniqPosIDs, remove == TRUE)$readID)), ' reads, ',
+                     ppNum(n_distinct(subset(frags_uniqPosIDs, remove == TRUE)$fragID)), ' fragments, associated with ',
+                     ppNum(n_distinct(subset(frags_uniqPosIDs, remove == TRUE)$posid)), ' position ids due to not being the clear choice.'))
+    updateLog(paste0('See ', file.path(args$outputDir, paste0(args$fileTag, '_anchorReadClusters.rds')), ' for more details.'))
+    
+    frags_uniqPosIDs <- subset(frags_uniqPosIDs, remove == FALSE)
+    
+    if(nrow(frags_uniqPosIDs) == 0){
+      msg <- 'Error - No fragment reads remain after anchor read filter.'
+      updateLog(msg)
+      stop(msg)
+    }
+    
+    frags_uniqPosIDs <- setDT(dplyr::select(frags_uniqPosIDs, -testSeq, -cluster_id, -remove))
+  } else {
+    frags_uniqPosIDs$anchorReadCluster <- NA
+  }
+  
+  if(! args$disableDominantUMIs){
+    updateLog('Identifying dominant UMIs in the data.')
+    updateLog(paste0('Total UMIs in data set before isolating dominant UMIs: ',  ppNum(n_distinct(frags_uniqPosIDs$real_UMI))))
+    
+    frags_uniqPosIDs <- bind_rows(lapply(split(frags_uniqPosIDs, frags_uniqPosIDs$fragID), function(x){
+      if(n_distinct(x$real_UMI) == 1){
+        x$UMI <- x$real_UMI
+      } else {
+        o <- data.frame(sort(table(x$real_UMI), decreasing = TRUE))
+        o$p <- (o$Freq / nrow(x))*100
+        topUMI <- as.character(o[1,1])
+        o <- o[o$p >= args$UMIprocessingMinPercentTotal,]
+        
+        if(n_distinct(x$readID) < args$UMIprocessingMinSortReads){
+          x$UMI <- topUMI
+        } else {
+          if(nrow(o) <= 1){
+            x$UMI <- topUMI
+          } else {
+            o$p2 <- o$p + (100 - sum(o$p)) / nrow(o)
+            nRows <- nrow(x)
+            
+            n <- floor(nRows * o$p2 / 100)
+            n[1] <- n[1] + nRows - sum(n)
+            o <- o[rep(seq_len(nrow(o)), n), ]
+            
+            x$UMI <- o$Var1
+          }
+        }
+      }
+      
+      x
+    }))
+    
+    updateLog(paste0('Total UMIs in data set after isolating dominant UMIs: ',  ppNum(n_distinct(frags_uniqPosIDs$UMI))))
+  } else {
+    frags_uniqPosIDs$UMI <- frags_uniqPosIDs$real_UMI
+  }
+  
+  
+  # Count the number of reads associated with each fragment.
+  # fragments with more than one read, i > 1, need additional processing.
+  frags <- group_by(data.frame(frags_uniqPosIDs), fragID) %>% mutate(i = n()) %>% ungroup()
+  
+  a <- subset(frags, i == 1)   
+  b <- subset(frags, i > 1)    
+  
+  commonLeaderSeq <- function(x){
+    dplyr::group_by(x, leaderSeq) %>% 
+      dplyr::summarise(nReads = n()) %>% 
+      dplyr::ungroup() %>%
+      dplyr::slice_max(nReads, with_ties = FALSE) %>%
+      dplyr::pull(leaderSeq)
+  }
+  
+  if(nrow(b) > 0){
+    b2 <- rbindlist(lapply(split(b, b$fragID), function(x){
+      totalReads <- sum(x$nReads)
+      
+      if(totalReads < args$minReadsPerFrag) return(data.table())
+      
+      x$repLeaderSeq <- commonLeaderSeq(x)
+      
+      readList <- x$readID
+      UMIs <- unique(x$UMI)
+      
+      x <- x[1,]
+      
+      x$reads <- totalReads
+      x$readIDs   <- list(sort(readList))
+      x$UMIs <- list(sort(UMIs))
+      x
+    }))
+  } else {
+    b2 <- data.table()
+  }
+  
+  if(nrow(a) > 0){
+    a2 <- dplyr::group_by(a, fragID) %>%
+      dplyr::mutate(repLeaderSeq = leaderSeq[1],
+                    reads = nReads, 
+                    readIDs = list(sort(readID)),
+                    UMIs = list(sort(UMI))) %>%
+      dplyr::slice(1) %>%
+      dplyr::ungroup() %>%
+      dplyr::filter(reads >= args$minReadsPerFrag) %>%
+      as.data.table()
+  } else {
+    a2 <- data.table()
+  } 
+  
+  frags <- rbindlist(list(a2, b2))
+  
+  if(nrow(frags) == 0){
+    msg <- 'Error - No final fragments could be created.'
+    updateLog(msg)
+    stop(msg)
+  }
+  
+  frags$replicate <- as.integer(frags$replicate)
+  frags$fragStart <- as.integer(frags$fragStart)
+  frags$fragEnd   <- as.integer(frags$fragEnd)
+  
+  frags <- frags[, .(mode, refGenome, trial, subject, sample, replicate, UMI, posid, reads, repLeaderSeq, fragChromosome, fragStrand, fragStart, fragEnd, anchorReadCluster, readIDs, UMIs, leaderSeqGroupNum, leaderSeqHMM, vectorFastaFile)]
+  
+  saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
+  updateLog('buildStdFragments module completed.')
+  write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))
+}
+
+#-------------------------------------------------------------------------------
+
+args <- parser$parse_args()
+source(file.path(args$softwareRoot, 'lib', 'common.R'))
+source(file.path(args$softwareRoot, 'lib', 'buildStdFragments.R'))
+
+tryCatch({
+  runModule()
+}, error = function(e) {
+  cat("ERROR: ", conditionMessage(e), "\n", sep = "", file = stderr())
+  flush(stderr())
+  quit(save = "no", status = 1, runLast = FALSE)
+})

@@ -1,0 +1,53 @@
+2026-08-28 18:56:26  Genome: mm10 
+2026-08-28 18:56:26  2bit source: https://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/mm10.2bit 
+2026-08-28 18:56:26  Downloading: https://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/mm10.2bit 
+2026-08-28 18:56:57  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/mm10_output/.mm10_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/mm10_output/.mm10_build/source.chromInfo.txt' 
+2026-08-28 18:56:57  Sequences in source genome: 66 
+2026-08-28 18:56:57  Chromosome selection: regex 
+2026-08-28 18:56:57  Chromosome filter: ^chr([1-9][0-9]*|X|Y)$ 
+2026-08-28 18:56:57  Sequences retained: 21 
+2026-08-28 18:56:57  Sequences excluded: 45 
+2026-08-28 18:56:57  Reference size: 2,725,521,370 bp 
+2026-08-28 18:56:57  Sequences: chr1, chr10, chr11, chr12, chr13, chr14, chr15, chr16, chr17, chr18, chr19, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chrX, chrY 
+2026-08-28 18:56:57  Checking annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/mm10/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 18:56:58  Annotation source selected: https://hgdownload.soe.ucsc.edu/goldenPath/mm10/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 18:56:58  Reading annotation. 
+2026-08-28 18:56:59  Annotation source: https://hgdownload.soe.ucsc.edu/goldenPath/mm10/database/ncbiRefSeqCurated.txt.gz 
+2026-08-28 18:56:59  Annotation source type: UCSC ncbiRefSeqCurated 
+2026-08-28 18:56:59  Annotation format: UCSC bin + genePredExt (16 columns) 
+2026-08-28 18:57:00  Source transcript records: 49,176 
+2026-08-28 18:57:00  Retained transcript records: 45,756 
+2026-08-28 18:57:00  Source gene symbols: 26,233 
+2026-08-28 18:57:00  Retained gene symbols: 26,180 
+2026-08-28 18:57:00  Genome and annotation preflight passed. 
+2026-08-28 18:57:00  RepeatMasker: RepeatMasker version 4.2.4 
+2026-08-28 18:57:00  Running RepeatMasker preflight. 
+2026-08-28 18:57:26  RepeatMasker version 4.2.4 
+2026-08-28 18:57:26  Search Engine: NCBI/RMBLAST [ 2.14.1+ ] 
+2026-08-28 18:57:26  Using FamDB: /usr/local/RM424_install/FamDB 
+2026-08-28 18:57:26  Families : 30,659 
+2026-08-28 18:57:26  1353/1353 families in ancestor taxa; 27/27 lineage-specific families 
+2026-08-28 18:57:26  RepeatMasker preflight passed. 
+2026-08-28 18:57:26  Extracting retained chromosomes. 
+2026-08-28 18:57:26  Running: twoBitToFa '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/mm10_output/.mm10_build/sourceGenome.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/mm10_output/.mm10_build/mm10.fa' '-seqList=/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/mm10_output/.mm10_build/chromosomes.txt' 
+2026-08-28 18:57:34  Building filtered 2bit. 
+2026-08-28 18:57:34  Running: faToTwoBit '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/mm10_output/.mm10_build/mm10.fa' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/mm10_output/.mm10_build/mm10.2bit' 
+2026-08-28 18:57:50  Running: twoBitInfo '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/mm10_output/.mm10_build/mm10.2bit' '/scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/mm10_output/.mm10_build/final.chromInfo.txt' 
+2026-08-28 18:57:50  Final 2bit verified. 
+2026-08-28 18:57:50  RepeatMasker species: Mus musculus 
+2026-08-28 18:57:50  RepeatMasker sensitivity: standard 
+2026-08-28 18:57:50  RepeatMasker engine: rmblast 
+2026-08-28 18:57:50  Requested threads: 120 
+2026-08-28 18:57:50  Assumed cores per RepeatMasker -pa 1 job: 5 
+2026-08-28 18:57:50  Concurrent RepeatMasker jobs: 21 
+2026-08-28 18:57:50  Estimated peak RMBlast cores: 105 
+2026-08-28 18:57:50  Starting 21 chromosome/scaffold-level RepeatMasker jobs, largest sequences first. 
+2026-08-28 23:45:40  Reading RepeatMasker outputs. 
+2026-08-28 23:46:36  RepeatMasker records: 5,264,210 
+2026-08-28 23:47:26  Building transcript GRanges. 
+2026-08-28 23:47:27  Transcript GRanges: 45,756 ranges 
+2026-08-28 23:47:27  Building exon GRanges. 
+2026-08-28 23:47:28  Exon GRanges: 441,113 ranges 
+2026-08-28 23:47:28  Publishing completed genome build. 
+2026-08-28 23:47:30  Done. 
+2026-08-28 23:47:30  Output directory: /scratch/super1/everett/INSPIIRED2_dev/INSPIIRED2/tools/mm10_output 
