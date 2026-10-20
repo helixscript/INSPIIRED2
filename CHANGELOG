@@ -1,0 +1,3 @@
+1.0.0 public release
+1.0.1 Added options(useFancyQuotes = FALSE, scipen = 999) to the top of startModule() to prevent some position ids from being stored in scientific notation.
+1.0.1 Updated tests/synTests/buildFauxSites/buildSynData.py to work with genomes with lower case NTs (needed for hs1).

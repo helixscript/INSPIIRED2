@@ -56,7 +56,7 @@ requireCommandSuccess <- function(x, label){
 
 
 startModule <- function(connectDB = TRUE){
-  options(useFancyQuotes = FALSE)
+  options(useFancyQuotes = FALSE, scipen = 999)
   if(! file.access(args$ramDiskPath, mode = 2) == 0) args$ramDiskPath <- args$outputDir
   
   args$command      <<- paste(commandArgs(trailingOnly = FALSE), collapse = " ")

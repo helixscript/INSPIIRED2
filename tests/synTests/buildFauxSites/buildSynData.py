@@ -239,10 +239,11 @@ for c in chromosomes:
        continue # Try a new random position
 
     # 2. Check for Ns in the 1000 NT block
-    seq = d[c][pos:pos+1000]
-    if 'N' not in seq.upper():
+    # Normalize the sampled genomic block before further processing.
+    seq = d[c][pos:pos+1000].upper()
+    if 'N' not in seq:
       chosen_positions[c].append(pos)
-      break # Found a valid site!
+      break  # Found a valid site!
 
   strand = random.sample(['+', '-'], 1)[0]
 
