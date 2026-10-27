@@ -115,7 +115,7 @@ prp_parser$add_argument("--HMMparams",               type = "character",     def
 
 alr_parser <- subparsers$add_parser("alignReads", help = "Align reads to a reference genome.")
 alr_parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")
-alr_parser$add_argument("--inputData",               type = "character",     required = TRUE,          help = "Path to demultiplex module's rds output file.")
+alr_parser$add_argument("--inputData",               type = "character",     required = TRUE,          help = "Path to prepReads module's rds output file.")
 alr_parser$add_argument("--threads",                 type = "integer",       default = 50,             help = "Number of threads to use.")
 alr_parser$add_argument("--fileTag",                 type = "character",     default = "alignReads",   help = "String appended to output files in the outpt directory.")
 alr_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",     help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -131,8 +131,8 @@ alr_parser$add_argument("--blatMaxqBaseInsert",      type = "integer",       def
 alr_parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 2500,           help = "Numbers of data rows to process per alignment worker.")
 
 bdf_parser <- subparsers$add_parser("buildFragments", help = "Build genomic fragments from alignment data.")
-bdf_parser$add_argument("--outputDir",               type = "character",     required = TRUE,            help = "Directory for output files")
-bdf_parser$add_argument("--inputData",               type = "character",     required = TRUE,            help = "Path to demultiplex module's rds output file.")
+bdf_parser$add_argument("--outputDir",               type = "character",     required = TRUE,            help = "Directory for output files.")
+bdf_parser$add_argument("--inputData",               type = "character",     required = TRUE,            help = "Path to alignReads module's rds output file.")
 bdf_parser$add_argument("--threads",                 type = "integer",       default = 50,               help = "Number of threads to use.")
 bdf_parser$add_argument("--fileTag",                 type = "character",     default = "buildFragments", help = "String appended to output files in the outpt directory.")
 bdf_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",       help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -144,8 +144,8 @@ bdf_parser$add_argument("--dbConfigID",              type = "character",     def
 bdf_parser$add_argument("--overwriteDBrecords",      action = "store_true",  default  = FALSE,           help = "Allow existing database records to be overwritten.") 
 
 bsf_parser <- subparsers$add_parser("buildStdFragments",   help = "Standardize genomic fragments.")
-bsf_parser$add_argument("--outputDir",                         type = "character",     required = TRUE,                help = "Directory for output files")
-bsf_parser$add_argument("--inputData",                         type = "character",     required = TRUE,                help = "Path to demultiplex module's rds output file.")
+bsf_parser$add_argument("--outputDir",                         type = "character",     required = TRUE,                help = "Directory for output files.")
+bsf_parser$add_argument("--inputData",                         type = "character",     required = TRUE,                help = "Path to buildFragments rds output file.")
 bsf_parser$add_argument("--threads",                           type = "integer",       default  = 30,                  help = "Number of threads to use.")
 bsf_parser$add_argument("--fileTag",                           type = "character",     default  = "buildStdFragments", help = "String appended to output files in the outpt directory.")
 bsf_parser$add_argument("--ramDiskPath",                       type = "character",     default  = "/dev/shm",          help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -167,16 +167,18 @@ bsf_parser$add_argument("--breakPoint_sp_window",              type = "integer",
 bsf_parser$add_argument("--breakPoint_sp_local_radius",        type = "integer",       default  = 2,                   help = 'genomic distance threshold (in NT) used to identify true local maxima.')
 bsf_parser$add_argument("--breakPoint_sp_sd_shrink",           type = "double",        default  = 4,                   help = 'Divider to calculate the standard deviation (sigma = window / sd_shrink).')
 bsf_parser$add_argument("--multiHitclusteringParams",          type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93",          help = 'Clustering params for clustering building multi-hit clusters.')
-bsf_parser$add_argument("--multiHitclusteringNTlen",           type = "integer",       default = 30L,                 help = "Number of linker-adjacent adrift read nucleotides used for multi-hit clustering.")
+bsf_parser$add_argument("--multiHitclusteringNTlen",           type = "integer",       default = 30L,                  help = "Number of linker-adjacent adrift read nucleotides used for multi-hit clustering.")
+bsf_parser$add_argument("--multiHitMinConnectionReads",        type = "integer",       default = 1L,                   help = "Optional split report: separate supported groups connected by fewer than this many distinct retained read IDs. Default 1 preserves current components. Parent reports are always retained.")
+bsf_parser$add_argument("--multiHitMaxSplitCandidates",        type = "integer",       default = 100000L,              help = "Maximum read-cut candidates tested per parent network. Higher thresholds can be expensive; exceeding this limit stops rather than returning an incomplete split report.")
 bsf_parser$add_argument("--anchorReadClusterParams",           type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
-bsf_parser$add_argument("--saveMultiHitClusteringDetails",     action = "store_true", default = FALSE, help = "Save per-read CD-HIT assignments for each multi-hit network.")
+bsf_parser$add_argument("--saveMultiHitClusteringDetails",     action = "store_true",  default = FALSE,                help = "Save per-read CD-HIT assignments for each multi-hit network.")
 bsf_parser$add_argument("--disableDominantUMIs",               action = "store_true",  default  = FALSE,               help = 'Disable the removal of spurious, likley rearranged UMIs')  
 bsf_parser$add_argument("--UMIprocessingMinSortReads",         type = "integer",       default  = 10,                  help = 'Min. number of reads to attempt isolating dominant UMIs.')  
 bsf_parser$add_argument("--UMIprocessingMinPercentTotal",      type = "double",        default  = 20,                  help = 'Min. percentage (0-100) that an UMI needs to reach within a replicate to be considered dominant.')  
 
 bst_parser <- subparsers$add_parser("buildSites",   help = "Assemble standardized fragments into integration events.")
-bst_parser$add_argument("--outputDir",                    type = "character",     required = TRUE,         help = "Directory for output files")
-bst_parser$add_argument("--inputData",                    type = "character",     required = TRUE,         help = "Path to demultiplex module's rds output file.")
+bst_parser$add_argument("--outputDir",                    type = "character",     required = TRUE,         help = "Directory for output files.")
+bst_parser$add_argument("--inputData",                    type = "character",     required = TRUE,         help = "Path to buildStdFragments output rds file.")
 bst_parser$add_argument("--threads",                      type = "integer",       default = 50,            help = "Number of threads to use.")
 bst_parser$add_argument("--fileTag",                      type = "character",     default = "buildSites",  help = "String appended to output files in the outpt directory.")
 bst_parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",    help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -191,7 +193,7 @@ bst_parser$add_argument("--dbConfigID",                   type = "character",   
 
 ngn_parser <- subparsers$add_parser("nearestGenes",  help = "Annotate nearest genes.")
 ngn_parser$add_argument("--outputDir",               type = "character",     required = TRUE,           help = "Directory for output files")
-ngn_parser$add_argument("--inputData",               type = "character",     required = TRUE,           help = "Path to demultiplex module's rds output file.")
+ngn_parser$add_argument("--inputData",               type = "character",     required = TRUE,           help = "Path to rds output containing posid and refGenome columns.")
 ngn_parser$add_argument("--threads",                 type = "integer",       default = 50,              help = "Number of threads to use.")
 ngn_parser$add_argument("--fileTag",                 type = "character",     default = "nearestGenes",  help = "String appended to output files in the outpt directory.")
 ngn_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",      help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -200,7 +202,7 @@ ngn_parser$add_argument("--dbConfigID",              type = "character",     def
 
 anr_parser <- subparsers$add_parser("annotateRepeats",   help = "Annotate repeats.")
 anr_parser$add_argument("--outputDir",               type = "character",     required = TRUE,              help = "Directory for output files")
-anr_parser$add_argument("--inputData",               type = "character",     required = TRUE,              help = "Path to demultiplex module's rds output file.")
+anr_parser$add_argument("--inputData",               type = "character",     required = TRUE,              help = "Path to rds output containing posid and refGenome columns.")
 anr_parser$add_argument("--threads",                 type = "integer",       default = 50,                 help = "Number of threads to use.")
 anr_parser$add_argument("--fileTag",                 type = "character",     default = "annotateRepeats",  help = "String appended to output files in the outpt directory.")
 anr_parser$add_argument("--ramDiskPath",             type = "character",     default = "/dev/shm",         help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -255,3 +257,4 @@ runModuleCommand <- function(){
 
 status <- runModuleCommand()
 quit(status = status)
+

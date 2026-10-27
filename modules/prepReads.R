@@ -2,7 +2,7 @@
 for (p in c('argparse', 'tidyverse', 'ShortRead', 'parallel', 'data.table', 'BiocParallel', 'stringi', 'fst')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
-parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")
+parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files.")
 parser$add_argument("--inputData",               type = "character",     required = TRUE,          help = "Path to demultiplex module's rds output file.")
 parser$add_argument("--softwareRoot",            type = "character",     required = TRUE,          help = "Path to INSPIIRED2 installation.")
 parser$add_argument("--threads",                 type = "integer",       default = 50,             help = "Number of threads to use.")

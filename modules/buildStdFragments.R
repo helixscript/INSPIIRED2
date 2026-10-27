@@ -2,8 +2,8 @@
 for (p in c('argparse', 'tidyverse', 'parallel', 'data.table', 'BiocParallel', 'stringi', 'igraph', 'RMariaDB')) suppressPackageStartupMessages(library(p, character.only = TRUE))
 
 parser <- ArgumentParser()
-parser$add_argument("--outputDir",                         type = "character",     required = TRUE,                help = "Directory for output files")
-parser$add_argument("--inputData",                         type = "character",     required = TRUE,                help = "Path to demultiplex module's rds output file.")
+parser$add_argument("--outputDir",                         type = "character",     required = TRUE,                help = "Directory for output files.")
+parser$add_argument("--inputData",                         type = "character",     required = TRUE,                help = "Path to buildFragments rds output file.")
 parser$add_argument("--softwareRoot",                      type = "character",     required = TRUE,                help = "Path to INSPIIRED2 installation.")
 parser$add_argument("--threads",                           type = "integer",       default  = 50,                  help = "Number of threads to use.")
 parser$add_argument("--fileTag",                           type = "character",     default  = "buildStdFragments", help = "String appended to output files in the outpt directory.")
@@ -29,6 +29,8 @@ parser$add_argument("--multiHitclusteringParams",          type = "character",  
 parser$add_argument("--saveMultiHitClusteringDetails", action = "store_true", default = FALSE, help = "Save per-read CD-HIT assignments for each multi-hit network.")
 parser$add_argument("--anchorReadClusterParams",           type = "character",     default  = "-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93", help = 'Clustering params for clustering the start of anchor read sequences.')
 parser$add_argument("--multiHitclusteringNTlen",           type = "integer",       default = 30L,                 help = "Number of linker-adjacent adrift read nucleotides used for multi-hit clustering.")
+parser$add_argument("--multiHitMinConnectionReads", type = "integer", default = 1L, help = "Optional split report: separate supported groups connected by fewer than this many distinct retained read IDs. Default 1 preserves current components. Parent reports are always retained.")
+parser$add_argument("--multiHitMaxSplitCandidates", type = "integer", default = 100000L, help = "Maximum read-cut candidates tested per parent network. Higher thresholds can be expensive; exceeding this limit stops rather than returning an incomplete split report.")
 parser$add_argument("--disableDominantUMIs",               action = "store_true",  default  = FALSE,               help = 'Disable the removal of spurious, likley rearranged UMIs')  
 parser$add_argument("--UMIprocessingMinSortReads",         type = "integer",       default  = 10,                  help = 'Min. number of reads to attempt isolating dominant UMIs.')  
 parser$add_argument("--UMIprocessingMinPercentTotal",      type = "double",        default  = 20,                  help = 'Min. percentage (0-100) that an UMI needs to reach within a replicate to be considered dominant.')  
@@ -39,6 +41,12 @@ runModule <- function(){
   
   if(xor(args$dbConfigFile != 'none', args$dbConfigID != 'none')) stop('Error - supply both --dbConfigFile and --dbConfigID, or neither.', call. = FALSE)
   if(isTRUE(args$pullSubjectFragments) && args$dbConfigFile == 'none') stop('Error - --pullSubjectFragments requires --dbConfigFile and --dbConfigID.', call. = FALSE)
+  splitSettings <- multiHitSplitSettings(args)
+  splitReportFile <- file.path(args$outputDir, paste0(args$fileTag, "_multiHitSplits.rds"))
+  # Clear this optional artifact even if a later analysis step fails or splitting
+  # has been disabled since the previous run.
+  if(file.exists(splitReportFile) && unlink(splitReportFile) != 0L)
+    stop('Error - could not remove stale split report: ', splitReportFile)
   
   startModule(connectDB = FALSE)
   # Optional database archiving uses its own short-lived connections.
@@ -330,18 +338,6 @@ runModule <- function(){
   
   updateLog(paste0(sprintf("%.2f%%", (n_distinct(frags_uniqPosIDs$readID) / n_distinct(frags$readID))*100), ' of fragment reads mapped uniquely to the genome.'))
   
-  # Do not continue unless we have at least one uniquely called fragment.
-  if(nrow(frags_uniqPosIDs) == 0){
-    if(useDB){
-      updateLog('Archiving multi-hit clusters before the no-unique-position exit.')
-      archiveMultiHitOnlyToDB(frags_multPosIDs, dbMultiHitGroups)
-    }
-    msg <- 'Error - No unique position remain after filtering.'
-    updateLog(msg)
-    stop(msg)
-  }
-  
-  
   # Correct for instances where a read maps to more than fragment but all fragments 
   # have the same integration position. These are instances of fuzzy break points 
   # and here we select the shortest fragments lengths.
@@ -379,7 +375,9 @@ runModule <- function(){
   #-----------------------------------------------------------------------------
   updateLog('Rescuing multihit reads using list on uniquely called positions.') 
   
-  if(nrow(frags_multPosIDs) > 0){
+  # Without a unique position, rescue cannot succeed. Keep the unresolved rows
+  # unchanged so this path preserves the previous database-only cluster results.
+  if(nrow(frags_multPosIDs) > 0 && nrow(frags_uniqPosIDs) > 0){
     rescueGroups <- c("trial", "subject", "refGenome", "mode")
     
     frags_multPosIDs <- rbindlist(lapply(
@@ -420,11 +418,24 @@ runModule <- function(){
   #-----------------------------------------------------------------------------
   updateLog('Building multi-hit clusters.')
   
-  multiHit_clusters <- rbindlist(
-    lapply(split(frags_multPosIDs, by = c("trial", "subject"),
-                 flatten = TRUE, sorted = TRUE), build_multiHit_clusters),
-    use.names = TRUE, fill = TRUE
-  )
+  multiHit_clusters <- if(nrow(frags_multPosIDs) == 0L){
+    build_multiHit_clusters(frags_multPosIDs)
+  } else {
+    rbindlist(
+      lapply(split(frags_multPosIDs, by = c("trial", "subject"),
+                   flatten = TRUE, sorted = TRUE), build_multiHit_clusters),
+      use.names = TRUE, fill = TRUE
+    )
+  }
+  
+  if(splitSettings$minConnectionReads > 1L){
+    splitReports <- collect_multiHit_split_reports(multiHit_clusters, splitSettings)
+    saveRDS(splitReports, splitReportFile)
+    multiHit_clusters[, splitReport := NULL]
+    updateLog(paste0('Saved optional multi-hit split report: ',
+                     sum(splitReports$statistics$splitCount), ' cuts, ',
+                     sum(splitReports$statistics$bridgeReads), ' connecting read IDs.'))
+  }
   
   if(args$saveMultiHitClusteringDetails){
     assignment_cols <- c("trial", "subject", "sample", "refGenome", "mode", "clusterID",
@@ -453,6 +464,14 @@ runModule <- function(){
   
   saveRDS(multiHit_clusters, file.path(args$outputDir, paste0(args$fileTag, "_multiHitClusters.rds")))
   if(useDB) uploadMultiHitClustersToDB(multiHit_clusters, dbMultiHitGroups)
+  
+  # Save the multi-hit reports (and optional DB archive) before retaining the
+  # existing error exit. Downstream unique-site analysis still requires a hit.
+  if(nrow(frags_uniqPosIDs) == 0){
+    msg <- 'Error - No unique position remain after filtering.'
+    updateLog(msg)
+    stop(msg)
+  }
   
   
   # Anchor read cluster filter

@@ -721,11 +721,11 @@ Processing follows this order:
 1. **Standardize integration coordinates.** Combine support across samples and replicates within each trial/subject/reference-genome/mode/chromosome/strand group, then map nearby coordinates to supported local maxima.
 2. **Standardize shearing breakpoints.** Process each standardized integration site within its sample replicate. Sites with only one distinct read ID or one distinct breakpoint retain their breakpoint coordinates.
 3. **Resolve candidate placements.** If all candidates for a read share one integration position, keep the shortest fragment. Otherwise, rescue the read only when exactly one of its candidate positions has uniquely mapped support within the same trial, subject, reference genome, and mode. The shortest fragment is chosen if several candidates remain at that one supported position.
-4. **Summarize unresolved multi-hits.** Build connected networks of ambiguous reads and candidate sites, then cluster adrift-read prefixes within each network to summarize shearing diversity. These records are saved separately and excluded from the main fragment output.
+4. **Summarize unresolved multi-hits.** Build connected networks of ambiguous reads and candidate sites. For each network, summarize distinct read IDs, UMI labels, standardized fragment lengths, and CD-HIT-EST adrift-sequence families. Also report read, fragment-length, and sequence-family counts for each candidate position. These records are saved separately and excluded from the main fragment output. Optionally examine weak connections with `--multiHitMinConnectionReads`; subgroup results are written to a supplementary report while original parent summaries are retained.
 5. **Filter competing anchor clusters.** Cluster genomic anchor prefixes, compare fragment and read-record support for competing positions, and keep a position only when a dominance criterion succeeds. Otherwise, remove all competing records in that sequence cluster.
 6. **Consolidate UMIs and fragments.** Optionally reassign UMI labels to dominant labels within each standardized fragment, combine records with the same fragment identity, sum `nReads`, choose a representative leader, and apply the minimum-read filter.
 
-The module requires at least one uniquely mapped integration position before multi-hit rescue. Reference chromosome names must not contain `+` or `-`, because those characters delimit the strand in `posid`.
+The main fragment analysis requires at least one uniquely mapped integration position. With the updated multi-hit reporting code, an all-multi-hit input reaches the report-writing stage before the existing no-unique-position error; it does not produce the main standardized-fragment result or a completion marker. Reference chromosome names must not contain `+` or `-`, because those characters delimit the strand in `posid`.
 
 **All command-line options**
 
@@ -752,8 +752,10 @@ The module requires at least one uniquely mapped integration position before mul
 | `--breakPoint_sp_sd_shrink` | number | `4` | Positive divisor used to set the breakpoint Gaussian width: sigma = breakPoint_sp_window / breakPoint_sp_sd_shrink. The defaults give sigma = 1.25 bases. Larger values favor nearer candidates more strongly. |
 | `--multiHitclusteringParams` | string | `-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -1 -aS 0.93` | Quoted CD-HIT-EST arguments used to cluster linker-adjacent adrift segments separately within each unresolved multi-hit network. Changes the sequence-based shearing-diversity summaries, not the unique-position rescue rule. The complete default is shown here. |
 | `--multiHitclusteringNTlen` | integer | `30` | Positive number of bases taken from the beginning of each genomic adrift sequence for multi-hit clustering. The module stops if an unresolved multi-hit read is missing its adrift sequence or is shorter than this length. |
+| `--multiHitMinConnectionReads` | integer | `1` | Positive integer controlling optional network splitting. When greater than one, identify supported groups connected by fewer than this many distinct retained read IDs and write a supplementary split report. Each accepted cut must leave at least two components with at least two positions and two remaining read IDs each. Default 1 disables splitting; original parent reports are always retained. |
+| `--multiHitMaxSplitCandidates` | integer | `100000` | Positive limit on candidate read-cut sets evaluated per original parent, including recursive splits. Higher connection thresholds can require expensive searches. Exceeding the limit stops with an error instead of returning an incomplete split report or a completion marker. |
 | `--anchorReadClusterParams` | string | `-c 0.87 -d 0 -M 0 -g 0 -r 0 -n 5 -G 1 -gap -5 -gap-ext -2 -aS 0.93 -aL 0.93` | Quoted CD-HIT-EST arguments used to cluster genomic anchor-read prefixes for the competing-position filter. Changes which sequences are compared together before the fragment-count and read-record dominance rules are applied. |
-| `--saveMultiHitClusteringDetails` | flag | `FALSE` | Write a gzipped TSV containing per-read CD-HIT assignments within each unresolved multi-hit network, including the tested segment, sequence-cluster ID, representative flag, and cluster size. |
+| `--saveMultiHitClusteringDetails` | flag | `FALSE` | Write a gzipped TSV containing per-read CD-HIT assignments for each original multi-hit parent, including the tested segment, sequence-cluster ID, representative flag, and cluster size. Independent of optional splitting; not required to produce the split report. |
 | `--disableDominantUMIs` | flag | `FALSE` | Retain the original captured UMI labels through fragment summarization instead of consolidating them to dominant labels. This does not restore UMIs discarded during demultiplexing and does not disable fragment collapsing. |
 | `--UMIprocessingMinSortReads` | integer | `10` | Minimum number of distinct input read IDs within a standardized fragment needed to consider retaining several dominant UMIs. Below this threshold, all records receive the most frequent UMI. Uses retained read IDs, not summed nReads. |
 | `--UMIprocessingMinPercentTotal` | number | `20` | Minimum percentage of input records within a standardized fragment carrying a UMI for it to qualify as dominant. Uses record frequency, not summed nReads. Multiple qualifying UMIs can be retained only when the minimum-read-ID threshold is also met. |
@@ -778,11 +780,14 @@ This step changes UMI labels; it does not discard the fragment's read records. T
 | Default filename | Contents and condition |
 |---|---|
 | `buildStdFragments_multiHitFrags.rds` | Candidate fragment records for reads still mapping to multiple positions after rescue. Written even when no unresolved records remain. |
-| `buildStdFragments_multiHitClusters.rds` | Unresolved networks grouped by trial, subject, sample, reference genome, and mode; includes candidate positions, distinct read-ID counts, UMI-label counts, and sequence-cluster-based shearing summaries. |
+| `buildStdFragments_multiHitClusters.rds` | Core 16-column parent summary, grouped by trial, subject, sample, mode, and reference genome. Includes candidate positions, distinct read-ID and UMI-label counts, separate adrift-sequence-family and standardized-fragment-length totals, and per-position count vectors. Splitting does not change its rows, counts, or schema. |
+| `buildStdFragments_multiHitSplits.rds` | Supplementary R list containing settings, subgroup summaries, read and position assignments, cut history, and per-parent statistics. Written only when `--multiHitMinConnectionReads > 1`, including when no eligible cuts are found. If there are no parent clusters, its tables are empty with their types preserved. |
 | `buildStdFragments_anchorReadClusters.rds` | Support and selection decisions for anchor-sequence clusters with competing positions. Written when the anchor filter is enabled. |
 | `buildStdFragments_multiHitClusterAssignments.tsv.gz` | Per-read adrift-sequence cluster assignments. Written only when detailed multi-hit output is enabled. |
 
-In the multi-hit summaries, `reads` counts distinct read IDs, `clusterSonicLengths` counts adrift sequence clusters in the network, and `nodeSonicLengths` gives that count for each candidate position. These are separate from the main site table's coordinate-based `sonicLengths` and summed read-pair totals. Placeholder UMIs can appear as a count of one in these diagnostic summaries; that is not evidence for a biological UMI.
+In the updated multi-hit summaries, `totalReads` counts distinct retained read IDs, `totalAdriftReadClusters` counts parent CD-HIT-EST families, and `totalFragments` counts distinct standardized fragment lengths. The list-columns `reads`, `adriftReadClusters`, and `fragments` contain per-position counts in the same order as `posids`. These are separate from the main site table's `sonicLengths` and summed read-pair totals. Placeholder UMIs can appear as a count of one in these diagnostic summaries; that is not evidence for a biological UMI.
+
+Both new split options are accepted by the updated launcher and direct module script. For example, add `--multiHitMinConnectionReads 2` to examine one-read connections. The core parent report and parent database summaries remain unchanged; proposed subgroup results appear only in the supplementary RDS file. For network construction, splitting behavior, and complete object schemas, see [Working with multi-hit clusters in `buildStdFragments`](#working-with-multi-hit-clusters-in-buildstdfragments).
 
 Sources: [modules/buildStdFragments.R](modules/buildStdFragments.R), [lib/buildStdFragments.R](lib/buildStdFragments.R).
 
@@ -1091,5 +1096,201 @@ The breakpoint settings remain at their defaults. Use a different output prefix 
 Supply either flag by itself to skip that step. Use these flags to disable standardization instead of setting the window or `sd_shrink` values to zero. The module's other processing and filtering steps still run.
 
 Source: [buildStdFragments module](modules/buildStdFragments.R) and [command-line options](inspiired2.R).
+
+<br>
+
+## Working with multi-hit clusters in `buildStdFragments`
+
+Multi-hit clusters highlight potentially abundant clones whose integration positions cannot be resolved uniquely. Their candidate positions, read support, genomic fragment lengths, and adrift-sequence families provide complementary evidence for downstream investigation. A cluster is an unresolved signal, not a confirmed single integration or an exact cell count.
+
+### How the networks are built
+
+The module uses `igraph` to build an undirected bipartite network with read IDs and candidate position IDs as its two vertex types. Each unique read-to-position assignment forms an edge. Connected components define the original, or parent, clusters. Networks are constructed separately for each combination of `trial`, `subject`, `sample`, `mode`, and `refGenome`; technical replicates sharing these fields are pooled. Only unresolved reads with more than one distinct candidate position enter these networks after coordinate standardization and multi-hit rescue. Repeated alignment rows do not create additional edges. A shared read can connect candidate positions on distant parts of a chromosome or on different chromosomes. With splitting disabled, even one connecting read keeps the affected subnetworks in the same parent component.
+
+CD-HIT-EST clusters the linker-adjacent genomic adrift segments within each parent network. The default segment length is 30 nucleotides, controlled by `--multiHitclusteringNTlen`. These sequence families describe shearing-end diversity independently of alignment-derived fragment lengths. Many candidate alignments can generate many fragment lengths while representing relatively few adrift-sequence families. Neither sequence clustering nor fragment-length similarity determines network connectivity. Per-position adrift counts use the parent CD-HIT family labels represented at that position; CD-HIT is not rerun separately for each position.
+
+<br>
+
+### Optional separation of loosely connected networks
+
+**`--multiHitMinConnectionReads`** controls the optional split analysis. It accepts a positive integer and defaults to `1`, which disables splitting.
+
+| Value | Eligible connection to separate |
+| --- | --- |
+| `1` (default) | Splitting disabled; retain the existing connected-component results. |
+| `2` | A connection involving one distinct retained read ID. |
+| `3` | A connection involving one or two distinct retained read IDs. |
+| `n` | A connection involving fewer than `n` distinct retained read IDs. |
+
+For example:
+
+```bash
+inspiired2 buildStdFragments \
+  --inputData /path/to/buildFragments.rds \
+  --outputDir /path/to/output \
+  --multiHitMinConnectionReads 2
+```
+
+The algorithm identifies sets of reads whose removal disconnects the network. It counts distinct retained read IDs across the whole cut, not individual graph edges. One read mapping to many positions still counts once; duplicate alignment rows and the PCR multiplicity field `nReads` do not increase its weight. A cut involving exactly the threshold number of reads is not eligible.
+
+Each accepted cut must leave at least two components with **at least two positions and two remaining read IDs each**. These support minimums are fixed in this update. Smaller additional components are retained as residuals. A dangling position alone does not trigger a split. Supported components are examined again for further eligible cuts. Cuts are considered in increasing read count, with deterministic ordering for ties. This yields candidate subdivisions under the selected rule, rather than an enumeration of every possible biological subdivision.
+
+Connecting reads are retained as **bridge reads** in the supplementary report. They remain in the original parent cluster but are excluded from subgroup abundance counts. Positions supported only by those reads are retained as `bridge_only` positions.
+
+**`--multiHitMaxSplitCandidates`** limits the number of candidate read-cut sets evaluated per original parent, including recursive splits. Its default is `100000`. Higher connection thresholds can require expensive searches; begin with `--multiHitMinConnectionReads 2`. Exhausting the search limit causes an error rather than an incomplete split report or a completion marker.
+
+**Splitting adds a supplementary report. It does not replace parent rows or add columns to the saved core multi-hit cluster object.** Parent database summaries also remain unchanged; proposed subgroups are not uploaded as independent database clusters.
+
+<br>
+
+### Multi-hit output files
+
+Files are written under `--outputDir`. The names below use the default `--fileTag buildStdFragments`; a custom file tag replaces that prefix.
+
+| File | Contents |
+| --- | --- |
+| `buildStdFragments_multiHitFrags.rds` | Candidate fragment records remaining unresolved after rescue, including read IDs, candidate positions, coordinates, adrift sequences, and UMI labels. |
+| `buildStdFragments_multiHitClusters.rds` | The core 16-column summary, with one row per original connected component. |
+| `buildStdFragments_multiHitSplits.rds` | Supplementary R list of settings, subgroup summaries, assignments, cuts, and statistics. Written when `--multiHitMinConnectionReads > 1`. |
+| `buildStdFragments_multiHitClusterAssignments.tsv.gz` | Per-read CD-HIT assignments within the original parents. Written when `--saveMultiHitClusteringDetails` is supplied. |
+
+When split reporting is enabled, the supplementary file is written even if no eligible cuts are found. If there are no parent clusters, its tables are empty with their column types preserved. The module removes a stale split-report file when rerunning, including when splitting is disabled.
+
+<br>
+
+### Core multi-hit cluster data structure
+
+`buildStdFragments_multiHitClusters.rds` contains a `data.table`/`data.frame` with these 16 columns, in order. A list-column contains one vector per cluster row.
+
+| Column | Type | Description |
+| --- | --- | --- |
+| `trial` | Character | Trial ID. |
+| `subject` | Character | Subject ID. |
+| `sample` | Character | Sample ID. |
+| `mode` | Character | Processing mode. |
+| `refGenome` | Character | Reference genome. |
+| `clusterID` | Character | Parent network ID, such as `MHC.1`. |
+| `totalReads` | Integer | Number of distinct retained read IDs in the cluster. |
+| `readIDs` | List of character vectors | Distinct read IDs included in the cluster. |
+| `UMIs` | Integer | Number of distinct stored `real_UMI` labels among those reads. |
+| `posids` | List of character vectors | Candidate position IDs, such as `chr6+33345271`. |
+| `totalPosids` | Integer | Number of distinct candidate position IDs. |
+| `totalAdriftReadClusters` | Integer | Number of CD-HIT-EST adrift-sequence families represented in the cluster. |
+| `totalFragments` | Integer | Number of distinct standardized genomic fragment lengths across all candidate records in the cluster. |
+| `adriftReadClusters` | List of integer vectors | Number of parent adrift-sequence families represented at each corresponding position. |
+| `fragments` | List of integer vectors | Number of distinct standardized fragment lengths associated with each corresponding position. |
+| `reads` | List of integer vectors | Number of distinct retained read IDs associated with each corresponding position. |
+
+The vectors in `adriftReadClusters`, `fragments`, and `reads` match the length and order of the corresponding `posids` vector. The first count in each vector belongs to the first position ID, and so on. Counts can differ across positions. Reordering positions requires reordering all three count vectors together.
+
+Fragment length is `fragEnd - fragStart + 1` after upstream coordinate standardization. `totalFragments` counts distinct length values, not unique coordinate pairs or independently observed molecules. It is calculated separately from `totalAdriftReadClusters`; matching values can occur but are not imposed by the code.
+
+A read can support several candidate positions. Therefore, summing per-position `reads` can exceed `totalReads`; the same principle applies to fragment-length and adrift-family totals. Read counts use retained representative read IDs, not summed PCR duplicate multiplicities. UMI counts reflect stored labels, including any placeholders, and should not be treated as direct cell counts.
+
+The updated schema uses `totalReads` for the former scalar read count and `reads` for the per-position count vector. `totalPosids` replaces `nodes`. Explicit adrift-family and fragment-length measures replace `clusterSonicLengths` and the nested `nodeSonicLengths` representation. Existing summaries must be regenerated from the underlying records to obtain the independent measurements.
+
+<br>
+
+### Supplementary split-report data structure
+
+`buildStdFragments_multiHitSplits.rds` contains an R list with six named elements:
+
+| Element | Structure | Description |
+| --- | --- | --- |
+| `settings` | Named list | Connection threshold, search limit, support minimums, and counting definitions. |
+| `subclusters` | `data.table` | Final subgroup summaries and unsplit parent summaries. |
+| `readAssignments` | `data.table` | Membership or bridge status for each retained parent read. |
+| `positionAssignments` | `data.table` | Membership for every candidate parent position, including bridge-only positions. |
+| `cuts` | `data.table` | Connecting reads and component relationships for each accepted cut. |
+| `statistics` | `data.table` | Number of cuts, bridge reads, and candidate cuts evaluated for each parent. |
+
+Every table includes `trial`, `subject`, `sample`, `mode`, `refGenome`, and `parentClusterID`. Use all six fields to identify a parent when joining tables. IDs such as `MHC.1` are local to their metadata group and are not permanent biological clone identifiers.
+
+#### settings
+
+The named settings are `minConnectionReads`, `maxCandidates`, `minPosids`, `minReads`, `readSupport`, and `adriftClusters`. The first two record the requested thresholds. `minPosids` and `minReads` are both `2L`. The last two are character descriptions recording distinct-read support without `nReads` weighting and the use of inherited parent CD-HIT assignments.
+
+#### subclusters
+
+This table contains the core summary fields above, plus `parentClusterID` and `status`. Unsplit parents retain their original `clusterID`. Split subgroup IDs have suffixes such as `MHC.1.S1` and `MHC.1.S2`.
+
+| Status | Meaning |
+| --- | --- |
+| `unsplit` | No eligible cut was accepted for this parent. |
+| `supported` | A resulting subgroup retains at least two positions and two nonbridging read IDs. |
+| `residual` | A smaller component with retained reads was produced alongside supported subgroups. |
+
+All subgroup counts use member reads only. CD-HIT is run once per original parent; subgroup adrift counts use the parent families represented by their members, without reclustering. A family can appear in more than one subgroup. Fragment-length, UMI-label, and adrift-family totals are therefore not additive across subgroups. For each parent, subgroup `totalReads` values plus its bridge-read count sum to the original `totalReads`.
+
+Positions left without member reads appear in `positionAssignments` as `bridge_only`, rather than creating zero-read subgroup rows.
+
+#### readAssignments
+
+These fields accompany the shared metadata and `parentClusterID`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `readID` | Character | Retained read-pair identifier. |
+| `subclusterID` | Character | Assigned subgroup; `NA` for bridge reads. |
+| `role` | Character | `member` or `bridge`. |
+| `cutID` | Character | Cut that removed a bridge read from connectivity; `NA` for member reads. |
+| `cdhitClusterID` | Character | Original parent CD-HIT family label. |
+| `posids` | List of character vectors | All original candidate positions for the read. |
+| `candidateSubclusterIDs` | List of character vectors | Final subgroup IDs containing those positions; bridge-only positions have no subgroup ID. |
+
+Every retained read appears exactly once within its parent. Bridge reads remain traceable even though they contribute to no subgroup abundance count.
+
+#### positionAssignments
+
+These fields accompany the shared metadata and `parentClusterID`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `posid` | Character | Original candidate position ID. |
+| `subclusterID` | Character | Assigned subgroup; `NA` for bridge-only positions. |
+| `role` | Character | `unsplit`, `supported`, `residual`, or `bridge_only`. |
+
+Every parent position appears exactly once, including positions supported exclusively by bridge reads.
+
+#### cuts
+
+These fields accompany the shared metadata and `parentClusterID`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `cutID` | Character | Cut ID, such as `MHC.1.C1`. |
+| `parentCutID` | Character | Earlier cut that produced this component; `NA` for the first cut. |
+| `depth` | Integer | Recursive depth, starting at `0L`. |
+| `connectingReads` | Integer | Number of distinct read IDs removed in this cut. |
+| `readIDs` | List of character vectors | Connecting read IDs. |
+| `supportedComponents` | Integer | Number of resulting components meeting both support minimums at this step. |
+| `residualComponents` | Integer | Number of other resulting components, including any positions without member reads. |
+| `positionGroups` | List of lists of character vectors | Positions in each component immediately after the cut; later cuts may subdivide them. |
+
+Parents without accepted cuts have no rows in this table.
+
+#### statistics
+
+These fields accompany the shared metadata and `parentClusterID`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `splitCount` | Integer | Number of accepted cuts, which can differ from the number of final subgroups. |
+| `bridgeReads` | Integer | Number of distinct reads assigned the bridge role. |
+| `candidateCutsTested` | Integer | Number of candidate read-cut sets evaluated across recursive steps. |
+
+An unsplit parent has zero accepted cuts and bridge reads. Its candidate count can also be zero when the algorithm establishes that no eligible cut is possible without enumerating cuts.
+
+<br>
+
+### Optional CD-HIT assignment details
+
+With `--saveMultiHitClusteringDetails`, the assignment TSV contains `trial`, `subject`, `sample`, `refGenome`, `mode`, `clusterID`, `readID`, `adriftSeqSegment`, `cdhitClusterID`, `isRep`, and `clusterSize`. These record the tested sequence, parent family assignment, representative status, and number of retained read IDs in the family.
+
+The TSV remains a parent-level report when splitting is enabled. To associate these records with subgroup membership, join to `readAssignments` using the five metadata fields, read ID, and TSV `clusterID` matched to split-report `parentClusterID`. Detailed CD-HIT output is optional and is not required to create the split report.
+
+Neither the internal `cdhitAssignments` nor `splitReport` list-column is retained in the saved 16-column core cluster object.
+
+Sources: [modules/buildStdFragments.R](modules/buildStdFragments.R), [lib/buildStdFragments.R](lib/buildStdFragments.R), and [launcher options](inspiired2.R).
 
 <br>

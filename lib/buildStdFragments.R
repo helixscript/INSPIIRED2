@@ -121,15 +121,339 @@ standardize_positions <- function(df, side = "left", window = 8, local_radius = 
 
 
 
+# Splitting is an optional additional report. The original connected components,
+# CD-HIT assignments, summary schema and database payload remain unchanged.
+multiHitSplitSettings <- function(arguments){
+  positive_integer <- function(name, default){
+    value <- arguments[[name]]
+    if(is.null(value)) value <- default
+    if(!is.numeric(value) || length(value) != 1L || is.na(value) ||
+       !is.finite(value) || value < 1 || value != floor(value) ||
+       value > .Machine$integer.max)
+      stop("Error - --", name, " must be a positive integer.", call. = FALSE)
+    as.integer(value)
+  }
+  list(minConnectionReads = positive_integer("multiHitMinConnectionReads", 1L),
+       maxCandidates = positive_integer("multiHitMaxSplitCandidates", 100000L),
+       minPosids = 2L, minReads = 2L)
+}
+
+empty_multiHit_split_tables <- function(){
+  list(
+    subclusters = data.table(
+      clusterID = character(), status = character(), totalReads = integer(),
+      readIDs = list(), UMIs = integer(), posids = list(), totalPosids = integer(),
+      totalAdriftReadClusters = integer(), totalFragments = integer(),
+      adriftReadClusters = list(), fragments = list(), reads = list()),
+    readAssignments = data.table(
+      readID = character(), subclusterID = character(), role = character(),
+      cutID = character(), cdhitClusterID = character(), posids = list(),
+      candidateSubclusterIDs = list()),
+    positionAssignments = data.table(
+      posid = character(), subclusterID = character(), role = character()),
+    cuts = data.table(
+      cutID = character(), parentCutID = character(), depth = integer(),
+      connectingReads = integer(), readIDs = list(), supportedComponents = integer(),
+      residualComponents = integer(), positionGroups = list()),
+    statistics = data.table(
+      splitCount = integer(), bridgeReads = integer(), candidateCutsTested = integer())
+  )
+}
+
+# Exact bounded search over read-only separators. Identical read neighbourhoods
+# can be bundled: removing only some of those reads cannot disconnect positions.
+# Position twins can also be bundled without changing any supported component.
+# Neither optimisation projects reads into pairwise position edges.
+find_multiHit_read_splits <- function(read_pos, settings){
+  pairs <- unique(copy(as.data.table(read_pos))[, .(
+    readID = as.character(readID), posid = as.character(posid))])
+  if(!nrow(pairs) || anyNA(pairs) || any(!nzchar(pairs$readID)) || any(!nzchar(pairs$posid)))
+    stop("Error - multi-hit splitting requires nonempty read IDs and position IDs.", call. = FALSE)
+  setorder(pairs, readID, posid)
+  posids <- sort(unique(pairs$posid), method = "radix")
+  pairs[, p := match(posid, posids)]
+  read_sets <- pairs[, .(signature = paste(p, collapse = ",")), by = readID]
+  read_sets[, bundle := match(signature, unique(signature))]
+  read_bundles <- read_sets[, .(readIDs = list(readID), nReads = .N), by = bundle]
+  read_bundles[, name := paste0("r", bundle)]
+  pairs[read_sets, on = "readID", bundle := i.bundle]
+  incidence <- unique(pairs[, .(p, bundle)])
+  setorder(incidence, p, bundle)
+  pos_sets <- incidence[, .(signature = paste(bundle, collapse = ",")), by = p]
+  pos_sets[, posBundle := match(signature, unique(signature))]
+  pos_bundles <- pos_sets[, .(posids = list(posids[p]), nPosids = .N), by = posBundle]
+  pos_bundles[, name := paste0("p", posBundle)]
+  incidence[pos_sets, on = "p", posBundle := i.posBundle]
+  edges <- unique(incidence[, .(from = paste0("r", bundle), to = paste0("p", posBundle))])
+  vertices <- rbindlist(list(
+    read_bundles[, .(name, nReads, nPosids = 0L)],
+    pos_bundles[, .(name, nReads = 0L, nPosids)]))
+  graph <- igraph::graph_from_data_frame(edges, directed = FALSE, vertices = vertices)
+  if(igraph::components(graph)$no != 1L)
+    stop("Error - the split helper expects one connected parent network.", call. = FALSE)
+  
+  tests <- 0L
+  cuts <- list()
+  leaves <- list()
+  read_names <- read_bundles$name
+  read_weights <- setNames(read_bundles$nReads, read_names)
+  expand_reads <- function(nodes) sort(as.character(unlist(read_bundles$readIDs[
+    match(intersect(nodes, read_names), read_names)], use.names = FALSE)), method = "radix")
+  expand_positions <- function(nodes) sort(as.character(unlist(pos_bundles$posids[
+    match(intersect(nodes, pos_bundles$name), pos_bundles$name)], use.names = FALSE)), method = "radix")
+  
+  evaluate_cut <- function(g, removed){
+    if(tests >= settings$maxCandidates)
+      stop("Error - multi-hit split search exceeded --multiHitMaxSplitCandidates (",
+           settings$maxCandidates, "). Increase the limit or lower ",
+           "--multiHitMinConnectionReads; no incomplete split report will be saved.", call. = FALSE)
+    tests <<- tests + 1L
+    reduced <- igraph::delete_vertices(g, removed)
+    membership <- igraph::components(reduced)$membership
+    if(length(unique(membership)) < 2L) return(NULL)
+    nodes <- split(names(membership), membership)
+    nr <- setNames(igraph::vertex_attr(reduced, "nReads"), igraph::V(reduced)$name)
+    np <- setNames(igraph::vertex_attr(reduced, "nPosids"), igraph::V(reduced)$name)
+    supported <- vapply(nodes, function(x)
+      sum(nr[x]) >= settings$minReads && sum(np[x]) >= settings$minPosids, logical(1))
+    if(sum(supported) < 2L) return(NULL)
+    list(removed = removed, nodes = nodes, supported = supported)
+  }
+  
+  find_cut <- function(g){
+    if(settings$minConnectionReads <= 1L ||
+       sum(igraph::V(g)$nReads) < 2L * settings$minReads + 1L ||
+       sum(igraph::V(g)$nPosids) < 2L * settings$minPosids) return(NULL)
+    available <- intersect(read_names, igraph::V(g)$name)
+    # Positions sharing >= threshold distinct reads cannot be separated by an
+    # allowed cut. Greedily join such position blocks to eliminate impossible
+    # candidates, without making a weighted position-edge projection. This is
+    # a conservative acceleration: unmerged blocks are still searched exactly.
+    # Recompute for each child, since ancestor cuts have removed some reads.
+    current_positions <- igraph::V(g)$name[igraph::V(g)$nPosids > 0L]
+    current_edges <- edges[from %chin% available & to %chin% current_positions]
+    current_edges[, p_index := match(to, current_positions)]
+    parents <- seq_along(current_positions)
+    covered <- rep(FALSE, length(parents))
+    root_of <- function(i){
+      while(parents[i] != i) i <- parents[i]
+      i
+    }
+    for(i in seq_along(parents)){
+      if(covered[i]) next
+      neighbours <- current_edges[p_index == i, from]
+      shared <- current_edges[from %chin% neighbours,
+                              .(support = sum(as.numeric(read_weights[from]))), by = p_index]
+      joined <- shared[support >= settings$minConnectionReads, p_index]
+      for(j in joined){
+        a <- root_of(i)
+        b <- root_of(j)
+        if(a != b) parents[max(a, b)] <- min(a, b)
+      }
+      covered[c(i, joined)] <- TRUE
+    }
+    blocks <- vapply(seq_along(parents), root_of, integer(1))
+    if(uniqueN(blocks) == 1L) return(NULL)
+    crossing_bundles <- current_edges[, .(blocks = uniqueN(blocks[p_index])), by = from
+    ][blocks > 1L, from]
+    available <- available[available %chin% crossing_bundles]
+    max_cost <- min(settings$minConnectionReads - 1,
+                    sum(igraph::V(g)$nReads) - 2L * settings$minReads)
+    candidates <- available[read_weights[available] <= max_cost]
+    if(!length(candidates)) return(NULL)
+    
+    # Every one-read separator is an articulation vertex. Restrict to reads;
+    # removing a position would have a different scientific meaning.
+    articulation <- igraph::as_ids(igraph::articulation_points(g))
+    singles <- candidates[read_weights[candidates] == 1L & candidates %in% articulation]
+    for(candidate in singles){
+      answer <- evaluate_cut(g, candidate)
+      if(!is.null(answer)) return(answer)
+    }
+    if(max_cost < 2L) return(NULL)
+    
+    # Enumerate by total number of distinct read IDs, then stable bundle order.
+    # This is exhaustive up to the threshold unless the explicit budget errors.
+    # Generate combinations lazily instead of materialising choose(N, k) sets.
+    weights <- unname(read_weights[candidates])
+    suffix_weight <- rev(cumsum(rev(as.numeric(weights))))
+    answer <- NULL
+    enumerate <- function(start, remaining, chosen){
+      if(remaining == 0L){
+        answer <<- evaluate_cut(g, chosen)
+        return(!is.null(answer))
+      }
+      if(start > length(candidates) || suffix_weight[start] < remaining) return(FALSE)
+      for(i in seq.int(start, length(candidates))){
+        if(weights[i] <= remaining &&
+           enumerate(i + 1L, remaining - weights[i], c(chosen, candidates[i]))) return(TRUE)
+      }
+      FALSE
+    }
+    for(cost in seq.int(2L, max_cost)){
+      if(enumerate(1L, cost, character())) return(answer)
+    }
+    NULL
+  }
+  
+  # An explicit work stack avoids recursion through a long chain of networks.
+  work <- list(list(nodes = igraph::V(graph)$name, parentCut = NA_integer_, depth = 0L))
+  while(length(work)){
+    item <- work[[length(work)]]
+    work[[length(work)]] <- NULL
+    g <- igraph::induced_subgraph(graph, item$nodes)
+    cut <- find_cut(g)
+    if(is.null(cut)){
+      leaves[[length(leaves) + 1L]] <- list(
+        readIDs = expand_reads(item$nodes), posids = expand_positions(item$nodes))
+    } else {
+      cut_number <- length(cuts) + 1L
+      ordering <- order(vapply(cut$nodes, function(x) expand_positions(x)[1L], character(1)), method = "radix")
+      groups <- cut$nodes[ordering]
+      supported <- cut$supported[ordering]
+      cuts[[cut_number]] <- list(
+        parentCut = item$parentCut, depth = item$depth,
+        readIDs = expand_reads(cut$removed),
+        supportedComponents = as.integer(sum(supported)),
+        residualComponents = as.integer(sum(!supported)),
+        positionGroups = lapply(groups, expand_positions))
+      for(i in rev(seq_along(groups))){
+        if(supported[i]){
+          work[[length(work) + 1L]] <- list(nodes = groups[[i]], parentCut = cut_number,
+                                            depth = item$depth + 1L)
+        } else {
+          leaves[[length(leaves) + 1L]] <- list(
+            readIDs = expand_reads(groups[[i]]), posids = expand_positions(groups[[i]]))
+        }
+      }
+    }
+  }
+  ordering <- order(vapply(leaves, function(x) x$posids[1L], character(1)), method = "radix")
+  list(leaves = leaves[ordering], cuts = cuts, candidateCutsTested = tests)
+}
+
+build_multiHit_split_report <- function(net, parent_summary, settings){
+  result <- empty_multiHit_split_tables()
+  parent_id <- parent_summary$clusterID[1L]
+  partition <- find_multiHit_read_splits(net[, .(readID, posid)], settings)
+  did_split <- length(partition$cuts) > 0L
+  members <- list()
+  position_maps <- list()
+  summaries <- list()
+  child_number <- 0L
+  for(leaf in partition$leaves){
+    if(!length(leaf$readIDs)){
+      position_maps[[length(position_maps) + 1L]] <- data.table(
+        posid = leaf$posids, subclusterID = NA_character_, role = "bridge_only")
+      next
+    }
+    child_number <- child_number + 1L
+    child_id <- if(did_split) paste0(parent_id, ".S", child_number) else parent_id
+    status <- if(!did_split) "unsplit" else if(
+      length(leaf$readIDs) >= settings$minReads && length(leaf$posids) >= settings$minPosids
+    ) "supported" else "residual"
+    x <- net[readID %chin% leaf$readIDs]
+    positions <- sort(unique(x$posid), method = "radix")
+    node_counts <- x[, .(
+      adriftReadClusters = uniqueN(cluster_id),
+      fragments = uniqueN(as.numeric(fragEnd) - as.numeric(fragStart) + 1),
+      reads = uniqueN(readID)), by = posid]
+    node_order <- match(positions, node_counts$posid)
+    summaries[[length(summaries) + 1L]] <- data.table(
+      clusterID = child_id, status = status, totalReads = as.integer(length(leaf$readIDs)),
+      readIDs = list(leaf$readIDs), UMIs = as.integer(uniqueN(x$real_UMI)),
+      posids = list(positions), totalPosids = as.integer(length(positions)),
+      totalAdriftReadClusters = as.integer(uniqueN(x$cluster_id)),
+      totalFragments = as.integer(uniqueN(as.numeric(x$fragEnd) - as.numeric(x$fragStart) + 1)),
+      adriftReadClusters = list(node_counts$adriftReadClusters[node_order]),
+      fragments = list(node_counts$fragments[node_order]), reads = list(node_counts$reads[node_order]))
+    members[[length(members) + 1L]] <- data.table(readID = leaf$readIDs, subclusterID = child_id)
+    position_maps[[length(position_maps) + 1L]] <- data.table(
+      posid = leaf$posids, subclusterID = child_id, role = status)
+  }
+  result$subclusters <- rbindlist(summaries)
+  result$positionAssignments <- rbindlist(position_maps)
+  setorder(result$positionAssignments, posid)
+  membership <- rbindlist(members)
+  assignments <- unique(net[, .(readID, posid, cdhitClusterID = as.character(cluster_id))])
+  setorder(assignments, readID, posid)
+  result$readAssignments <- assignments[, .(
+    subclusterID = membership$subclusterID[match(readID[1L], membership$readID)],
+    role = if(readID[1L] %chin% membership$readID) "member" else "bridge",
+    cutID = NA_character_, cdhitClusterID = cdhitClusterID[1L], posids = list(posid),
+    candidateSubclusterIDs = list(sort(unique(na.omit(result$positionAssignments$subclusterID[
+      match(posid, result$positionAssignments$posid)])), method = "radix"))
+  ), by = readID]
+  if(did_split){
+    result$cuts <- rbindlist(lapply(seq_along(partition$cuts), function(i){
+      cut <- partition$cuts[[i]]
+      cut_id <- paste0(parent_id, ".C", i)
+      result$readAssignments[readID %chin% cut$readIDs, cutID := cut_id]
+      data.table(cutID = cut_id,
+                 parentCutID = if(is.na(cut$parentCut)) NA_character_ else paste0(parent_id, ".C", cut$parentCut),
+                 depth = cut$depth, connectingReads = as.integer(length(cut$readIDs)),
+                 readIDs = list(cut$readIDs), supportedComponents = cut$supportedComponents,
+                 residualComponents = cut$residualComponents, positionGroups = list(cut$positionGroups))
+    }))
+  }
+  # Enforce read and position conservation before the optional report can escape.
+  counted_reads <- unlist(result$subclusters$readIDs, use.names = FALSE)
+  bridge_reads <- result$readAssignments[role == "bridge", readID]
+  if(anyDuplicated(counted_reads) || length(intersect(counted_reads, bridge_reads)) ||
+     !setequal(c(counted_reads, bridge_reads), unique(net$readID)) ||
+     anyDuplicated(result$positionAssignments$posid) ||
+     !setequal(result$positionAssignments$posid, unique(net$posid)) ||
+     anyNA(result$readAssignments[role == "bridge", cutID]))
+    stop("Error - multi-hit split report failed evidence-conservation checks.", call. = FALSE)
+  result$statistics <- data.table(splitCount = as.integer(length(partition$cuts)),
+                                  bridgeReads = as.integer(length(bridge_reads)), candidateCutsTested = partition$candidateCutsTested)
+  result
+}
+
+collect_multiHit_split_reports <- function(clusters, settings){
+  templates <- empty_multiHit_split_tables()
+  meta_columns <- c("trial", "subject", "sample", "mode", "refGenome")
+  metadata <- copy(clusters[, ..meta_columns])
+  metadata[, parentClusterID := clusters$clusterID]
+  out <- lapply(names(templates), function(name){
+    if(!nrow(clusters)) return(cbind(metadata, templates[[name]]))
+    rbindlist(lapply(seq_len(nrow(clusters)), function(i){
+      tab <- clusters$splitReport[[i]][[name]]
+      cbind(metadata[rep(i, nrow(tab))], tab)
+    }), use.names = TRUE)
+  })
+  names(out) <- names(templates)
+  c(list(settings = c(settings, list(
+    readSupport = "distinct retained readID; nReads is not a cut weight",
+    adriftClusters = "inherited parent CD-HIT assignments; counted on subgroup member reads only"))), out)
+}
+
 build_multiHit_clusters <- function(frags_multPosIDs){
   setDT(frags_multPosIDs)
   nt_len <- args$multiHitclusteringNTlen
   save_details <- isTRUE(args$saveMultiHitClusteringDetails)
+  split_settings <- multiHitSplitSettings(args)
   
   if(length(nt_len) != 1L || is.na(nt_len) || nt_len < 1L)
     stop("Error - multiHitclusteringNTlen must be a positive integer.")
   if(!"adrift_seq" %in% names(frags_multPosIDs))
     stop("Error - adrift_seq is missing from the multi-hit fragment table.")
+  if(!all(c("fragStart", "fragEnd") %in% names(frags_multPosIDs)))
+    stop("Error - fragStart and fragEnd are required for multi-hit fragment lengths.")
+  valid_coordinates <- vapply(frags_multPosIDs[, .(fragStart, fragEnd)], function(x){
+    is.numeric(x) && all(is.finite(x) & x >= 1 & x == floor(x))
+  }, logical(1))
+  if(!all(valid_coordinates) || any(frags_multPosIDs$fragEnd < frags_multPosIDs$fragStart))
+    stop("Error - multi-hit fragment coordinates must be finite positive integers with fragEnd >= fragStart.")
+  
+  empty <- data.table(clusterID = character(), totalReads = integer(), readIDs = list(),
+                      UMIs = integer(), posids = list(), totalPosids = integer(),
+                      totalAdriftReadClusters = integer(), totalFragments = integer(),
+                      adriftReadClusters = list(), fragments = list(), reads = list())
+  if(save_details) empty[, cdhitAssignments := vector("list", .N)]
+  if(split_settings$minConnectionReads > 1L) empty[, splitReport := vector("list", .N)]
+  if(nrow(frags_multPosIDs) == 0L)
+    return(cbind(frags_multPosIDs[, .(trial, subject, sample, mode, refGenome)], empty))
   
   if(!dir.exists(args$ramDisk)) dir.create(args$ramDisk, recursive = TRUE, showWarnings = FALSE)
   if(!dir.exists(args$ramDisk))
@@ -139,10 +463,6 @@ build_multiHit_clusters <- function(frags_multPosIDs){
     valid_reads_dt <- .SD[, .(pos_count = uniqueN(posid)), by = readID][pos_count > 1]
     
     if(nrow(valid_reads_dt) == 0){
-      empty <- data.table(clusterID = character(), nodes = integer(), reads = integer(), UMIs = integer(),
-                          posids = list(), readIDs = list(), clusterSonicLengths = integer(),
-                          nodeSonicLengths = list())
-      if(save_details) empty[, cdhitAssignments := vector("list", .N)]
       empty
     } else {
       sub_sd <- .SD[readID %in% valid_reads_dt$readID]
@@ -230,15 +550,32 @@ build_multiHit_clusters <- function(frags_multPosIDs){
             u_posids <- unique(posid)
             u_reads <- unique(readID)
             u_umis <- unique(real_UMI)
-            node_table <- .SD[, .(sonicLengths = uniqueN(cluster_id)), by = posid]
             
-            .(nodes = length(u_posids), reads = length(u_reads), UMIs = length(u_umis),
-              posids = list(u_posids), readIDs = list(u_reads),
-              clusterSonicLengths = uniqueN(cluster_id),
-              nodeSonicLengths = list(node_table))
+            # Coordinates have already been standardized by buildStdFragments.
+            # Count distinct lengths independently of the CD-HIT assignments.
+            node_counts <- .SD[, .(
+              adriftReadClusters = uniqueN(cluster_id),
+              fragments = uniqueN(as.numeric(fragEnd) - as.numeric(fragStart) + 1),
+              reads = uniqueN(readID)
+            ), by = posid]
+            node_order <- match(u_posids, node_counts$posid)
+            
+            .(totalReads = length(u_reads), readIDs = list(u_reads), UMIs = length(u_umis),
+              posids = list(u_posids), totalPosids = length(u_posids),
+              totalAdriftReadClusters = uniqueN(cluster_id),
+              totalFragments = uniqueN(as.numeric(fragEnd) - as.numeric(fragStart) + 1),
+              adriftReadClusters = list(node_counts$adriftReadClusters[node_order]),
+              fragments = list(node_counts$fragments[node_order]),
+              reads = list(node_counts$reads[node_order]))
           }, by = clusterID]
           
           if(save_details) ans[, cdhitAssignments := list(assignment_table)]
+          if(split_settings$minConnectionReads > 1L)
+            ans[, splitReport := list(tryCatch(
+              build_multiHit_split_report(net, ans, split_settings),
+              error = function(e) stop("Multi-hit splitting failed for ", net$clusterID[1L],
+                                       " (", paste(net[1L, .(trial, subject, sample, mode, refGenome)], collapse = "/"),
+                                       "): ", conditionMessage(e), call. = FALSE)))]
           ans
         }
       ), use.names = TRUE, fill = FALSE)
@@ -383,6 +720,7 @@ archiveMultiHitOnlyToDB <- function(frags, processedGroups){
             result <- build_multiHit_clusters(x)
             if("cdhitAssignments" %in% names(result))
               result[, cdhitAssignments := NULL]
+            if("splitReport" %in% names(result)) result[, splitReport := NULL]
             result
           }),
     use.names = TRUE, fill = TRUE)
