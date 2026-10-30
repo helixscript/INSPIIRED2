@@ -1,6 +1,3 @@
-
-
-
 #!/usr/bin/env -S Rscript --vanilla
 suppressPackageStartupMessages(library(argparse))
 
