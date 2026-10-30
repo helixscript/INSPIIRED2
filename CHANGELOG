@@ -4,3 +4,10 @@
 1.0.2 Added additional data fields to multiHitCluster output.
 1.0.2 Added --multiHitMinConnectionReads and --multiHitMaxSplitCandidates to buildStdFragments to allow splitting of sub-networks.
 1.0.2 Updated module flag help lines. 
+1.0.3 Updated tests/synTests/buildFauxSites/buildSynData.py to include leader sequences when applying synthetic error.
+1.0.3 Updated tests/synTests/buildFauxSites/buildSynData.py to include --illuminaReadIDs flag to export simulated Illumina read IDs rather than diagnostic read ids.
+1.0.3 Updated tests/synTests/buildFauxSites/buildSynData.py to include --posidFile flag to generate user specific positions. 
+1.0.3 Updated tests/synTests/buildFauxSites/buildSynData.py to include --repeatTable, --repeatClasses, and --repeatGrouping flags to create synthetic sites enriched in repeat elements.
+1.0.3 Added new module annotateMultiHitRepeats to annotate multiHitRepeat cluster objects created by the buildStandardFragments module.
+1.0.3 Updated buildStandardFragments to include additional data columns to track additional cluster details.
+1.0.3 Updated buildStandardFragments to include options to inspect sub-clusters within larger clusters connected by n reads defined by --multiHitMinConnectionReads; additional data files generated.

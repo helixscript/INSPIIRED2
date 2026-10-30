@@ -311,12 +311,25 @@ find_multiHit_read_splits <- function(read_pos, settings){
       ordering <- order(vapply(cut$nodes, function(x) expand_positions(x)[1L], character(1)), method = "radix")
       groups <- cut$nodes[ordering]
       supported <- cut$supported[ordering]
+      # A position bundle is connected only while it retains a read neighbour.
+      # Once all its reads are removed, each original position is an isolated
+      # component. Expand these bundles in the saved cut description only;
+      # keep the bundled groups below for unchanged recursion and leaf ordering.
+      position_groups <- lapply(groups, expand_positions)
+      has_reads <- vapply(groups, function(nodes) any(nodes %chin% read_names), logical(1))
+      if(any(!has_reads & lengths(position_groups) > 1L)){
+        position_groups <- unlist(lapply(seq_along(position_groups), function(i){
+          if(has_reads[i]) list(position_groups[[i]]) else as.list(position_groups[[i]])
+        }), recursive = FALSE, use.names = FALSE)
+        position_groups <- position_groups[order(
+          vapply(position_groups, function(x) x[1L], character(1)), method = "radix")]
+      }
       cuts[[cut_number]] <- list(
         parentCut = item$parentCut, depth = item$depth,
         readIDs = expand_reads(cut$removed),
         supportedComponents = as.integer(sum(supported)),
-        residualComponents = as.integer(sum(!supported)),
-        positionGroups = lapply(groups, expand_positions))
+        residualComponents = as.integer(length(position_groups) - sum(supported)),
+        positionGroups = position_groups)
       for(i in rev(seq_along(groups))){
         if(supported[i]){
           work[[length(work) + 1L]] <- list(nodes = groups[[i]], parentCut = cut_number,
