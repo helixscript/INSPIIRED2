@@ -74,8 +74,8 @@ runModule <- function(){
     }
   }
   
-  if(anyNA(sampleData$mode) || any(!sampleData$mode %in% c("U3", "U5", "NA")))
-    stop("Error - sampleData mode values must be exactly 'U3', 'U5', or 'NA'.")
+  if(anyNA(sampleData$mode) || any(!sampleData$mode %in% c("U3", "U5", "AAV", "NA")))
+    stop("Error - sampleData mode values must be exactly 'U3', 'U5', 'AAV' or 'NA'.")
   
   # Ensure that UMI positions are marked with Ns in adriftReadLinkerSeq sequences.
   valid <- ! is.na(sampleData$adriftReadLinkerSeq) & grepl("^[ACGT]{3,}N{5,}[ACGT]{3,}$", sampleData$adriftReadLinkerSeq, ignore.case = TRUE)

@@ -78,9 +78,9 @@ demux_parser$add_argument("--indexReads",                   type = "character", 
 demux_parser$add_argument("--adriftReads",                  type = "character",     required = TRUE,                  help = "Path to the Forward read FASTQ file")
 demux_parser$add_argument("--anchorReads",                  type = "character",     required = TRUE,                  help = "Path to the Reverse read FASTQ file")
 demux_parser$add_argument("--threads",                      type = "integer",       default = 50,                     help = "Number of threads to use.")
-demux_parser$add_argument("--fileTag",                      type  = "character",    default = "demultiplex",          help = "String appended to output files in the outpt directory.")
+demux_parser$add_argument("--fileTag",                      type = "character",     default = "demultiplex",          help = "String appended to output files in the outpt directory.")
 demux_parser$add_argument("--index1ReadMaxMismatch",        type = "integer",       default = 1,                      help = "Number of allowed mismatches to the I1 barcode sequence.")
-demux_parser$add_argument("--disableAutoBarcodeOrt",        action = "store_true",  default = FALSE,                  help = "Subsample the data an automatically determine if I1 barcodes need to be reverse complimented.")
+demux_parser$add_argument("--autoBarcodeOrt",               action = "store_true",  default = FALSE,                  help = "Subsample the data an automatically determine if I1 barcodes need to be reverse complimented.")
 demux_parser$add_argument("--disablePostUmiLinker",         action = "store_true",  default = FALSE,                  help = "Disable the requirement to match the post-UMI linker sequence.")
 demux_parser$add_argument("--postUmiLinkerMaxMismatch",     type = "integer",       default = 1,                      help = "Number of allowed mismatches to the linker sequence following the UMI sequence.")
 demux_parser$add_argument("--qualTrimHalfWidth",            type = "integer",       default = 3,                      help = "Half width of NT window slid along sequence during quality trimming.")
@@ -90,12 +90,12 @@ demux_parser$add_argument("--polyGfilterPattern",           type = "character", 
 demux_parser$add_argument("--disablePolyGfilter",           action = "store_true",  default = FALSE,                  help = "Disable poly-G filter.")
 demux_parser$add_argument("--correctGolayIndexReads",       action = "store_true",  default = FALSE,                  help = "Use a Golay correction algorithm to correct barcode sequences.")
 demux_parser$add_argument("--disableAdriftReadLinkers",     action = "store_true",  default = FALSE,                  help = "Use the unique linker sequences on adrift reads with barcode sequences.")
+demux_parser$add_argument("--disableSequenceCollapse",      action = "store_true",  default = FALSE,                  help = "Disable the collapse of duplicate sequences.")
 demux_parser$add_argument("--adriftReadLinkerMaxMismatch",  type = "integer",       default = 1,                      help = "Number of allowed mismatches to the linker sequence.")
 demux_parser$add_argument("--ramDiskPath",                  type = "character",     default = "/dev/shm",             help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
-demux_parser$add_argument("--disableSequenceCollapse",      action = "store_true",  default = FALSE,                  help = "Disable the collapse of duplicate sequences.")
 demux_parser$add_argument("--captureUMIs",                  action = "store_true",  default = FALSE,                  help = "Capture and use UMIs in abundance calculations.")
-demux_parser$add_argument("--dbConfigFile",                 type = "character",     default = "none",                 help = "Optional database credential file; requires --dbConfigID.")
-demux_parser$add_argument("--dbConfigID",                   type = "character",     default = "none",                 help = "Optional credential group; requires --dbConfigFile.")
+demux_parser$add_argument("--dbConfigFile", type = "character", default = "none", help = "Optional database credential file; requires --dbConfigID.")
+demux_parser$add_argument("--dbConfigID", type = "character", default = "none", help = "Optional credential group; requires --dbConfigFile.")
 
 prp_parser <- subparsers$add_parser("prepReads", help = "Prepare demultiplexed reads for alignment to a reference genome.")
 prp_parser$add_argument("--outputDir",               type = "character",     required = TRUE,          help = "Directory for output files")
@@ -146,7 +146,6 @@ bdf_parser$add_argument("--overwriteDBrecords",      action = "store_true",  def
 bsf_parser <- subparsers$add_parser("buildStdFragments",   help = "Standardize genomic fragments.")
 bsf_parser$add_argument("--outputDir",                         type = "character",     required = TRUE,                help = "Directory for output files.")
 bsf_parser$add_argument("--inputData",                         type = "character",     required = TRUE,                help = "Path to buildFragments rds output file.")
-bsf_parser$add_argument("--softwareRoot",                      type = "character",     required = TRUE,                help = "Path to INSPIIRED2 installation.")
 bsf_parser$add_argument("--threads",                           type = "integer",       default  = 50,                  help = "Number of threads to use.")
 bsf_parser$add_argument("--fileTag",                           type = "character",     default  = "buildStdFragments", help = "String appended to output files in the outpt directory.")
 bsf_parser$add_argument("--ramDiskPath",                       type = "character",     default  = "/dev/shm",          help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -180,7 +179,6 @@ bsf_parser$add_argument("--UMIprocessingMinPercentTotal",      type = "double", 
 asf_parser <- subparsers$add_parser("annotateMultiHitRepeats",   help = "Annotate repeat elements in multihit clusters.")
 asf_parser$add_argument("--outputDir",     type = "character", required = TRUE,                     help = "Directory for output files.")
 asf_parser$add_argument("--inputData",     type = "character", required = TRUE,                     help = "Path to the multihit cluster RDS file produced by buildStdFragments.")
-asf_parser$add_argument("--softwareRoot",  type = "character", required = TRUE,                     help = "Path to INSPIIRED2 installation.")
 asf_parser$add_argument("--threads",       type = "integer",   default = 50,                        help = "Number of threads to use.")
 asf_parser$add_argument("--fileTag",       type = "character", default = "annotateMultiHitRepeats", help = "Prefix for output files in the output directory.")
 asf_parser$add_argument("--ramDiskPath",   type = "character", default = "/dev/shm",                help = "Path to system ramdisk file system. Will default to output directory if ramdisk file system is not supported.")
@@ -225,7 +223,7 @@ anr_parser$add_argument("--dbConfigID",              type = "character",     def
 # permits the natural `inspiired2 <module> --memory...` command-line syntax.
 monitorParsers <- list(validateSampleData_parser, testHMM_parser, bsdm_parser,
                        demux_parser, prp_parser, alr_parser, bdf_parser,
-                       bsf_parser, bst_parser, ngn_parser, anr_parser)
+                       bsf_parser, bst_parser, ngn_parser, anr_parser, asf_parser)
 invisible(lapply(monitorParsers, addMemoryMonitorArgs))
 
 if (length(commandArgs(trailingOnly = TRUE)) == 0) {
