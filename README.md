@@ -505,7 +505,7 @@ All occurrences of a read ID assigned more than once are discarded. By default, 
 | `--threads` | integer | `50` | Number of parallel demultiplexing workers. FASTQ input is streamed in batches of up to one million read pairs; this option also sets the data.table thread count. |
 | `--fileTag` | string | `demultiplex` | Output filename prefix. For example, run1 produces run1.rds, run1.log, run1.yml, and run1.done, plus any module-specific audit files. |
 | `--index1ReadMaxMismatch` | integer | `1` | Maximum number of nucleotide mismatches allowed when matching the sample Index 1 barcode. Use a non-negative integer; 0 requires an exact match. |
-| `--disableAutoBarcodeOrt` | flag | `FALSE` | Skip automatic Index 1 orientation detection and leave index reads in their supplied orientation. By default, the first input batch is compared with the sample barcodes in both orientations; all index reads are reverse-complemented when that orientation has more exact matches. |
+| `--autoBarcodeOrt` | flag | `FALSE` | Enable automatic Index 1 barcode-orientation detection using the first batch of up to one million I1 reads. Reverse-complement all I1 reads only when that orientation produces more exact matches to the sample-table barcodes. Without this flag, retain the supplied I1 orientation. |
 | `--disablePostUmiLinker` | flag | `FALSE` | Skip sequence matching of the linker segment after the UMI. The configured linker coordinates are still used to extract the UMI and trim the linker. |
 | `--postUmiLinkerMaxMismatch` | integer | `1` | Maximum mismatches in the linker segment after the UMI. Has no effect when post-UMI linker matching is disabled. |
 | `--qualTrimHalfWidth` | integer | `3` | Half-width, in nucleotides, of the sliding window passed to ShortRead trimTailw for quality-based tail trimming of both mates. |
@@ -521,6 +521,31 @@ All occurrences of a read ID assigned more than once are discarded. By default, 
 | `--captureUMIs` | flag | `FALSE` | Preserve extracted UMI sequences in the output for downstream processing. By default, UMIs are replaced by the common placeholder AAAAAAAAAAAA after duplicate collapsing. |
 | `--help` | flag | — | Print this module's command-line help and exit. |
 | `-h` | flag | — | Short form of the module help option. |
+
+**Automatic Index 1 barcode orientation**
+
+Automatic orientation detection is **off by default**. Supply `--autoBarcodeOrt` to enable it; the flag takes no value. For example:
+
+```bash
+inspiired2 demultiplex --outputDir out \
+  --sampleData sampleData.tsv          \
+  --indexReads I1.fastq.gz             \
+  --adriftReads R1.fastq.gz            \
+  --anchorReads R2.fastq.gz            \
+  --autoBarcodeOrt
+```
+
+The module examines the first batch of up to 1,000,000 I1 records and counts how many complete I1 sequences exactly match any `index1Seq` value in the sample table. It makes a second count after reverse-complementing those same I1 sequences. Each record contributes at most once to each count, even if its barcode appears in several sample-table rows.
+
+| Result of the comparison | I1 orientation used for processing |
+|---|---|
+| More exact matches after reverse complementation | Reverse-complement every I1 read. |
+| More exact matches in the supplied orientation | Keep the supplied orientation. |
+| Equal counts, including zero matches in both orientations | Keep the supplied orientation. |
+
+One decision applies to every I1 batch and all samples in the run. The module reopens the I1 stream after this check, so the records examined for orientation are included in normal processing. The test does not change the sample table's `index1Seq` values or the orientation of the adrift and anchor reads. There is no minimum match-count or confidence threshold beyond the strict comparison above.
+
+The orientation check uses exact, full-sequence equality. `--index1ReadMaxMismatch` controls subsequent barcode matching during sample assignment and does not relax this orientation test. Likewise, `--correctGolayIndexReads` is applied after the orientation decision; its corrections do not contribute to the orientation counts. The log records when orientation detection starts and adds a reverse-complement message when that orientation is selected.
 
 **Required sample-table fields**
 

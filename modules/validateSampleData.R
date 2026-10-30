@@ -1,10 +1,13 @@
+
+
+
 #!/usr/bin/env -S Rscript --vanilla
 suppressPackageStartupMessages(library(argparse))
 
 parser <- ArgumentParser(description = 'Check sample definitions and resources before processing; report all detected problems.')
 parser$add_argument('--outputDir', type = 'character', required = TRUE, help = 'Directory for the validation report; created if necessary.')
 parser$add_argument('--fileTag', type = 'character', default = 'validateSampleData', help = 'Report filename prefix; writes <outputDir>/<fileTag>.txt.')
-parser$add_argument('--sampleData', type = 'character', required = TRUE, help = 'Sample definition TSV used by demultiplex.')
+parser$add_argument('--sampleData', type = 'character', required = TRUE, help = 'Sample definition TSV. leaderSeqHMM is optional for AAV rows and required for U3/U5 rows.')
 parser$add_argument('--dbConfigFile', type = 'character', default = 'none', help = 'Optional database credential file; requires --dbConfigID.')
 parser$add_argument('--dbConfigID', type = 'character', default = 'none', help = 'Optional credential group; requires --dbConfigFile.')
 parser$add_argument('--resourceDir', type = 'character', default = '/resources', help = 'Resource overlay containing hmms/, referenceGenomes/, and vectors/; bundled data/ is also checked.')
@@ -22,7 +25,7 @@ runModule <- function(){
   inputs <- c(args$sampleData, if(args$dbConfigFile != 'none') args$dbConfigFile)
   if(normalizePath(reportFile, mustWork = FALSE) %in% normalizePath(inputs, mustWork = FALSE))
     stop('The report path must not overwrite the sample data or credential file. Change --outputDir or --fileTag.', call. = FALSE)
-
+  
   # Clear an older result before starting so an interrupted run cannot leave a
   # previous PASS report looking like the result of the current validation.
   writeLines(c(paste0('FAILED: ', args$sampleData), 'Validation did not complete.'), reportFile)
@@ -30,7 +33,7 @@ runModule <- function(){
     source(file.path(args$softwareRoot, 'lib', 'validateSampleData.R'))
     validateSampleData(args)
   }, error = identity)
-
+  
   output <- file(reportFile, open = 'wt', encoding = 'UTF-8')
   on.exit(close(output), add = TRUE)
   if(inherits(report, 'error')){

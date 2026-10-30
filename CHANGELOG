@@ -12,3 +12,5 @@
 1.0.3 Updated buildStandardFragments to include additional data columns to track additional cluster details.
 1.0.3 Updated buildStandardFragments to include options to inspect sub-clusters within larger clusters connected by n reads defined by --multiHitMinConnectionReads; additional data files generated.
 1.0.4 Updated launcher issues from previous 1.0.3.
+1.0.5 Updated validateSampleData module to allow mode = AAV for future AAV functionality.
+1.0.5 Corrected demultiplex documentation regarding --autoBarcodeOrt behavior.
