@@ -15,3 +15,4 @@
 1.0.5 Updated validateSampleData module to allow mode = AAV for future AAV functionality.
 1.0.5 Corrected demultiplex documentation regarding --autoBarcodeOrt behavior.
 1.0.6 Updated BuildStdFragments, buildSites, and downstream modules to track if '--pullSubjectFragments' was used when buildStdFragments. BuildSites module will only be able update the database (delete and add records) if this flag was provided to buildStdFragments.
+1.0.7 Updated validateSampleData and demultiplex modules to conver incoming trial / subject / sample ids to ^[A-Z0-9_.-]+$ to protect against capitalization and spacing differences from creating orphan database records.

@@ -4,6 +4,35 @@ tmpString <- function() paste0(Sys.getpid(), '___', stringi::stri_rand_strings(1
 ppNum <- function(n) format(n, big.mark = ",", scientific = FALSE, trim = TRUE)
 
 
+# Canonical sample-sheet identifiers. Keep IDs as character at TSV import so
+# leading zeros are not lost before normalization. Formatting variants are aliases.
+normalizeSampleIDs <- function(x, field = "identifier", strict = TRUE){
+  if(!(is.character(x) || is.factor(x)) || !is.null(dim(x)))
+    stop("Error - ", field, " identifiers must be a character or factor vector; read sample-sheet IDs as text.", call. = FALSE)
+  if(!is.logical(strict) || length(strict) != 1L || is.na(strict))
+    stop("Error - strict must be TRUE or FALSE.", call. = FALSE)
+  original_names <- names(x)
+  values <- enc2utf8(as.character(x))
+  # PCRE horizontal/vertical whitespace includes tabs and non-breaking spaces.
+  values <- gsub("[\\h\\v]+", " ", values, perl = TRUE)
+  values <- trimws(values, whitespace = " ")
+  values <- gsub(" ", "_", values, fixed = TRUE)
+  # ASCII case conversion is independent of the process locale (e.g. Turkish i).
+  values <- chartr("abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", values)
+  names(values) <- original_names
+  if(strict){
+    invalid <- is.na(values) | !nzchar(values) | values == "NA" |
+      !grepl("^[A-Z0-9_.-]+$", values, perl = TRUE)
+    if(any(invalid))
+      stop("Error - invalid ", field, " identifier(s) at row(s) ",
+           paste(which(invalid), collapse = ", "),
+           ". After normalization, IDs must be non-empty and contain only A-Z, 0-9, underscore, hyphen or period; NA is reserved for missing values.",
+           call. = FALSE)
+  }
+  values
+}
+
+
 parse_bool <- function(x) {
   if (tolower(x) %in% c("true", "t", "1", "yes")) return(TRUE)
   if (tolower(x) %in% c("false", "f", "0", "no")) return(FALSE)

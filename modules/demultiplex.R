@@ -59,10 +59,45 @@ runModule <- function(){
     stop(msg)
   }
   
-  sampleData <- read_tsv(args$sampleData, show_col_types = FALSE)
+  # Identity columns are text: guessing their types would turn IDs like 001
+  # into 1 before normalization has a chance to preserve them.
+  sampleData <- read_tsv(args$sampleData, show_col_types = FALSE,
+                         col_types = cols(trial = col_character(),
+                                          subject = col_character(),
+                                          sample = col_character()))
   
   if(!nrow(sampleData))
     stop('Error - sampleData contains no sample rows.', call. = FALSE)
+  
+  idColumns <- c('trial', 'subject', 'sample')
+  missingIDs <- setdiff(idColumns, names(sampleData))
+  if(length(missingIDs)){
+    msg <- paste0('Error - sampleData is missing identifier columns: ',
+                  paste(missingIDs, collapse = ', '), '.')
+    updateLog(msg)
+    stop(msg, call. = FALSE)
+  }
+  # Apply the same naming policy as validateSampleData before any registration,
+  # grouping, or worker receives these values. Changes require no user action.
+  for(column in idColumns){
+    original <- as.character(sampleData[[column]])
+    normalized <- tryCatch(normalizeSampleIDs(original, field = column),
+                           error = function(e){
+                             updateLog(conditionMessage(e))
+                             stop(e)
+                           })
+    changed <- which(original != normalized)
+    if(length(changed)){
+      changes <- unique(data.frame(original = original[changed],
+                                   normalized = normalized[changed],
+                                   stringsAsFactors = FALSE))
+      for(i in seq_len(nrow(changes)))
+        updateLog(paste0('Normalized ', column, ' ID (parsed input -> output): ',
+                         encodeString(changes$original[i], quote = '"'), ' -> ',
+                         encodeString(changes$normalized[i], quote = '"'), '.'))
+    }
+    sampleData[[column]] <- normalized
+  }
   
   if(useDB){
     dbSamples <- validateDemultiplexSampleKeys(sampleData)

@@ -27,6 +27,7 @@ runModule <- function(){
   # previous PASS report looking like the result of the current validation.
   writeLines(c(paste0('FAILED: ', args$sampleData), 'Validation did not complete.'), reportFile)
   report <- tryCatch({
+    source(file.path(args$softwareRoot, 'lib', 'common.R'))
     source(file.path(args$softwareRoot, 'lib', 'validateSampleData.R'))
     validateSampleData(args)
   }, error = identity)
