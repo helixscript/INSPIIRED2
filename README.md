@@ -417,7 +417,26 @@ Importantly, the mounted data lake directory must contain an empty file name `.i
 
 The buildStdFragments module has an option, `--pullSubjectFragments`, to automatically pull all archived fragments associated with incoming trial / subject pairings. This feature allows all fragments associated with a subject to be standardized together and continue through the pipeline to update archived sites. This co-standardization ensures that integration site positions are consistent across samples. These additional database fragments will continue to the `buildSites` module and update previous sites records in the database.
 
-The `buildSites`, `nearestGenes`, and `annotateRepeat` modules also support databasing. Providing the `--dbConfigFile` and `--dbConfigID` flags to these modules results in the population of the `sites` database table and the storing of site data in the data lake.  Populating the sites table is destructive. For example, the output of `nearestGenes` will overwrite sample sites written by `buildSites` and the output of `annotateRepeats` will overwrite sites written by `nearestGenes`.
+The `buildSites`, `nearestGenes`, and `annotateRepeats` modules support optional writes to the `sites` database table and its Parquet data lake. Supply both `--dbConfigFile` and `--dbConfigID` to enable writes.
+
+Database writes from all three modules require successful archived-fragment retrieval by `buildStdFragments --pullSubjectFragments`. Every input row must have `pullSubjectFragments = TRUE`, and the RDS must retain its valid rebuild manifest. Missing, false, mixed, or missing-value flags and invalid manifests stop a database-enabled run before it connects. A successful archive query with no matching historical fragments still qualifies: it establishes that there is no prior archived evidence to combine.
+
+For each processed `trial / subject / sample / refGenome` group, each of these modules replaces the complete site collection across all modes. Earlier U5-only records are removed when their evidence becomes `dual detect`, while surviving U5-only and U3-only sites are repopulated from the combined fragment evidence. Other samples and reference genomes are outside that replacement scope. The SQL primary key still includes `mode`, and each resulting mode group retains its own Parquet file. New files are prepared before the transaction; the committed result, including absence of obsolete modes, is verified before old unreferenced files are removed.
+
+`buildSites` validates the fragment manifest and records the original processed-group list in its site output, even when it runs without database credentials. `nearestGenes` and `annotateRepeats` preserve that list and the retrieval flag through their RDS outputs. This includes processed groups with no surviving sites while other groups remain, so their obsolete records can also be removed. The first site-database upload can therefore occur at any of the three stages. Globally empty inputs remain errors and do not authorize deletion.
+
+Pass complete, current RDS outputs along this chain. Do not subset rows or manufacture provenance: the flag records retrieval history, and the manifest's row-count check detects a changed number of rows, but these checks do not establish that an old RDS is current after a newer independent run. Older RDS files remain usable for annotation without database options; missing or invalid provenance is not promoted into upload eligibility. To upgrade an existing sites RDS, rerun the updated `buildSites` on complete standardized fragments carrying valid retrieval provenance, then rerun the annotations. Rerun `buildStdFragments --pullSubjectFragments` as well if its output lacks that provenance.
+
+Example with the first site-database upload at the final annotation stage:
+
+```bash
+inspiired2 buildStdFragments --outputDir out --inputData out/buildFragments.rds --pullSubjectFragments --dbConfigFile my.cnf --dbConfigID inspiired2_admin
+inspiired2 buildSites --outputDir out --inputData out/buildStdFragments.rds
+inspiired2 nearestGenes --outputDir out --inputData out/buildSites.rds
+inspiired2 annotateRepeats --outputDir out --inputData out/nearestGenes.rds --dbConfigFile my.cnf --dbConfigID inspiired2_admin
+```
+
+The same credential pair can also be supplied to `buildSites` or `nearestGenes` when an earlier database update is wanted.
 
 <br>
 
@@ -735,7 +754,11 @@ Sources: [modules/buildFragments.R](modules/buildFragments.R), [database initial
 
 **Input:** `buildFragments.rds`, or a compatible candidate-fragment table reconstructed with `pullDBrecords`.
 
-**Main output:** `buildStdFragments.rds`, containing standardized coordinates, `posid`, total `reads`, contributing `readIDs`, UMI lists, representative leaders, and preparation/sample metadata.
+**Main output:** `buildStdFragments.rds`, containing standardized coordinates, `posid`, total `reads`, contributing `readIDs`, UMI lists, representative leaders, preparation/sample metadata, and the factor column `pullSubjectFragments`.
+
+`pullSubjectFragments` has levels `"FALSE"` and `"TRUE"`; all rows describe the same module run. It is `"TRUE"` only after the requested database retrieval succeeds, including when that query returns zero historical records. It is `"FALSE"` when retrieval was not requested. A failed retrieval aborts processing. The flag is newly assigned on every run.
+
+The RDS also carries an `inspiired2.siteRebuild` attribute containing a version, the retrieval status, the final fragment-row count, and the processed sample/genome groups captured before filtering. This keeps groups with zero surviving fragments identifiable when other groups remain. Pass the complete RDS directly to `buildSites`; do not manufacture the flag or subset the result before a database rebuild. Existing globally empty-result errors remain failures and do not trigger a sites-table replacement.
 
 ```bash
 inspiired2 buildStdFragments --outputDir out --inputData out/buildFragments.rds
@@ -822,9 +845,9 @@ Sources: [modules/buildStdFragments.R](modules/buildStdFragments.R), [lib/buildS
 
 `buildSites` combines standardized fragments into sample-level integration-site records, summarizes replicate support, and calculates abundance using distinct fragment lengths. It can combine complementary U3/U5 evidence and convert detected junction coordinates to the pipeline's integration-site coordinate/orientation convention.
 
-**Input:** `buildStdFragments.rds`.
+**Input:** `buildStdFragments.rds`. Without database options, older files lacking pull provenance remain supported. With database options, the input must carry successful archived-fragment retrieval provenance and its complete processed-group manifest.
 
-**Output:** `buildSites.rds`, containing site identifiers, detection modes, sample and replicate abundance measures, representative leaders, and preparation metadata.
+**Output:** `buildSites.rds`, containing site identifiers, detection modes, sample and replicate abundance measures, representative leaders, and preparation metadata. When fragment provenance validates, the output also retains `pullSubjectFragments` and a version-2 `inspiired2.siteRebuild` attribute containing the site-row count and complete processed-group list. This metadata is emitted even without database options so a later annotation module can perform the full database replacement.
 
 ```bash
 inspiired2 buildSites --outputDir out --inputData out/buildStdFragments.rds
@@ -849,6 +872,8 @@ For the usual unmerged U3/U5 detections, coordinate correction adds the configur
 | `--integraseCorrectionDist` | integer | `2` | Coordinate shift, in bases, used to account for genomic target-site duplication: add it to positive-fragment positions and subtract it from negative-fragment positions before assigning vector orientation. Also applies inside accepted dual-detection pairs. Set 0 to omit the coordinate shift while keeping orientation handling. |
 | `--sumSonicBreaksWithin` | string | `replicates` | Choose replicates or samples. With replicates, count distinct fragment lengths in each replicate and sum those counts. With samples, count each distinct length once across the whole sample for that site. |
 | `--leadSeqClusteringParms` | string | `-c 0.90 -n 5 -G 0 -aS 0.95 -gap -2 -gap-ext -1 -d 0 -M 0` | Quoted CD-HIT-EST arguments used to count clusters among unique fragment-level representative leader sequences in repLeaderSeqClusters. In this implementation, these arguments do not choose repLeaderSeq; that sequence is selected separately by distinct-length support, then read support. The spelling Parms is required. |
+| `--dbConfigFile` | path | `none` | Database credential file; supply with --dbConfigID to enable complete sample/genome replacement after provenance validation. |
+| `--dbConfigID` | string | `none` | Credential block in --dbConfigFile. Omit both database options for file-only annotation or site assembly. |
 | `--help` | flag | — | Print this module's command-line help and exit. |
 | `-h` | flag | — | Short form of the module help option. |
 
@@ -862,6 +887,7 @@ For each site, `repLeaderSeq` is the fragment-level leader supported by the most
 |---|---|
 | `posid` | Chromosome, orientation sign, and integration coordinate, such as `chr1+123456`. Interpret together with `refGenome`. |
 | `mode` | Detection mode, including `dual detect` for accepted combined U3/U5 detections. |
+| `pullSubjectFragments` | When present on the input, the producer's uniform factor flag is retained in the site output and subsequent annotation chain. Database writes require TRUE for every row together with valid rebuild metadata. |
 | `sonicLengths` | Distinct standardized fragment lengths counted under the selected replicate-level or sample-level rule. |
 | `reads` | Sum of fragment `reads`, preserving the original read-pair counts carried through duplicate collapsing. |
 | `UMIs` | Number of distinct processed UMI labels across the site's fragments. Set to `NA` when all input UMI labels are the default placeholder. |
@@ -905,6 +931,8 @@ The module processes each reference genome independently and ignores strand for 
 | `--threads` | integer | `50` | Sets the data.table thread count through shared initialization. The current reference-genome and site-annotation loops are sequential. |
 | `--fileTag` | string | `nearestGenes` | Output filename prefix. For example, run1 produces run1.rds, run1.log, run1.yml, and run1.done, plus any module-specific audit files. |
 | `--ramDiskPath` | path | `/dev/shm` | Parent directory for a unique temporary working directory. If this path is not writable, shared initialization uses the output directory. Selecting a path does not allocate RAM or change its capacity. |
+| `--dbConfigFile` | path | `none` | Database credential file; supply with --dbConfigID to enable complete sample/genome replacement after provenance validation. |
+| `--dbConfigID` | string | `none` | Credential block in --dbConfigFile. Omit both database options for file-only annotation or site assembly. |
 | `--help` | flag | — | Print this module's command-line help and exit. |
 | `-h` | flag | — | Short form of the module help option. |
 
@@ -918,6 +946,8 @@ The module processes each reference genome independently and ignores strand for 
 | `beforeNearestGene` | Whether the integration coordinate is lower than the smallest start coordinate among the tied nearest gene intervals. |
 
 Distance is measured to the gene interval, not specifically to the transcription start site. `beforeNearestGene` describes genomic coordinate order; it does not by itself mean transcriptionally upstream. If there is no nearest annotation on the site's reference sequence, nearest-gene fields remain missing. The module verifies that the annotation join preserves the input row count.
+
+**Database output:** Supply both `--dbConfigFile` and `--dbConfigID` to replace all modes in each processed `trial / subject / sample / refGenome` group. The module requires every `pullSubjectFragments` value to be TRUE and a valid version-2 site rebuild manifest from the updated `buildSites` or a subsequent annotation module. Validation occurs before connecting. The full processed-group list and retrieval flag are retained in the output RDS, including when no database write is requested. Without database options, legacy site tables remain supported.
 
 Source: [modules/nearestGenes.R](modules/nearestGenes.R).
 
@@ -946,6 +976,8 @@ The module reads the existing repeat intervals and tests overlap at the integrat
 | `--threads` | integer | `50` | Sets the data.table thread count through shared initialization. The current reference-genome and repeat-annotation loops are sequential. |
 | `--fileTag` | string | `annotateRepeats` | Output filename prefix. For example, run1 produces run1.rds, run1.log, run1.yml, and run1.done, plus any module-specific audit files. |
 | `--ramDiskPath` | path | `/dev/shm` | Parent directory for a unique temporary working directory. If this path is not writable, shared initialization uses the output directory. Selecting a path does not allocate RAM or change its capacity. |
+| `--dbConfigFile` | path | `none` | Database credential file; supply with --dbConfigID to enable complete sample/genome replacement after provenance validation. |
+| `--dbConfigID` | string | `none` | Credential block in --dbConfigFile. Omit both database options for file-only annotation or site assembly. |
 | `--help` | flag | — | Print this module's command-line help and exit. |
 | `-h` | flag | — | Short form of the module help option. |
 
@@ -955,6 +987,8 @@ The module reads the existing repeat intervals and tests overlap at the integrat
 | `repeat_class` | Corresponding repeat class or classes from the annotation table. |
 
 Multiple overlapping annotations are combined into comma-separated values after removing duplicate name/class pairs. Sites with no overlapping repeat receive `NA`. The module verifies that the annotation join preserves the input row count. There are no repeat-class selection or overlap-radius switches.
+
+**Database output:** Supply both `--dbConfigFile` and `--dbConfigID` to replace all modes in each processed `trial / subject / sample / refGenome` group. The module requires every `pullSubjectFragments` value to be TRUE and a valid version-2 site rebuild manifest from the updated `buildSites` or a subsequent annotation module. Validation occurs before connecting. The full processed-group list and retrieval flag are retained in the output RDS, including when no database write is requested. Without database options, legacy site tables remain supported.
 
 Source: [modules/annotateRepeats.R](modules/annotateRepeats.R).
 

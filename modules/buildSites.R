@@ -34,7 +34,9 @@ runModule <- function(){
     })
   }, add = TRUE)
   
-  startModule()
+  # Validate the input's rebuild provenance before opening any DB connection.
+  args$dbConn <<- NULL
+  startModule(connectDB = FALSE)
   
   yaml::write_yaml(args[names(args) != "dbConn"], file.path(args$outputDir, paste0(args$fileTag, ".yml")))
   
@@ -51,6 +53,87 @@ runModule <- function(){
     updateLog(msg)
     stop(msg, call. = FALSE)
   }
+  useDB <- args$dbConfigFile != 'none' && args$dbConfigID != 'none'
+  
+  validateSiteRebuild <- function(x, provenance){
+    instruction <- paste0(' Re-run buildStdFragments with --pullSubjectFragments ',
+                          'and database credentials, then use its complete RDS output.')
+    if(!is.data.frame(x) || !nrow(x) || anyDuplicated(names(x)))
+      stop('Error - database site rebuilding requires a non-empty fragment table with unique column names.',
+           instruction, call. = FALSE)
+    flag <- x[['pullSubjectFragments']]
+    if(!(is.factor(flag) || is.logical(flag)) || !is.null(dim(flag)) ||
+       length(flag) != nrow(x) || anyNA(flag) ||
+       !all(as.character(flag) == 'TRUE'))
+      stop('Error - database site rebuilding requires pullSubjectFragments=TRUE for every input fragment; missing, FALSE, NA, or mixed values are not accepted.',
+           instruction, call. = FALSE)
+    required <- c('version', 'pullSubjectFragments', 'fragmentRows', 'groups')
+    if(!is.list(provenance) || anyDuplicated(names(provenance)) ||
+       !all(required %in% names(provenance)) ||
+       !identical(provenance$version, 1L) ||
+       !identical(provenance$pullSubjectFragments, TRUE))
+      stop('Error - database site rebuilding requires valid, completed inspiired2.siteRebuild provenance.',
+           instruction, call. = FALSE)
+    rows <- provenance$fragmentRows
+    if(!is.numeric(rows) || !is.null(dim(rows)) || length(rows) != 1L ||
+       is.na(rows) || !is.finite(rows) || rows != nrow(x))
+      stop('Error - the fragment row count does not match its site rebuild provenance.',
+           instruction, call. = FALSE)
+    
+    keyColumns <- c('trial', 'subject', 'sample', 'refGenome')
+    normalizeKeys <- function(tab, label){
+      if(!is.data.frame(tab) || anyDuplicated(names(tab)) ||
+         !all(keyColumns %in% names(tab)))
+        stop('Error - ', label, ' must contain trial, subject, sample, and refGenome.',
+             instruction, call. = FALSE)
+      keys <- as.data.frame(tab)[, keyColumns, drop = FALSE]
+      for(column in keyColumns){
+        values <- keys[[column]]
+        if(!is.atomic(values) || !is.null(dim(values)) || is.complex(values) || anyNA(values))
+          stop('Error - ', label, ' contains invalid ', column, ' identifiers.',
+               instruction, call. = FALSE)
+        values <- as.character(values)
+        if(any(!nzchar(trimws(values))) || any(values != trimws(values)))
+          stop('Error - ', label, ' contains blank or whitespace-padded ', column, ' identifiers.',
+               instruction, call. = FALSE)
+        keys[[column]] <- values
+      }
+      keys
+    }
+    if(!is.data.frame(provenance$groups) ||
+       !setequal(names(provenance$groups), keyColumns))
+      stop('Error - site rebuild groups must contain exactly trial, subject, sample, and refGenome.',
+           instruction, call. = FALSE)
+    groups <- normalizeKeys(provenance$groups, 'Site rebuild groups')
+    if(!nrow(groups) || anyDuplicated(groups))
+      stop('Error - site rebuild groups must be non-empty and unique.',
+           instruction, call. = FALSE)
+    observed <- unique(normalizeKeys(x, 'Input fragments'))
+    if(nrow(dplyr::anti_join(observed, groups, by = keyColumns)))
+      stop('Error - input fragments include a sample/genome group absent from the site rebuild provenance.',
+           instruction, call. = FALSE)
+    groups
+  }
+  
+  addSiteRebuildProvenance <- function(x, groups){
+    # Never pass fragment-level or stale site metadata into a new site result.
+    attr(x, 'inspiired2.siteRebuild') <- NULL
+    if(is.null(groups)) return(x)
+    flag <- x[['pullSubjectFragments']]
+    if(!is.data.frame(x) || !nrow(x) ||
+       !(is.factor(flag) || is.logical(flag)) || !is.null(dim(flag)) ||
+       length(flag) != nrow(x) || anyNA(flag) ||
+       !all(as.character(flag) == 'TRUE'))
+      stop('Error - cannot attach completed rebuild provenance to an empty or unverified site result.',
+           call. = FALSE)
+    attr(x, 'inspiired2.siteRebuild') <- list(
+      version = 2L,
+      pullSubjectFragments = TRUE,
+      siteRows = nrow(x),
+      groups = groups
+    )
+    x
+  }
   
   if(! args$sumSonicBreaksWithin %in% c('samples', 'replicates')) stop("Error - the flag --sumSonicBreaksWithin must be set to with 'samples' or 'replicates'.")
   if(! file.exists(args$inputData))  stop(paste0('Error - the input data file (', args$inputData, ') does not exist.'))
@@ -59,10 +142,38 @@ runModule <- function(){
   # Read in standardized fragments.
   frags <- readRDS(args$inputData)
   
+  # Validate even for file-only runs so a later annotation module can perform
+  # the first database upload using the original complete replacement scope.
+  siteRebuildGroups <- tryCatch({
+    validateSiteRebuild(frags, attr(frags, 'inspiired2.siteRebuild', exact = TRUE))
+  }, error = function(e){
+    if(useDB){
+      updateLog(conditionMessage(e))
+      stop(conditionMessage(e), call. = FALSE)
+    }
+    updateLog(paste0('Continuing without database rebuild provenance; this site output cannot be uploaded to the database. ',
+                     sub('^Error - ', '', conditionMessage(e))))
+    NULL
+  })
+  if(!is.null(siteRebuildGroups)){
+    updateLog(paste0('Validated completed archive retrieval for ',
+                     ppNum(nrow(siteRebuildGroups)), ' sample/genome group(s).'))
+  }
+  
   if(nrow(frags) == 0){
     msg <- 'Error - fragment input data file has zero rows.'
     updateLog(msg)
     stop(msg)
+  }
+  
+  # Preserve a uniform valid flag when present; older non-DB inputs need none.
+  sitePullStatus <- NULL
+  flag <- frags[['pullSubjectFragments']]
+  if((is.factor(flag) || is.logical(flag)) && is.null(dim(flag)) &&
+     length(flag) == nrow(frags) && !anyNA(flag)){
+    values <- unique(as.character(flag))
+    if(length(values) == 1L && values %in% c('FALSE', 'TRUE'))
+      sitePullStatus <- values
   }
   
   frags$mode <- as.character(frags$mode)
@@ -334,13 +445,21 @@ runModule <- function(){
     ) %>%
     ungroup() %>%
     select(-sampleAbund)
-
+  
   # Change UMI counts of 1 to NA if UMIs were not captured.
   umiValues <- unlist(frags$UMIs, use.names = FALSE)
   if(length(umiValues) > 0L && isTRUE(all(umiValues == "AAAAAAAAAAAA"))){
     umiCols <- grep("^(UMIs|rep[0-9]+-UMIs)$", names(sites), value = TRUE)
     for(nm in umiCols) sites[[nm]] <- NA_integer_
   }
+  
+  if(!is.null(sitePullStatus))
+    sites$pullSubjectFragments <- factor(rep(sitePullStatus, nrow(sites)),
+                                         levels = c('FALSE', 'TRUE'))
+  sites <- addSiteRebuildProvenance(sites, siteRebuildGroups)
+  if(!is.null(siteRebuildGroups))
+    updateLog(paste0('Preserved complete database replacement scope for ',
+                     ppNum(nrow(siteRebuildGroups)), ' sample/genome group(s) in the site output.'))
   
   updateLog('Sample level site summary:')
   ts <- paste0(base::format(Sys.time(), "%m.%d.%Y"), ' [', timeElapsedString(), "]")
@@ -353,9 +472,9 @@ runModule <- function(){
   siteSummary[1,1] <- ts
   write.table(siteSummary, file =  args$logFile, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE,  append = TRUE)
   
-  if(!is.null(args$dbConn)){
-    updateLog("Database upload beginning.")
-    uploadSitesToDB(sites)
+  if(useDB){
+    updateLog('Database site rebuild beginning; replacing all modes for the validated sample/genome groups.')
+    uploadSitesToDB(sites, processedGroups = siteRebuildGroups)
   }
   
   saveRDS(sites, file.path(args$outputDir, paste0(args$fileTag, '.rds')))

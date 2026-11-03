@@ -233,11 +233,11 @@ run_blastn <- function(fastaFile, dbPath, params, threads = 1){
   
   outFile <- paste0(fastaFile, '.blastn')
   comm <- paste0("blastn ",  params,
-                " -query ", fastaFile, 
-                " -db ",    dbPath,
-                " -out ",   outFile,
-                " -num_threads ", threads,
-                " -outfmt '6 qseqid qstart qend sstart send sstrand length pident gaps gapopen bitscore'")
+                 " -query ", fastaFile, 
+                 " -db ",    dbPath,
+                 " -out ",   outFile,
+                 " -num_threads ", threads,
+                 " -outfmt '6 qseqid qstart qend sstart send sstrand length pident gaps gapopen bitscore'")
   
   status <- system(comm)
   requireCommandSuccess(status, paste0("blastn query ", basename(fastaFile)))
@@ -287,7 +287,72 @@ parseBLAToutput <- function(f){
 # which are relative filenames so the lake can be mounted elsewhere for reading.
 .sitesDBDataLake <- "/data"
 
-uploadSitesToDB <- function(sites){
+# Pipeline modules supply the validated four-key scope to replace all modes in
+# each processed sample/genome. Every upload requires complete sites provenance.
+# Omitted scope retains the legacy exact-mode helper behavior, with the same gate.
+uploadSitesToDB <- function(sites, processedGroups = NULL){
+  validateSiteRebuild <- function(x, provenance){
+    instruction <- paste0(' Re-run buildSites using the complete output of ',
+                          'buildStdFragments --pullSubjectFragments with database credentials, ',
+                          'then pass the complete sites RDS through the annotation chain.')
+    if(!is.data.frame(x) || !nrow(x) || anyDuplicated(names(x)))
+      stop('Error - database site updates require a non-empty sites table with unique column names.',
+           instruction, call. = FALSE)
+    flag <- x[['pullSubjectFragments']]
+    if(!(is.factor(flag) || is.logical(flag)) || !is.null(dim(flag)) ||
+       length(flag) != nrow(x) || anyNA(flag) ||
+       !all(as.character(flag) == 'TRUE'))
+      stop('Error - database site updates require pullSubjectFragments=TRUE for every input site; missing, FALSE, NA, or mixed values are not accepted.',
+           instruction, call. = FALSE)
+    required <- c('version', 'pullSubjectFragments', 'siteRows', 'groups')
+    if(!is.list(provenance) || anyDuplicated(names(provenance)) ||
+       !setequal(names(provenance), required) ||
+       !identical(provenance$version, 2L) ||
+       !identical(provenance$pullSubjectFragments, TRUE))
+      stop('Error - database site updates require valid version-2 inspiired2.siteRebuild provenance.',
+           instruction, call. = FALSE)
+    rows <- provenance$siteRows
+    if(!is.numeric(rows) || !is.null(dim(rows)) || length(rows) != 1L ||
+       is.na(rows) || !is.finite(rows) || rows != nrow(x))
+      stop('Error - the site row count does not match its site rebuild provenance.',
+           instruction, call. = FALSE)
+    
+    keyColumns <- c('trial', 'subject', 'sample', 'refGenome')
+    normalizeKeys <- function(tab, label){
+      if(!is.data.frame(tab) || anyDuplicated(names(tab)) ||
+         !all(keyColumns %in% names(tab)))
+        stop('Error - ', label, ' must contain trial, subject, sample, and refGenome.',
+             instruction, call. = FALSE)
+      keys <- as.data.frame(tab)[, keyColumns, drop = FALSE]
+      for(column in keyColumns){
+        values <- keys[[column]]
+        if(!is.atomic(values) || !is.null(dim(values)) || is.complex(values) || anyNA(values))
+          stop('Error - ', label, ' contains invalid ', column, ' identifiers.',
+               instruction, call. = FALSE)
+        values <- as.character(values)
+        if(any(!nzchar(trimws(values))) || any(values != trimws(values)))
+          stop('Error - ', label, ' contains blank or whitespace-padded ', column, ' identifiers.',
+               instruction, call. = FALSE)
+        keys[[column]] <- values
+      }
+      keys
+    }
+    if(!is.data.frame(provenance$groups) ||
+       !setequal(names(provenance$groups), keyColumns))
+      stop('Error - site rebuild groups must contain exactly trial, subject, sample, and refGenome.',
+           instruction, call. = FALSE)
+    groups <- normalizeKeys(provenance$groups, 'Site rebuild groups')
+    if(!nrow(groups) || anyDuplicated(groups))
+      stop('Error - site rebuild groups must be non-empty and unique.',
+           instruction, call. = FALSE)
+    observed <- unique(normalizeKeys(x, 'Input sites'))
+    if(nrow(dplyr::anti_join(observed, groups, by = keyColumns)))
+      stop('Error - input sites include a sample/genome group absent from the site rebuild provenance.',
+           instruction, call. = FALSE)
+    groups
+  }
+  provenance_groups <- validateSiteRebuild(
+    sites, attr(sites, 'inspiired2.siteRebuild', exact = TRUE))
   if(!is.list(args) || !all(c("dbConfigFile", "dbConfigID") %in% names(args)) ||
      any(vapply(args[c("dbConfigFile", "dbConfigID")], function(x)
        !is.character(x) || length(x) != 1L || is.na(x) || !nzchar(x) || x == "none", logical(1))) ||
@@ -295,8 +360,8 @@ uploadSitesToDB <- function(sites){
     stop("Error - uploadSitesToDB requires args$dbConfigID and an existing args$dbConfigFile.", call. = FALSE)
   key_columns <- c("trial", "subject", "sample", "refGenome", "mode")
   db_columns <- c("trial", "subject", "sample", "ref_genome", "mode")
-  if(!is.data.frame(sites) || !nrow(sites))
-    stop("Error - uploadSitesToDB requires a non-empty sites data frame.", call. = FALSE)
+  scope_columns <- key_columns[seq_len(4L)]
+  full_scope <- !is.null(processedGroups)
   if(anyDuplicated(names(sites)) || !all(c(key_columns, "posid") %in% names(sites)))
     stop("Error - sites must have unique column names and include trial, subject, sample, refGenome, mode and posid.", call. = FALSE)
   data <- as.data.frame(sites)
@@ -310,7 +375,38 @@ uploadSitesToDB <- function(sites){
       stop("Error - sites column ", column, " must contain non-missing, non-empty scalar identifiers (strings for posid).", call. = FALSE)
   }
   keys <- as.data.frame(lapply(data[key_columns], as.character), stringsAsFactors = FALSE)
-  groups <- dplyr::group_rows(dplyr::group_by(keys, dplyr::across(dplyr::all_of(key_columns))))
+  if(full_scope){
+    # Only an explicit four-key scope authorizes replacement across every mode.
+    # Do not infer this scope from surviving sites or from object attributes.
+    if(!is.data.frame(processedGroups) || anyDuplicated(names(processedGroups)) ||
+       !setequal(names(processedGroups), scope_columns) || !nrow(processedGroups))
+      stop("Error - processedGroups must be a non-empty data frame containing exactly trial, subject, sample and refGenome.", call. = FALSE)
+    scope_keys <- as.data.frame(processedGroups)[scope_columns]
+    for(column in scope_columns){
+      values <- scope_keys[[column]]
+      if(!is.atomic(values) || !is.null(dim(values)) || is.complex(values) || anyNA(values))
+        stop("Error - processedGroups.", column, " must contain non-missing scalar identifiers.", call. = FALSE)
+      values <- as.character(values)
+      if(any(!nzchar(trimws(values))) || any(values != trimws(values)))
+        stop("Error - processedGroups.", column, " contains blank or whitespace-padded identifiers.", call. = FALSE)
+      scope_keys[[column]] <- values
+    }
+    if(anyDuplicated(scope_keys))
+      stop("Error - processedGroups must contain unique sample/genome groups.", call. = FALSE)
+    if(nrow(dplyr::anti_join(scope_keys, provenance_groups, by = scope_columns)) ||
+       nrow(dplyr::anti_join(provenance_groups, scope_keys, by = scope_columns)))
+      stop("Error - processedGroups must match the complete sample/genome scope in the sites provenance.", call. = FALSE)
+    key_ids <- function(x){
+      if(!nrow(x)) return(character())
+      do.call(paste0, lapply(x, function(values)
+        paste0(nchar(values, type = "bytes"), ":", values)))
+    }
+    site_scope <- match(key_ids(keys[scope_columns]), key_ids(scope_keys))
+    if(anyNA(site_scope))
+      stop("Error - sites include a sample/genome group absent from processedGroups.", call. = FALSE)
+  }
+  groups <- if(nrow(keys))
+    dplyr::group_rows(dplyr::group_by(keys, dplyr::across(dplyr::all_of(key_columns)))) else list()
   if(!requireNamespace("arrow", quietly = TRUE))
     stop("Error - the arrow R package is required to upload sites.", call. = FALSE)
   if(!dir.exists(.sitesDBDataLake) || !file.exists(file.path(.sitesDBDataLake, ".inspiired")) ||
@@ -360,10 +456,18 @@ uploadSitesToDB <- function(sites){
   required <- c(db_columns, "total_sites", "processed_date", "data_file_name")
   if(!all(required %in% schema$column_name))
     stop("Error - the sites table is missing required columns.", call. = FALSE)
+  primary <- DBI::dbGetQuery(conn, paste(
+    "SELECT COLUMN_NAME AS column_name FROM information_schema.KEY_COLUMN_USAGE",
+    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sites'",
+    "AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY ORDINAL_POSITION"))
+  if(!identical(as.character(primary$column_name), db_columns))
+    stop("Error - sites must have the five-column sample/genome/mode primary key.", call. = FALSE)
   lengths <- setNames(as.numeric(schema$max_length), schema$column_name)
   for(i in seq_along(key_columns)){
     limit <- lengths[[db_columns[[i]]]]
-    if(is.na(limit) || any(nchar(keys[[i]], type = "chars") > limit)){
+    values <- keys[[i]]
+    if(full_scope && i <= length(scope_columns)) values <- c(values, scope_keys[[i]])
+    if(is.na(limit) || any(nchar(values, type = "chars") > limit)){
       hint <- if(db_columns[[i]] == "mode")
         " Run migrations/sites_mode_width.sql to support 'dual detect'." else ""
       stop("Error - sites.", db_columns[[i]], " is too short for the supplied identifiers.", hint, call. = FALSE)
@@ -374,6 +478,9 @@ uploadSitesToDB <- function(sites){
   
   key_where <- paste(paste(db_columns, "= ?"), collapse = " AND ")
   select_sql <- paste("SELECT data_file_name, total_sites FROM sites WHERE", key_where)
+  replacement_where <- if(full_scope)
+    paste(paste(db_columns[seq_along(scope_columns)], "= ?"), collapse = " AND ") else key_where
+  replacement_select <- paste("SELECT data_file_name, total_sites FROM sites WHERE", replacement_where)
   insert_sql <- paste(
     "INSERT INTO sites (trial, subject, sample, ref_genome, mode, total_sites, processed_date, data_file_name)",
     "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)"
@@ -445,6 +552,15 @@ uploadSitesToDB <- function(sites){
                          total = length(unique(data$posid[indices])), file = filename)
     log_message(paste0("Prepared sites Parquet: ", filename))
   }
+  if(full_scope){
+    group_scope <- vapply(groups, function(indices) site_scope[indices[[1L]]], integer(1))
+    expected_counts <- tabulate(group_scope, nbins = nrow(scope_keys))
+    replacements <- lapply(seq_len(nrow(scope_keys)), function(i)
+      list(params = unname(as.list(scope_keys[i, , drop = FALSE])), expected = expected_counts[[i]]))
+  } else {
+    replacements <- lapply(uploads, function(upload)
+      list(params = upload$params, expected = 1L))
+  }
   new_names <- vapply(uploads, `[[`, character(1), "file")
   old_files <- character()
   old_path <- function(name){
@@ -464,6 +580,19 @@ uploadSitesToDB <- function(sites){
        !isTRUE(as.numeric(stored$total_sites[[1L]]) == upload$total))
       stop("Error - sites database verification failed for ", paste(upload$params, collapse = "/"), call. = FALSE)
   }
+  verify_scope <- function(connection){
+    # Checking inserted records alone cannot prove that obsolete modes or an
+    # entirely eliminated sample were cleared. Verify absence within every scope.
+    for(replacement in replacements){
+      stored <- DBI::dbGetQuery(connection, replacement_select, params = replacement$params)
+      if(nrow(stored) != replacement$expected)
+        stop("Error - sites replacement-scope verification failed for ",
+             paste(replacement$params, collapse = "/"), ": expected ", replacement$expected,
+             " record(s), found ", nrow(stored), ".", call. = FALSE)
+    }
+    for(upload in uploads) verify_record(connection, upload)
+    invisible(TRUE)
+  }
   
   DBI::dbBegin(conn)
   transaction_open <- TRUE
@@ -471,22 +600,23 @@ uploadSitesToDB <- function(sites){
   # compare equal under the DB collation, the primary key rejects the second
   # INSERT and the entire batch rolls back. Filenames cannot detect this: an
   # unchanged re-upload legitimately has the same filename as the old record.
-  for(upload in uploads){
-    old <- DBI::dbGetQuery(conn, paste(select_sql, "FOR UPDATE"), params = upload$params)
-    if(nrow(old) > 1L)
+  for(replacement in replacements){
+    old <- DBI::dbGetQuery(conn, paste(replacement_select, "FOR UPDATE"), params = replacement$params)
+    if(!full_scope && nrow(old) > 1L)
       stop("Error - multiple sites records found for one primary key.", call. = FALSE)
     if(nrow(old)){
-      old_path(as.character(old$data_file_name[[1L]]))
-      old_files <- c(old_files, as.character(old$data_file_name[[1L]]))
+      filenames <- as.character(old$data_file_name)
+      for(name in filenames) old_path(name)
+      old_files <- c(old_files, filenames)
     }
-    deleted <- DBI::dbExecute(conn, paste("DELETE FROM sites WHERE", key_where), params = upload$params)
+    deleted <- DBI::dbExecute(conn, paste("DELETE FROM sites WHERE", replacement_where), params = replacement$params)
     if(!isTRUE(deleted == nrow(old))) stop("Error - unexpected sites deletion count.", call. = FALSE)
   }
   for(upload in uploads){
     inserted <- DBI::dbExecute(conn, insert_sql, params = c(upload$params, list(upload$total, upload$file)))
     if(!isTRUE(inserted == 1L)) stop("Error - failed to insert a sites record.", call. = FALSE)
-    verify_record(conn, upload)
   }
+  verify_scope(conn)
   tryCatch({
     # Older RMariaDB dbCommit() methods ignore C API errors. The SQL query path
     # checks the server's response; dbCommit() then clears driver bookkeeping.
@@ -502,7 +632,7 @@ uploadSitesToDB <- function(sites){
   tryCatch({
     verify <- createDBconnection()
     tryCatch({
-      for(upload in uploads) verify_record(verify, upload)
+      verify_scope(verify)
     }, finally = DBI::dbDisconnect(verify))
   }, error = function(e) {
     stop("Error - sites COMMIT completed but independent verification failed. Old and new Parquet files were retained. ",
@@ -530,6 +660,7 @@ uploadSitesToDB <- function(sites){
       stop("Error - sites upload committed, but could not remove obsolete Parquet file: ", path, call. = FALSE)
     }
   }
-  log_message(paste0("Sites upload committed and verified: ", length(uploads), " record(s)."))
+  log_message(paste0("Sites upload committed and verified: ", length(uploads), " record(s) across ",
+                     length(replacements), if(full_scope) " sample/genome replacement group(s)." else " mode replacement group(s)."))
   invisible(TRUE)
 }

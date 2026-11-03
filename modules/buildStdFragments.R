@@ -84,13 +84,21 @@ runModule <- function(){
   frags$leaderSeqHMM    <- as.character(frags$leaderSeqHMM)
   frags$vectorFastaFile <- as.character(frags$vectorFastaFile)
   
+  pulledSubjectFragments <- FALSE
   if(isTRUE(args$pullSubjectFragments)){
     newFrags <- pullDBfragments(frags)
+    pulledSubjectFragments <- TRUE
     updateLog(paste0('Done pulling fragments. Number of fragment reads pulled: ', ppNum(n_distinct(newFrags$readID))))
     updateLog(paste0('Number of fragments reads before merging input and pulled reads: ', ppNum(n_distinct(frags$readID))))
     if(nrow(newFrags) > 0L) frags <- data.table::as.data.table(dplyr::bind_rows(frags, newFrags))
     updateLog(paste0('Number of fragments reads after merging input and pulled reads: ', ppNum(n_distinct(frags$readID))))
   }
+  
+  # Retain the complete sample/genome scope before any reads are filtered out.
+  # Surviving fragment rows alone cannot identify samples with no final sites.
+  siteRebuildGroups <- unique(as.data.frame(
+    frags[, .(trial, subject, sample, refGenome)]))
+  siteRebuildGroups[] <- lapply(siteRebuildGroups, as.character)
   
   if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
     stop("Error - chromosome names cannot contain '+' or '-' because these characters delimit posid strand.")
@@ -693,6 +701,19 @@ runModule <- function(){
   frags$fragEnd   <- as.integer(frags$fragEnd)
   
   frags <- frags[, .(mode, refGenome, trial, subject, sample, replicate, UMI, posid, reads, repLeaderSeq, fragChromosome, fragStrand, fragStart, fragEnd, anchorReadCluster, readIDs, UMIs, leaderSeqGroupNum, leaderSeqHMM, vectorFastaFile)]
+  
+  # Record this run's completed retrieval, not a flag inherited from its input.
+  frags$pullSubjectFragments <- factor(rep(pulledSubjectFragments, nrow(frags)),
+                                       levels = c(FALSE, TRUE))
+  attr(frags, 'inspiired2.siteRebuild') <- list(
+    version = 1L,
+    pullSubjectFragments = pulledSubjectFragments,
+    fragmentRows = nrow(frags),
+    groups = siteRebuildGroups
+  )
+  updateLog(paste0('Recorded site rebuild provenance: pullSubjectFragments=',
+                   pulledSubjectFragments, '; ', ppNum(nrow(siteRebuildGroups)),
+                   ' processed sample/genome group(s).'))
   
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('buildStdFragments module completed.')
