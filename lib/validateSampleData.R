@@ -4,6 +4,7 @@
 .vsd_columns <- c("trial", "subject", "sample", "replicate", "index1Seq",
                   "adriftReadLinkerSeq", "refGenome", "leaderSeqHMM", "vectorFastaFile", "mode")
 .vsd_keys <- c("trial", "subject", "sample", "replicate", "refGenome", "mode")
+.vsd_id_columns <- c("trial", "subject", "sample")
 
 .vsd_issue <- function(report, line, column, message){
   report$issues[[length(report$issues) + 1L]] <- list(line = line, column = column, message = message)
@@ -86,9 +87,13 @@
   names(raw) <- header
   if(!"leaderSeqHMM" %in% header)
     raw$leaderSeqHMM <- rep(NA_character_, nrow(raw))
-  # Match demultiplex's readr type inference for SQL identifiers (e.g. numeric
-  # sample names), while retaining raw cells for corrections and length checks.
+  original <- raw
+  # Match demultiplex's explicit ID types: numeric-looking IDs such as 001 must
+  # remain text. Other fields retain their existing readr type inference.
   typed <- tryCatch(suppressWarnings(readr::read_tsv(I(paste(c(lines[1L], lines[line_numbers]), collapse = "\n")),
+                                                     col_types = readr::cols(trial = readr::col_character(),
+                                                                             subject = readr::col_character(),
+                                                                             sample = readr::col_character()),
                                                      show_col_types = FALSE, name_repair = "minimal", progress = FALSE, num_threads = 1)), error = identity)
   if(inherits(typed, "error")){
     .vsd_issue(report, NA, "TSV", paste0("The pipeline's TSV reader failed: ", conditionMessage(typed)))
@@ -106,7 +111,22 @@
       .vsd_issue(report, NA, "TSV", "The pipeline's TSV reader found a different row count. Check tabs and quotation marks.")
     if(nrow(problems) || nrow(typed) != nrow(raw)) typed <- NULL
   }
-  list(raw = raw, typed = typed, lines = line_numbers)
+  # Validate and query the same canonical identifiers that demultiplex stores.
+  # Keep originals for traceability; routine formatting changes are not issues.
+  for(column in .vsd_id_columns){
+    normalized <- normalizeSampleIDs(raw[[column]], field = column, strict = FALSE)
+    changed <- which(!is.na(raw[[column]]) & !is.na(normalized) & raw[[column]] != normalized)
+    if(length(changed)){
+      report$normalizations <- rbind(report$normalizations,
+                                     data.frame(line = line_numbers[changed], column = column,
+                                                original = raw[[column]][changed], normalized = normalized[changed],
+                                                stringsAsFactors = FALSE))
+    }
+    raw[[column]] <- normalized
+    if(!is.null(typed))
+      typed[[column]] <- normalizeSampleIDs(typed[[column]], field = column, strict = FALSE)
+  }
+  list(raw = raw, original = original, typed = typed, lines = line_numbers)
 }
 
 .vsd_cells <- function(report, sheet){
@@ -120,6 +140,13 @@
       .vsd_issue(report, sheet$lines[i], column, missing_message)
     for(i in which(.vsd_present(d[[column]]) & (d[[column]] != trimws(d[[column]]) | grepl("[\t\r\n]", d[[column]]))))
       .vsd_issue(report, sheet$lines[i], column, "Remove surrounding whitespace or embedded tabs/newlines; check that this value is in the correct column.")
+  }
+  for(column in .vsd_id_columns){
+    invalid <- .vsd_present(d[[column]]) & !grepl("^[A-Z0-9_.-]+$", d[[column]], perl = TRUE)
+    for(i in which(invalid))
+      .vsd_issue(report, sheet$lines[i], column, paste0(.vsd_value(sheet$original[[column]][i]),
+                                                        " normalizes to ", .vsd_value(d[[column]][i]),
+                                                        ". IDs may contain only A-Z, 0-9, underscore, hyphen or period after normalization."))
   }
   reps <- suppressWarnings(as.numeric(d$replicate))
   integer_ok <- is.finite(reps) & reps == trunc(reps) & abs(reps) <= .Machine$integer.max
@@ -219,10 +246,24 @@
   if(is.null(sheet$typed)) return(invisible(NULL))
   keys <- as.data.frame(lapply(sheet$typed[.vsd_keys], as.character), stringsAsFactors = FALSE)
   eligible <- integer_ok & Reduce(`&`, lapply(keys, .vsd_present))
+  for(column in .vsd_id_columns)
+    eligible <- eligible & grepl("^[A-Z0-9_.-]+$", keys[[column]], perl = TRUE)
   keys <- keys[eligible, , drop = FALSE]
   lines <- sheet$lines[eligible]
   keys$replicate <- as.integer(suppressWarnings(as.numeric(keys$replicate)))
   unique_rows <- which(!duplicated(keys))
+  # Database-enabled demultiplex requires one row per complete sample-replicate
+  # key. Detect duplicates after canonicalization and integer replicate parsing.
+  for(i in unique_rows){
+    same <- Reduce(`&`, lapply(names(keys), function(column) keys[[column]] == keys[[column]][i]))
+    if(sum(same) > 1L){
+      description <- paste(paste(names(keys), vapply(keys[i, , drop = FALSE], as.character, character(1)), sep = "="), collapse = ", ")
+      message <- paste0("Duplicate normalized sample replicate key on TSV lines ",
+                        paste(lines[same], collapse = ", "), ": ", description,
+                        ". Database-enabled demultiplex requires one row per trial/subject/sample/replicate/refGenome/mode key.")
+      for(j in which(same)) .vsd_issue(report, lines[j], "database", message)
+    }
+  }
   report$db_checked <- 0L
   query <- paste("SELECT trial, subject, sample, replicate, ref_genome AS refGenome, mode FROM fragments",
                  "WHERE trial = ? AND subject = ? AND sample = ? AND replicate = ? AND ref_genome = ? AND mode = ? LIMIT 1")
@@ -276,6 +317,9 @@
 validateSampleData <- function(args, connect = .vsd_connect){
   report <- new.env(parent = emptyenv())
   report$issues <- list(); report$notes <- character(); report$n_rows <- 0L
+  report$normalizations <- data.frame(line = integer(), column = character(),
+                                      original = character(), normalized = character(),
+                                      stringsAsFactors = FALSE)
   report$db_requested <- FALSE; report$db_complete <- FALSE; report$db_checked <- 0L
   report$limit_source <- "bundled schema (used when live limits are unavailable)"
   sheet <- .vsd_read(report, args$sampleData)
@@ -301,6 +345,15 @@ printSampleDataValidation <- function(report, path, verbose = FALSE, output = NU
   for(issue in issues){
     location <- if(is.na(issue$line)) "File" else paste("Line", issue$line)
     writeLines(paste0("  ", location, " [", issue$column, "]: ", issue$message), output)
+  }
+  if(!is.null(report$normalizations) && nrow(report$normalizations)){
+    writeLines("Identifier normalization (automatic; source TSV unchanged):", output)
+    for(i in seq_len(nrow(report$normalizations))){
+      change <- report$normalizations[i, , drop = FALSE]
+      writeLines(paste0("  Line ", change$line, " [", change$column, "]: ",
+                        encodeString(change$original, quote = '\"'), " -> ",
+                        encodeString(change$normalized, quote = '\"')), output)
+    }
   }
   writeLines(paste0("Name limits: ", paste(paste(names(report$limits), report$limits, sep = "="), collapse = ", "),
                     " characters; ", report$limit_source, "."), output)

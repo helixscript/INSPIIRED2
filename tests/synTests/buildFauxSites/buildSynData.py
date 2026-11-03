@@ -58,7 +58,7 @@ def build_parser():
         ('-s', '--seed', int, 1, 'Random seed.'),
         ('-r', '--refGenomePath', str, '../../../data/referenceGenomes/hg38.2bit', 'Reference 2bit file.'),
         ('-g', '--refGenomeID', str, 'hg38', 'Reference ID for sample metadata.'),
-        ('-i', '--integraseHMM', str, 'validation.hmm', 'Leader HMM (integrase only).'),
+        ('-i', '--integraseHMM', str, 'generic_CART19_v1.0.hmm', 'Leader HMM (integrase only).'),
         ('-t', '--anchorReadStartSeq', str, 'TCTGCGCGCT', 'Anchor filter metadata (AAV only).'),
         ('-x', '--R1_length', int, 150, 'Total R1 length, including linker and UMI.'),
         ('-y', '--R2_length', int, 150, 'Total R2 length, including leader.'),
@@ -586,9 +586,9 @@ def simulate_error(sequence, fraction, rng):
 
 
 def build_sample_rows(args):
-    groups = [('test', 'subjectA', 'sample1')] if args.singleSample else [
-        ('test', subject, sample) for subject in ('subjectA', 'subjectB', 'subjectC')
-        for sample in ('sample1', 'sample2', 'sample3')]
+    groups = [('TEST', 'SUBJECT_A', 'SAMPLE_1')] if args.singleSample else [
+        ('TEST', subject, sample) for subject in ('SUBJECT_A', 'SUBJECT_B', 'SUBJECT_C')
+        for sample in ('SAMPLE_1', 'SAMPLE_2', 'SAMPLE_3')]
     barcodes = unique_dna(make_rng(args.seed, 'barcodes'), args.I1_length,
                           len(groups) * args.nReplicates)
     rows = []
