@@ -393,6 +393,7 @@ uploadSitesToDB <- function(sites, processedGroups = NULL){
   full_scope <- !is.null(processedGroups)
   if(anyDuplicated(names(sites)) || !all(c(key_columns, "posid") %in% names(sites)))
     stop("Error - sites must have unique column names and include trial, subject, sample, refGenome, mode and posid.", call. = FALSE)
+  processingProvenance <- provenanceFromObject(sites)
   data <- as.data.frame(sites)
   for(column in c(key_columns, "posid")){
     values <- data[[column]]
@@ -536,7 +537,7 @@ uploadSitesToDB <- function(sites, processedGroups = NULL){
     local <- tempfile("sites_", tmpdir = tmp_dir, fileext = ".parquet")
     pending <- tempfile(".sites_", tmpdir = data_lake, fileext = ".pending")
     on.exit(unlink(c(local, pending)), add = TRUE)
-    arrow::write_parquet(x, local)
+    provenanceWriteParquet(x, local, provenance = processingProvenance)
     checksum <- if(file.exists(local) && file.size(local) > 0) unname(tools::md5sum(local)) else NA_character_
     if(length(checksum) != 1L || is.na(checksum) || !grepl("^[[:xdigit:]]{32}$", checksum))
       stop("Error - failed to write and checksum sites Parquet file.", call. = FALSE)
@@ -692,4 +693,340 @@ uploadSitesToDB <- function(sites, processedGroups = NULL){
   log_message(paste0("Sites upload committed and verified: ", length(uploads), " record(s) across ",
                      length(replacements), if(full_scope) " sample/genome replacement group(s)." else " mode replacement group(s)."))
   invisible(TRUE)
+}
+
+# Processing provenance is independent of inspiired2.siteRebuild, which remains
+# the authorization gate for complete site replacements. Version 1 stores the
+# complete ancestry inside each artifact; it is not a database success ledger.
+.provenanceAttribute <- "inspiired2.provenance"
+.provenanceMetadataKey <- "inspiired2.provenance"
+
+.provenancePlain <- function(x){
+  if(is.null(x)) return(NULL)
+  if(inherits(x, "POSIXt")) return(format(x, "%Y-%m-%dT%H:%M:%OS6Z", tz = "UTC"))
+  if(inherits(x, "Date")) return(as.character(x))
+  if(is.factor(x)) x <- as.character(x)
+  if(is.data.frame(x)){
+    return(list(columns = as.list(names(x)), rows = lapply(seq_len(nrow(x)), function(i)
+      lapply(as.list(x[i, , drop = FALSE]), function(v) .provenancePlain(v[[1L]])))))
+  }
+  if(is.list(x)){
+    if(!is.null(names(x)) && (anyNA(names(x)) || any(!nzchar(names(x))) || anyDuplicated(names(x))))
+      stop("Error - provenance lists must have unique non-empty names or no names.", call. = FALSE)
+    return(lapply(x, .provenancePlain))
+  }
+  if(!is.atomic(x) || !is.null(dim(x)) || is.complex(x) || is.raw(x))
+    stop("Error - unsupported object in provenance; use plain scalar values, lists, or data frames.", call. = FALSE)
+  if(length(x) != 1L || !is.null(names(x))) return(lapply(as.list(x), .provenancePlain))
+  if(is.na(x)) return(NULL)
+  if(is.numeric(x)){
+    if(!is.finite(x)) return(as.character(x))
+    return(as.double(x))
+  }
+  if(is.logical(x)) return(as.logical(x))
+  enc2utf8(as.character(x))
+}
+
+.provenanceYAML <- function(x){
+  if(!requireNamespace("yaml", quietly = TRUE))
+    stop("Error - the yaml package is required for processing provenance.", call. = FALSE)
+  yaml::as.yaml(.provenancePlain(x), precision = 17, indent.mapping.sequence = TRUE)
+}
+
+.provenanceHash <- function(x){
+  path <- tempfile("inspiired2_provenance_")
+  on.exit(unlink(path), add = TRUE)
+  writeBin(charToRaw(enc2utf8(x)), path)
+  value <- unname(tools::md5sum(path))
+  if(length(value) != 1L || is.na(value)) stop("Error - could not checksum provenance.", call. = FALSE)
+  value
+}
+
+.provenanceIDs <- function(x, label){
+  if(is.list(x) && !length(x)) return(character())
+  if(is.list(x) && all(vapply(x, function(v) is.character(v) && length(v) == 1L && !is.na(v), logical(1))))
+    x <- unlist(x, use.names = FALSE)
+  if(!is.character(x) || anyNA(x) || any(!nzchar(x)) || anyDuplicated(x))
+    stop("Error - invalid ", label, " in processing provenance.", call. = FALSE)
+  unname(x)
+}
+
+provenanceValidate <- function(bundle){
+  if(!is.list(bundle) || is.null(names(bundle)) || anyDuplicated(names(bundle)) ||
+     !setequal(names(bundle), c("version", "heads", "records", "artifact")) ||
+     length(bundle$version) != 1L || !is.numeric(bundle$version) ||
+     !isTRUE(bundle$version == 1))
+    stop("Error - unsupported or malformed INSPIIRED2 processing provenance.", call. = FALSE)
+  bundle$version <- 1L
+  bundle$heads <- .provenanceIDs(bundle$heads, "head IDs")
+  records <- bundle$records
+  if(!is.list(records) || (length(records) && (is.null(names(records)) || anyNA(names(records)) ||
+                                               any(!nzchar(names(records))) || anyDuplicated(names(records)))))
+    stop("Error - invalid provenance record map.", call. = FALSE)
+  for(id in names(records)){
+    r <- records[[id]]
+    if(!is.list(r) || is.null(names(r)) || anyDuplicated(names(r)) ||
+       !identical(r$id, id) || length(r$kind) != 1L ||
+       !is.character(r$kind) || !r$kind %in% c("execution", "source") ||
+       !"parents" %in% names(r))
+      stop("Error - malformed provenance record: ", id, call. = FALSE)
+    r$parents <- .provenanceIDs(r$parents, paste0("parent IDs for ", id))
+    if(r$kind == "execution"){
+      if(!is.character(r$module) || length(r$module) != 1L || is.na(r$module) || !nzchar(r$module) ||
+         !is.character(r$recorded_at) || length(r$recorded_at) != 1L || is.na(r$recorded_at) ||
+         !is.character(r$arguments_yaml) || length(r$arguments_yaml) != 1L || is.na(r$arguments_yaml) ||
+         !is.list(r$software) || !is.list(r$details) || !is.list(r$resources) || !is.list(r$input_files))
+        stop("Error - incomplete provenance execution: ", id, call. = FALSE)
+    } else {
+      if(!is.character(r$history) || length(r$history) != 1L ||
+         !r$history %in% c("embedded", "unavailable") || !is.list(r$source))
+        stop("Error - incomplete provenance source: ", id, call. = FALSE)
+    }
+    if(any(!r$parents %in% names(records)))
+      stop("Error - missing parent records in processing provenance: ", id, call. = FALSE)
+    records[[id]] <- r
+  }
+  if(any(!bundle$heads %in% names(records)) || (length(records) && !length(bundle$heads)))
+    stop("Error - missing head records in processing provenance.", call. = FALSE)
+  # Iterative topological validation avoids recursion limits on imported graphs.
+  remaining <- names(records)
+  resolved <- character()
+  while(length(remaining)){
+    ready <- remaining[vapply(records[remaining], function(r) all(r$parents %in% resolved), logical(1))]
+    if(!length(ready)) stop("Error - cycle in processing provenance.", call. = FALSE)
+    resolved <- c(resolved, ready)
+    remaining <- setdiff(remaining, ready)
+  }
+  if(!is.list(bundle$artifact)) stop("Error - invalid provenance artifact descriptor.", call. = FALSE)
+  # Keep the portable representation identical before and after YAML loading.
+  records <- lapply(records, function(r){
+    p <- r$parents
+    r <- .provenancePlain(r)
+    r$parents <- p
+    r
+  })
+  bundle$records <- records
+  bundle$artifact <- .provenancePlain(bundle$artifact)
+  bundle
+}
+
+provenanceToYAML <- function(bundle){
+  bundle <- provenanceValidate(bundle)
+  bundle$heads <- as.list(bundle$heads)
+  bundle$records <- lapply(bundle$records, function(r){ r$parents <- as.list(r$parents); r })
+  .provenanceYAML(bundle)
+}
+
+provenanceFromYAML <- function(text){
+  if(!is.character(text) || length(text) != 1L || is.na(text) || !nzchar(text) ||
+     nchar(text, type = "bytes") > 64 * 1024^2)
+    stop("Error - invalid or excessively large provenance YAML metadata.", call. = FALSE)
+  bundle <- tryCatch(yaml::yaml.load(text, eval.expr = FALSE), error = function(e)
+    stop("Error - could not decode provenance YAML: ", conditionMessage(e), call. = FALSE))
+  provenanceValidate(bundle)
+}
+
+.provenanceEmpty <- function(){
+  list(version = 1L, heads = character(), records = list(), artifact = list())
+}
+
+.provenanceFile <- function(path, checksum = FALSE){
+  if(!is.character(path) || length(path) != 1L || is.na(path) || !nzchar(path))
+    stop("Error - provenance file paths must be non-empty scalar strings.", call. = FALSE)
+  exists <- file.exists(path) && !dir.exists(path)
+  info <- if(exists) file.info(path) else NULL
+  out <- list(path = path, exists = exists, identity = "path_size_mtime_only",
+              size_bytes = if(exists) as.double(info$size) else NULL,
+              modified_at = if(exists) format(info$mtime, "%Y-%m-%dT%H:%M:%OS6Z", tz = "UTC") else NULL)
+  if(checksum){
+    if(!exists || file.access(path, 4L) != 0L)
+      stop("Error - cannot fingerprint provenance resource: ", path, call. = FALSE)
+    out$md5 <- unname(tools::md5sum(path))
+    if(length(out$md5) != 1L || is.na(out$md5))
+      stop("Error - cannot checksum provenance resource: ", path, call. = FALSE)
+    out$identity <- "md5"
+  }
+  .provenancePlain(out)
+}
+
+.provenanceScope <- function(x){
+  if(is.data.frame(x)){
+    columns <- intersect(c("trial", "subject", "sample", "replicate", "refGenome", "mode"), names(x))
+    # Scope depends only on identifiers. Do not convert/copy read sequences or
+    # coordinates, and collapse repeated keys before expanding factor labels.
+    if(!length(columns)){
+      keys <- data.frame()
+    } else {
+      if(inherits(x, "data.table") && requireNamespace("data.table", quietly = TRUE)){
+        keys <- unique(x[, columns, with = FALSE])
+      } else {
+        keys <- unique(x[, columns, drop = FALSE])
+      }
+      keys <- unique(as.data.frame(lapply(keys, as.character), stringsAsFactors = FALSE))
+    }
+    return(list(type = "table", row_count = as.double(nrow(x)),
+                scope = .provenancePlain(keys)))
+  }
+  if(is.list(x)){
+    members <- lapply(x, function(y) if(is.data.frame(y)) .provenanceScope(y) else list(type = class(y)[1L]))
+    return(list(type = "list", members = members))
+  }
+  list(type = class(x)[1L])
+}
+
+provenanceScope <- function(x, bundle){
+  bundle <- provenanceValidate(bundle)
+  bundle$artifact <- .provenanceScope(x)
+  bundle
+}
+
+.provenanceSource <- function(bundle, source, history, artifact){
+  if(is.null(source)) source <- list(description = "Unattributed input object")
+  if(is.character(source) && length(source) == 1L) source <- list(path = source)
+  if(!is.list(source)) stop("Error - provenance source must be a list or path.", call. = FALSE)
+  if(!is.null(source$path) && is.null(source$file)) source$file <- .provenanceFile(source$path)
+  source$artifact <- artifact
+  record <- list(kind = "source", parents = bundle$heads, history = history,
+                 source = .provenancePlain(source))
+  id <- paste0("source_", .provenanceHash(.provenanceYAML(record)))
+  record <- c(list(id = id), record)
+  if(!is.null(bundle$records[[id]]) && !identical(.provenanceYAML(bundle$records[[id]]), .provenanceYAML(record)))
+    stop("Error - conflicting provenance source ID.", call. = FALSE)
+  bundle$records[[id]] <- record
+  bundle$heads <- id
+  bundle$artifact <- artifact
+  provenanceValidate(bundle)
+}
+
+provenanceFromObject <- function(x, source = NULL){
+  bundle <- attr(x, .provenanceAttribute, exact = TRUE)
+  if(is.null(bundle))
+    return(.provenanceSource(.provenanceEmpty(), source, "unavailable", .provenanceScope(x)))
+  bundle <- provenanceValidate(bundle)
+  if(!is.null(source)) bundle <- .provenanceSource(bundle, source, "embedded", bundle$artifact)
+  bundle
+}
+
+provenanceMerge <- function(bundles){
+  if(!is.list(bundles)) stop("Error - provenanceMerge expects a list of bundles.", call. = FALSE)
+  out <- .provenanceEmpty()
+  for(bundle in bundles){
+    bundle <- provenanceValidate(bundle)
+    for(id in names(bundle$records)){
+      record <- bundle$records[[id]]
+      if(!is.null(out$records[[id]]) &&
+         !identical(.provenanceYAML(out$records[[id]]), .provenanceYAML(record)))
+        stop("Error - conflicting immutable provenance record: ", id, call. = FALSE)
+      out$records[[id]] <- record
+    }
+    out$heads <- union(out$heads, bundle$heads)
+  }
+  provenanceValidate(out)
+}
+
+.provenanceArguments <- function(x){
+  if(!is.list(x)) stop("Error - provenance arguments must be a list.", call. = FALSE)
+  # Config filenames/groups and the raw command are unnecessary for scientific
+  # reproduction and may reveal credentials. Never read credential-file contents.
+  redact <- function(value){
+    if(is.environment(value) || is.function(value) || isS4(value) || typeof(value) == "externalptr") return(NULL)
+    if(is.list(value)){
+      if(!is.null(names(value))){
+        secret <- grepl("password|passwd|secret|token|credential|dbConn|dbConfig|^command$", names(value), ignore.case = TRUE)
+        value <- value[!secret]
+      }
+      value <- lapply(value, redact)
+    }
+    value
+  }
+  .provenancePlain(redact(x))
+}
+
+provenanceRecord <- function(module, parents = list(), details = list(), resources = character(),
+                             inputFiles = character(), argsSnapshot = args){
+  if(!is.character(module) || length(module) != 1L || is.na(module) || !nzchar(module))
+    stop("Error - provenance module must be a non-empty string.", call. = FALSE)
+  bundle <- provenanceMerge(parents)
+  recorded <- format(Sys.time(), "%Y-%m-%dT%H:%M:%OS6Z", tz = "UTC")
+  # tempfile uses the process's temporary-name generator, not R's .Random.seed.
+  id <- paste0("run_", .provenanceHash(paste(recorded, Sys.getpid(), tempfile("run_"), sep = "|")))
+  root <- argsSnapshot$softwareRoot
+  code <- character()
+  if(is.character(root) && length(root) == 1L && !is.na(root) && nzchar(root)){
+    code <- c(file.path(root, c("VERSION", "inspiired2.R", paste0("modules/", module, ".R"))),
+              list.files(file.path(root, "lib"), pattern = "[.]R$", full.names = TRUE))
+    code <- unique(code[file.exists(code) & !dir.exists(code)])
+  }
+  version <- argsSnapshot$version
+  if(is.null(version) && length(code) && file.exists(file.path(root, "VERSION")))
+    version <- paste("INSPIIRED2", readLines(file.path(root, "VERSION"), n = 1L, warn = FALSE))
+  if(is.null(version)) version <- "unavailable" else version <- as.character(version)
+  software <- list(version = version, R_version = R.version.string,
+                   code = lapply(code, .provenanceFile, checksum = TRUE))
+  resources <- unique(as.character(resources))
+  inputFiles <- unique(as.character(inputFiles))
+  if(anyNA(resources) || any(!nzchar(resources)) || anyNA(inputFiles) || any(!nzchar(inputFiles)))
+    stop("Error - missing provenance input/resource paths.", call. = FALSE)
+  record <- list(id = id, kind = "execution", parents = bundle$heads, module = module,
+                 recorded_at = recorded, software = software,
+                 arguments_yaml = .provenanceYAML(.provenanceArguments(argsSnapshot)),
+                 details = .provenancePlain(details),
+                 resources = lapply(resources, .provenanceFile, checksum = TRUE),
+                 input_files = lapply(inputFiles, .provenanceFile, checksum = FALSE))
+  bundle$records[[id]] <- record
+  bundle$heads <- id
+  provenanceValidate(bundle)
+}
+
+provenanceAttach <- function(x, bundle){
+  attr(x, .provenanceAttribute) <- provenanceScope(x, bundle)
+  x
+}
+
+provenanceStrip <- function(x){
+  attr(x, .provenanceAttribute) <- NULL
+  if(is.list(x) && !is.data.frame(x)){
+    for(i in seq_along(x)) x[i] <- list(provenanceStrip(x[[i]]))
+  }
+  x
+}
+
+provenanceWriteParquet <- function(x, path, provenance = NULL){
+  if(!requireNamespace("arrow", quietly = TRUE))
+    stop("Error - the arrow package is required to archive processing provenance.", call. = FALSE)
+  if(is.null(provenance)) provenance <- provenanceFromObject(x)
+  bundle <- provenanceScope(x, provenance)
+  metadata <- provenanceToYAML(bundle)
+  # Store the explicit portable metadata once. Other Arrow/R attributes, notably
+  # the independent site-rebuild authorization attribute, retain their behavior.
+  table <- arrow::Table$create(provenanceStrip(x))
+  table$metadata[[.provenanceMetadataKey]] <- metadata
+  arrow::write_parquet(table, path)
+  reader <- arrow::ParquetFileReader$create(path)
+  actual <- reader$GetSchema()$metadata[[.provenanceMetadataKey]]
+  if(is.null(actual) || !identical(provenanceToYAML(provenanceFromYAML(actual)), metadata))
+    stop("Error - written Parquet processing provenance did not round-trip correctly: ", path, call. = FALSE)
+  invisible(path)
+}
+
+provenanceReadParquet <- function(path, source = NULL){
+  if(!requireNamespace("arrow", quietly = TRUE))
+    stop("Error - the arrow package is required to read processing provenance.", call. = FALSE)
+  table <- arrow::read_parquet(path, as_data_frame = FALSE)
+  text <- table$metadata[[.provenanceMetadataKey]]
+  data <- as.data.frame(table)
+  if(is.null(source)) source <- list()
+  if(is.character(source) && length(source) == 1L) source <- list(description = source)
+  if(!is.list(source)) stop("Error - provenance archive source must be a list.", call. = FALSE)
+  source$file <- .provenanceFile(path, checksum = TRUE)
+  if(is.null(text)){
+    # Explicitly missing even if an unrelated/older R-specific attribute exists.
+    bundle <- .provenanceSource(.provenanceEmpty(), source, "unavailable", .provenanceScope(data))
+  } else {
+    bundle <- provenanceFromYAML(text)
+    if(!identical(.provenanceYAML(bundle$artifact), .provenanceYAML(.provenanceScope(data))))
+      stop("Error - Parquet rows or sample keys do not match their provenance artifact scope: ", path, call. = FALSE)
+    bundle <- .provenanceSource(bundle, source, "embedded", bundle$artifact)
+  }
+  provenanceAttach(data, bundle)
 }

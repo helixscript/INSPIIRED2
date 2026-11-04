@@ -38,6 +38,7 @@ runModule <- function(){
   # Sample metadata needs no data-lake mount. DB helpers own short-lived
   # connections, closed before demultiplex workers are started.
   startModule(connectDB = FALSE)
+  provenanceArgs <- args
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   
@@ -525,6 +526,16 @@ runModule <- function(){
   updateLog(paste0('Writing ', ppNum(nrow(o)), ' read-pair records representing ',
                    ppNum(sum(o$nReads)), ' reads.'))
   
+  # Preserve the normalized sample definitions and the actual barcode decision.
+  # Raw FASTQs are described by path/size/mtime, without an additional full scan.
+  outputProvenance <- provenanceRecord(
+    'demultiplex',
+    details = list(canonicalSampleData = as.data.frame(sampleData),
+                   reverseComplementI1 = isTRUE(args$reverseComplementI1)),
+    resources = args$sampleData,
+    inputFiles = c(args$sampleData, args$indexReads, args$adriftReads, args$anchorReads),
+    argsSnapshot = provenanceArgs)
+  o <- provenanceAttach(o, outputProvenance)
   saveRDS(o, file.path(args$outputDir, paste0(args$fileTag, '.rds')), compress = FALSE)
   
   # Summary table

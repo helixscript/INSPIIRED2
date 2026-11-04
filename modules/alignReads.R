@@ -40,6 +40,7 @@ runModule <- function(){
   }
   
   startModule()
+  provenanceArgs <- args
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   
@@ -67,6 +68,7 @@ runModule <- function(){
   }
   
   inputData <- readRDS(args$inputData)
+  inputProvenance <- provenanceFromObject(inputData, source = list(path = args$inputData))
   if(!is.data.frame(inputData)) stop('Error - inputData must contain a data.frame or data.table.')
   if(nrow(inputData) == 0) stop('Error - inputData contains no reads.')
   
@@ -326,6 +328,14 @@ runModule <- function(){
   
   on.exit(if(file.exists(tmpOutputFile)) unlink(tmpOutputFile), add = TRUE)
   
+  updateLog('Recording alignment provenance and reference checksums.')
+  outputProvenance <- provenanceRecord(
+    'alignReads', parents = list(inputProvenance),
+    details = list(referenceGenomes = basename(refGenomeFiles),
+                   toolPaths = list(blat = unname(blatExecutable), pslScore = pslScoreExecutable)),
+    resources = unique(c(refGenomeFiles, unname(blatExecutable), pslScoreExecutable)),
+    inputFiles = args$inputData, argsSnapshot = provenanceArgs)
+  o <- provenanceAttach(o, outputProvenance)
   saveRDS(o, tmpOutputFile)
   
   if(! file.rename(tmpOutputFile, outputFile)) stop('Error - could not replace output file: ', outputFile)

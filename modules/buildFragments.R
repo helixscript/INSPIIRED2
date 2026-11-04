@@ -42,6 +42,8 @@ runModule <- function(){
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
   
   o <- readRDS(args$inputData)
+  inputProvenance <- provenanceFromObject(o, source = args$inputData)
+  provenanceArgs <- args
   setkey(o$anchorReads, readID)
   setkey(o$adriftReads, readID)
   
@@ -104,10 +106,14 @@ runModule <- function(){
   
   updateLog('Saving outputs.')
   
+  frags <- provenanceAttach(frags, provenanceRecord(
+    'buildFragments', parents = list(inputProvenance),
+    inputFiles = args$inputData, argsSnapshot = provenanceArgs))
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   
   # Keep this module's database implementation local to the template runModule.
   uploadFragmentsToDB <- function(frags){
+    fragmentProvenance <- provenanceFromObject(frags)
     key_columns <- c("trial", "subject", "sample", "replicate", "refGenome", "mode")
     db_columns <- c("trial", "subject", "sample", "replicate", "ref_genome", "mode")
     coordinate_columns <- c("fragChromosome", "fragStrand", "fragStart", "fragEnd")
@@ -234,7 +240,7 @@ runModule <- function(){
       local <- tempfile("buildFragments_", tmpdir = tmp_dir, fileext = ".parquet")
       pending <- tempfile(".fragments_", tmpdir = data_lake, fileext = ".pending")
       on.exit(unlink(c(local, pending)), add = TRUE)
-      arrow::write_parquet(x, local)
+      provenanceWriteParquet(x, local, provenance = fragmentProvenance)
       checksum <- if(file.exists(local) && file.size(local) > 0) unname(tools::md5sum(local)) else NA_character_
       if(length(checksum) != 1L || is.na(checksum) || !grepl("^[[:xdigit:]]{32}$", checksum))
         stop("Error - failed to write and checksum fragments Parquet file.", call. = FALSE)

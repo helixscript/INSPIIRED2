@@ -608,6 +608,9 @@ pullDBfragments <- function(frags){
   if(!is.data.frame(frags)) stop('Error - pullDBfragments requires a fragment data frame.', call. = FALSE)
   input <- as.data.frame(frags)
   empty <- input[FALSE, , drop = FALSE]
+  # The returned object contains only additional archived inputs. Its ancestry
+  # must not be inherited accidentally from the incoming table's attributes.
+  empty <- provenanceAttach(empty, provenanceMerge(list()))
   if(!nrow(input)){
     updateLog('pullDBfragments: no incoming trial/subject groups; pulled 0 fragment rows.')
     return(empty)
@@ -659,6 +662,7 @@ pullDBfragments <- function(frags){
   
   data_path <- if(is.null(args$dataPath) || identical(args$dataPath, 'none')) '/data' else args$dataPath
   pulled <- list()
+  pulledProvenance <- list()
   for(i in seq_len(nrow(pairs))){
     group <- records[records$trial == pairs$trial[i] & records$subject == pairs$subject[i], , drop = FALSE]
     extra <- group[group$in_input == 0L, , drop = FALSE]
@@ -677,7 +681,11 @@ pullDBfragments <- function(frags){
         path <- file.path(data_path, name)
         if(!file.exists(path) || dir.exists(path) || file.access(path, 4L) != 0L)
           stop('Error - fragment Parquet file is missing or unreadable: ', path, call. = FALSE)
-        x <- as.data.frame(arrow::read_parquet(path))
+        x <- provenanceReadParquet(path, source = list(
+          table = 'fragments',
+          keys = as.data.frame(extra[j, key_columns, drop = FALSE]),
+          data_file_name = name))
+        pulledProvenance[[length(pulledProvenance) + 1L]] <- provenanceFromObject(x)
         missing_columns <- setdiff(names(input), names(x))
         if(length(missing_columns)) stop('Error - fragment Parquet file ', name, ' lacks input columns: ',
                                          paste(missing_columns, collapse = ', '), call. = FALSE)
@@ -695,6 +703,7 @@ pullDBfragments <- function(frags){
                      ' fragment rows from ', nrow(extra), ' DB record(s) into the analysis.'))
   }
   result <- if(length(pulled)) dplyr::bind_rows(pulled) else empty
+  result <- provenanceAttach(result, provenanceMerge(pulledProvenance))
   updateLog(paste0('pullDBfragments: total ', ppNum(nrow(result)), ' additional fragment rows pulled for ',
                    nrow(pairs), ' trial/subject group(s).'))
   result
@@ -727,6 +736,7 @@ pullDBfragments <- function(frags){
 # No rescue is possible without a unique position. Run the existing cluster
 # builder on a copy, archive its summary, then let the module keep its error.
 archiveMultiHitOnlyToDB <- function(frags, processedGroups){
+  inputProvenance <- provenanceFromObject(frags)
   clusters <- data.table::rbindlist(lapply(
     split(data.table::copy(frags), by = c("trial", "subject"),
           flatten = TRUE, sorted = TRUE), function(x){
@@ -737,10 +747,12 @@ archiveMultiHitOnlyToDB <- function(frags, processedGroups){
             result
           }),
     use.names = TRUE, fill = TRUE)
+  clusters <- provenanceAttach(clusters, inputProvenance)
   uploadMultiHitClustersToDB(clusters, processedGroups)
 }
 
 uploadMultiHitClustersToDB <- function(clusters, processedGroups){
+  clusterProvenance <- provenanceFromObject(clusters)
   if(!is.list(args) || !all(c("dbConfigFile", "dbConfigID") %in% names(args)) ||
      any(vapply(args[c("dbConfigFile", "dbConfigID")], function(x)
        !is.character(x) || length(x) != 1L || is.na(x) || !nzchar(x) || x == "none", logical(1))) ||
@@ -862,6 +874,7 @@ uploadMultiHitClustersToDB <- function(clusters, processedGroups){
     local <- tempfile("multihit_clusters_", tmpdir = tmp_dir, fileext = ".rds")
     pending <- tempfile(".multihit_clusters_", tmpdir = data_lake, fileext = ".pending")
     on.exit(unlink(c(local, pending)), add = TRUE)
+    x <- provenanceAttach(x, clusterProvenance)
     saveRDS(x, local, version = 3)
     checksum <- if(file.exists(local) && file.size(local) > 0) unname(tools::md5sum(local)) else NA_character_
     if(length(checksum) != 1L || is.na(checksum) || !grepl("^[[:xdigit:]]{32}$", checksum))

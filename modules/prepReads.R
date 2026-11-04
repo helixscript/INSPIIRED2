@@ -23,6 +23,7 @@ runModule <- function(){
   if(file.exists(doneFile) && unlink(doneFile) != 0) stop('Error - could not remove stale completion marker: ', doneFile)
   
   startModule()
+  provenanceArgs <- args
   
   yaml::write_yaml(args, file.path(args$outputDir, paste0(args$fileTag, '.yml')))
   
@@ -40,6 +41,7 @@ runModule <- function(){
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
   
   d <- readRDS(args$inputData)
+  inputProvenance <- provenanceFromObject(d, source = list(path = args$inputData))
   if(nrow(d) == 0) stop('Error -- input data had zero rows of data.')
   requiredHMMcols <- c("leaderSeqHMM", "vectorFastaFile")
   missingHMMcols <- setdiff(requiredHMMcols, names(d))
@@ -165,6 +167,10 @@ runModule <- function(){
   }
   
   hmmParameters <- buildHMMParameterTable(d$leaderSeqHMM)
+  provenanceResources <- c(
+    file.path(args$softwareRoot, 'data', 'hmms', hmmParameters$leaderSeqHMM),
+    file.path(args$softwareRoot, 'data', 'hmms',
+              sub('\\.hmm$', '.cfg', hmmParameters$leaderSeqHMM[hmmParameters$parameterSource == 'cfg'])))
   
   hmm_worker <- function(chunk, hmmParameters, ...) {
     if(! dir.exists(file.path(args$logDir, paste0('chunk_', chunk$chunk_num)))) dir.create(file.path(args$logDir, paste0('chunk_', chunk$chunk_num)))
@@ -337,7 +343,7 @@ runModule <- function(){
       updateLog(msg)
       stop(msg, call. = FALSE)
     }
-      
+    
     if(anyNA(d$linker2) || anyNA(d$leaderSeq) || any(nchar(d$linker2) < w) || any(nchar(d$leaderSeq) < w)){
       msg <- paste0('Error - over-read trimming requires linker2 and recovered leaderSeq lengths >= ',
                     w, ' nt. Lower --ORtrimPatternWidth or use --disableOverReadTrimming.')
@@ -397,6 +403,8 @@ runModule <- function(){
   
   
   if(! args$disableVectorFilter){
+    provenanceResources <- c(provenanceResources,
+                             file.path(args$softwareRoot, 'data', 'vectors', unique(d$vectorFastaFile)))
     d <- rbindlist(lapply(split(d, d$vectorFastaFile), function(x){
       ts <- tmpString()
       status <- system2("makeblastdb", args = c("-in",  file.path(args$softwareRoot, 'data', 'vectors', x$vectorFastaFile[1]), "-dbtype", "nucl", "-out", file.path(args$ramDisk, ts)), stdout = FALSE, stderr = FALSE)
@@ -455,6 +463,15 @@ runModule <- function(){
   d$sample    <- as.factor(d$sample)
   d$replicate <- as.factor(d$replicate)
   
+  provenanceTools <- Sys.which(c('nhmmer',
+                                 if(!args$disableVectorFilter) c('makeblastdb', 'blastn')))
+  outputProvenance <- provenanceRecord(
+    'prepReads', parents = list(inputProvenance),
+    details = list(hmmParameters = as.data.frame(hmmParameters),
+                   toolPaths = as.list(provenanceTools)),
+    resources = unique(c(provenanceResources, unname(provenanceTools[nzchar(provenanceTools)]))),
+    inputFiles = args$inputData, argsSnapshot = provenanceArgs)
+  d <- provenanceAttach(d, outputProvenance)
   saveRDS(d, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('prepReads module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))

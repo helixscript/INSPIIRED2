@@ -19,6 +19,7 @@ runModule <- function(){
     stop('Error - supply both --dbConfigFile and --dbConfigID, or neither.', call. = FALSE)
   
   startModule(connectDB = FALSE)
+  provenanceArgs <- args[names(args) != 'dbConn']
   # As in buildStdFragments, the uploader manages its own short-lived connections.
   useDB <- args$dbConfigFile != 'none' && args$dbConfigID != 'none'
   options(scipen = 999)
@@ -133,6 +134,8 @@ runModule <- function(){
   if(file.size(args$inputData) == 0) stop('Error - the input data file is empty: ', args$inputData, call. = FALSE)
   
   o <- readRDS(args$inputData)
+  inputProvenance <- provenanceFromObject(o,
+                                          source = list(path = args$inputData, format = 'rds'))
   if(!is.data.frame(o)) stop('Error - input data must be a multihit cluster table.', call. = FALSE)
   if(!all(c('refGenome', 'posids') %in% names(o)))
     stop('Error - input data must contain refGenome and posids columns.', call. = FALSE)
@@ -144,6 +147,10 @@ runModule <- function(){
     stop('Error - posids must be a list of character vectors.', call. = FALSE)
   if(any(lengths(o$posids) == 0L))
     stop('Error - every multihit cluster must contain at least one posid.', call. = FALSE)
+  
+  annotationResources <- if(nrow(o))
+    file.path(args$softwareRoot, 'data', 'genomeAnnotations',
+              paste0(unique(as.character(o$refGenome)), '.repeatTable.gz')) else character()
   
   # Replace complete sample/genome/mode groups represented in this input.
   if(useDB) dbMultiHitGroups <- unique(.multiHitKeys(o, 'Input clusters'))
@@ -213,6 +220,14 @@ runModule <- function(){
   o$dominantRepeatClass <- dominantRepeatClass
   o$dominatRepeatClassPercentage <- dominatRepeatClassPercentage
   o$tiedRepeatClasses <- tiedRepeatClasses
+  
+  o <- provenanceAttach(o, provenanceRecord('annotateMultiHitRepeats',
+                                            parents = list(inputProvenance), resources = annotationResources,
+                                            inputFiles = args$inputData,
+                                            details = list(expandedPosids = nCorrected,
+                                                           expandedNodePosids = nNodeCorrected),
+                                            argsSnapshot = provenanceArgs))
+  updateLog('Preserved input processing history and recorded multihit repeat annotation resources.')
   
   saveRDS(o, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   if(useDB){

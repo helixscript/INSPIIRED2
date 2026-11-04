@@ -37,6 +37,7 @@ runModule <- function(){
   # Validate the input's rebuild provenance before opening any DB connection.
   args$dbConn <<- NULL
   startModule(connectDB = FALSE)
+  provenanceArgs <- args[names(args) != 'dbConn']
   
   yaml::write_yaml(args[names(args) != "dbConn"], file.path(args$outputDir, paste0(args$fileTag, ".yml")))
   
@@ -141,6 +142,8 @@ runModule <- function(){
   
   # Read in standardized fragments.
   frags <- readRDS(args$inputData)
+  inputProvenance <- provenanceFromObject(frags,
+                                          source = list(path = args$inputData, format = 'rds'))
   
   # Validate even for file-only runs so a later annotation module can perform
   # the first database upload using the original complete replacement scope.
@@ -471,6 +474,13 @@ runModule <- function(){
   siteSummary <- rbind(names(siteSummary), siteSummary)
   siteSummary[1,1] <- ts
   write.table(siteSummary, file =  args$logFile, sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE,  append = TRUE)
+  
+  sites <- provenanceAttach(sites, provenanceRecord('buildSites',
+                                                    parents = list(inputProvenance), inputFiles = args$inputData,
+                                                    details = list(siteRows = nrow(sites),
+                                                                   sampleGenomeScope = siteRebuildGroups),
+                                                    argsSnapshot = provenanceArgs))
+  updateLog('Preserved input processing history and recorded buildSites parameters.')
   
   if(useDB){
     updateLog('Database site rebuild beginning; replacing all modes for the validated sample/genome groups.')

@@ -29,6 +29,7 @@ runModule <- function(){
   # Validate rebuild provenance before opening any database connection.
   args$dbConn <<- NULL
   startModule(connectDB = FALSE)
+  provenanceArgs <- args[names(args) != 'dbConn']
   
   yaml::write_yaml(args[names(args) != "dbConn"], file.path(args$outputDir, paste0(args$fileTag, ".yml")))
   
@@ -114,6 +115,8 @@ runModule <- function(){
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
   
   d <- readRDS(args$inputData)
+  inputProvenance <- provenanceFromObject(d,
+                                          source = list(path = args$inputData, format = 'rds'))
   
   siteRebuildProvenance <- attr(d, 'inspiired2.siteRebuild', exact = TRUE)
   siteRebuildGroups <- tryCatch(
@@ -141,6 +144,11 @@ runModule <- function(){
     stop('Error - input contains no integration sites to annotate.', call. = FALSE)
   if(!'refGenome' %in% names(d) || anyNA(d$refGenome) || any(!nzchar(trimws(as.character(d$refGenome)))))
     stop('Error - input contains missing or blank refGenome values.', call. = FALSE)
+  
+  annotationResources <- unlist(lapply(unique(as.character(d$refGenome)), function(genome){
+    file.path(args$softwareRoot, 'data', 'genomeAnnotations',
+              paste0(genome, c('.TUs.rds', '.exons.rds')))
+  }), use.names = FALSE)
   
   o <- rbindlist(lapply(split(d, d$refGenome, drop = TRUE), function(x){
     tu <- readRDS(file.path(args$softwareRoot, 'data', 'genomeAnnotations', paste0(x$refGenome[1], '.TUs.rds')))
@@ -207,6 +215,11 @@ runModule <- function(){
   if(!is.null(siteRebuildProvenance))
     validateSiteRebuild(d, siteRebuildProvenance)
   attr(d, 'inspiired2.siteRebuild') <- siteRebuildProvenance
+  
+  d <- provenanceAttach(d, provenanceRecord('nearestGenes',
+                                            parents = list(inputProvenance), resources = annotationResources,
+                                            inputFiles = args$inputData, argsSnapshot = provenanceArgs))
+  updateLog('Preserved input processing history and recorded gene annotation resources.')
   
   if(useDB){
     updateLog('Database site rebuild beginning; replacing all modes for the validated sample/genome groups.')

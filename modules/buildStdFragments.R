@@ -66,6 +66,8 @@ runModule <- function(){
   if(file.size(args$inputData) == 0) stop(paste0('Error - the input data file (', args$inputData, ') is empty.'))
   
   frags <- setDT(readRDS(args$inputData))
+  provenanceParents <- list(provenanceFromObject(frags, source = args$inputData))
+  provenanceArgs <- args
   
   if(!nrow(frags)){
     msg <- 'Error - buildStdFragments input contains no fragment records.'
@@ -87,6 +89,7 @@ runModule <- function(){
   pulledSubjectFragments <- FALSE
   if(isTRUE(args$pullSubjectFragments)){
     newFrags <- pullDBfragments(frags)
+    provenanceParents <- c(provenanceParents, list(provenanceFromObject(newFrags)))
     pulledSubjectFragments <- TRUE
     updateLog(paste0('Done pulling fragments. Number of fragment reads pulled: ', ppNum(n_distinct(newFrags$readID))))
     updateLog(paste0('Number of fragments reads before merging input and pulled reads: ', ppNum(n_distinct(frags$readID))))
@@ -99,6 +102,15 @@ runModule <- function(){
   siteRebuildGroups <- unique(as.data.frame(
     frags[, .(trial, subject, sample, refGenome)]))
   siteRebuildGroups[] <- lapply(siteRebuildGroups, as.character)
+  # This execution can produce several artifacts before downstream unique-site
+  # processing completes. Its record describes the inputs/settings, not success
+  # of a later database commit or of the entire pipeline.
+  processingProvenance <- provenanceRecord(
+    'buildStdFragments', parents = provenanceParents,
+    details = list(pullSubjectFragmentsCompleted = pulledSubjectFragments,
+                   inputFragmentKeys = unique(as.data.frame(
+                     frags[, .(trial, subject, sample, replicate, refGenome, mode)]))),
+    inputFiles = args$inputData, argsSnapshot = provenanceArgs)
   
   if(anyNA(frags$fragChromosome) || any(grepl('[+-]', as.character(frags$fragChromosome)))){
     stop("Error - chromosome names cannot contain '+' or '-' because these characters delimit posid strand.")
@@ -419,6 +431,7 @@ runModule <- function(){
     }
   }
   
+  frags_multPosIDs <- provenanceAttach(frags_multPosIDs, processingProvenance)
   saveRDS(frags_multPosIDs, file = file.path(args$outputDir, paste0(args$fileTag, '_multiHitFrags.rds')))
   
   
@@ -438,6 +451,7 @@ runModule <- function(){
   
   if(splitSettings$minConnectionReads > 1L){
     splitReports <- collect_multiHit_split_reports(multiHit_clusters, splitSettings)
+    splitReports <- provenanceAttach(splitReports, processingProvenance)
     saveRDS(splitReports, splitReportFile)
     multiHit_clusters[, splitReport := NULL]
     updateLog(paste0('Saved optional multi-hit split report: ',
@@ -470,6 +484,7 @@ runModule <- function(){
       multiHit_clusters[, cdhitAssignments := NULL]
   }
   
+  multiHit_clusters <- provenanceAttach(multiHit_clusters, processingProvenance)
   saveRDS(multiHit_clusters, file.path(args$outputDir, paste0(args$fileTag, "_multiHitClusters.rds")))
   if(useDB) uploadMultiHitClustersToDB(multiHit_clusters, dbMultiHitGroups)
   
@@ -576,6 +591,7 @@ runModule <- function(){
     
     if(nrow(frags_uniqPosIDs) != frags_uniqPosIDs_rowCount) stop('Error -- the number of fragment data rows was changed while clustering anchor read start sequences.')
     
+    anchorReadClusterDecisionTable <- provenanceAttach(anchorReadClusterDecisionTable, processingProvenance)
     saveRDS(anchorReadClusterDecisionTable, file.path(args$outputDir, paste0(args$fileTag, '_anchorReadClusters.rds')))
     
     updateLog(paste0('Anchor read filter - removing ', 
@@ -715,6 +731,7 @@ runModule <- function(){
                    pulledSubjectFragments, '; ', ppNum(nrow(siteRebuildGroups)),
                    ' processed sample/genome group(s).'))
   
+  frags <- provenanceAttach(frags, processingProvenance)
   saveRDS(frags, file.path(args$outputDir, paste0(args$fileTag, '.rds')))
   updateLog('buildStdFragments module completed.')
   write(date(), file.path(args$outputDir, paste0(args$fileTag, '.done')))

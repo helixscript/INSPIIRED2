@@ -16,6 +16,7 @@ parser$add_argument("--modes",            type = "character", default = 'none', 
 parser$add_argument("--softwareRoot",     type = "character", required = TRUE,  help = "Path to INSPIIRED2 installation.")
 
 runModule <- function(){
+  provenanceArgs <- args[names(args) != 'dbConn']
   if(args$dbConfigFile == 'none'){
     stop('Error - the db config file was not provided with the --dbConfigFile flag.')  
   }
@@ -68,7 +69,7 @@ runModule <- function(){
     q5 <- paste0('mode in (', paste(sQuote(unlist(strsplit(args$modes, '\\s*,\\s*'))), collapse = ', '), ')')
   }
   
-  q <- paste('select data_file_name from fragments where', gsub('AND x', '', paste(q1, 'AND', q2, 'AND', q3, 'AND', q4, 'AND', q5)))
+  q <- paste('select trial, subject, sample, replicate, ref_genome, mode, data_file_name from fragments where', gsub('AND x', '', paste(q1, 'AND', q2, 'AND', q3, 'AND', q4, 'AND', q5)))
   q <- sub('\\s*$', '', q)
   q <- gsub('\\s*AND\\s*', ' AND ', q)
   
@@ -86,7 +87,15 @@ runModule <- function(){
   
   if(! all(file.exists(f))) stop('Error -- all of the expected parquest files could not be found.')
   
-  d <- as.data.table(rbindlist(lapply(f, arrow::read_parquet)))
+  pulled <- lapply(seq_along(f), function(i){
+    provenanceReadParquet(f[i], source = list(table = 'fragments',
+                                              database_key = as.list(o[i, c('trial', 'subject', 'sample', 'replicate',
+                                                                            'ref_genome', 'mode'), drop = FALSE]),
+                                              data_file_name = as.character(o$data_file_name[i])))
+  })
+  inputProvenance <- provenanceMerge(lapply(pulled, provenanceFromObject))
+  d <- as.data.table(rbindlist(pulled))
+  rm(pulled)
   
   if(!nrow(d)) stop('Error - no fragment rows were found in the selected parquet files.', call. = FALSE)
   
@@ -94,6 +103,11 @@ runModule <- function(){
   cols <- names(d)[vapply(d, is.factor, logical(1))]
   d[, (cols) := lapply(.SD, as.character), .SDcols = cols]
   d[, (cols) := lapply(.SD, as.factor), .SDcols = cols]
+  
+  d <- provenanceAttach(d, provenanceRecord('pullDBrecords',
+                                            parents = list(inputProvenance), inputFiles = f,
+                                            details = list(archiveFilesRead = length(f), fragmentRows = nrow(d)),
+                                            argsSnapshot = provenanceArgs))
   
   saveRDS(d, args$outputFile, compress = FALSE)
 }
