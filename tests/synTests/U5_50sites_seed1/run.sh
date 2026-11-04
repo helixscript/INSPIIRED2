@@ -21,16 +21,34 @@ inspiired2 annotateRepeats   --outputDir output  --threads 10 --inputData output
 output_file="output/annotateRepeats.rds"
 md5_file="expected_md5sum"
 
-actual_md5=$(md5sum "$output_file" | awk '{print $1}')
+# Execution timestamps/IDs are deliberately different on each run. Compare the
+# original scientific object after removing ONLY the new provenance attribute.
+# Leave the archived output intact, and require its provenance to be valid.
+software_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
+actual_md5=$(Rscript --vanilla - "$output_file" "$software_root/lib/common.R" <<'RS'
+argv <- commandArgs(trailingOnly = TRUE)
+source(argv[[2L]])
+local({
+  output <- readRDS(argv[[1L]])
+  if(is.null(attr(output, "inspiired2.provenance", exact = TRUE)))
+    stop("The synthetic output is missing processing provenance.", call. = FALSE)
+  provenanceFromObject(output)  # Validate; malformed metadata must fail the test.
+  canonical <- tempfile(fileext = ".rds")
+  on.exit(unlink(canonical), add = TRUE)
+  saveRDS(provenanceStrip(output), canonical)
+  cat(unname(tools::md5sum(canonical)))
+})
+RS
+)
 expected_md5=$(awk '{print $1}' "$md5_file")
 
 if [[ "$actual_md5" == "$expected_md5" ]]; then
     echo "PASS"
-    echo "MD5 MATCH: $actual_md5"
+    echo "DATA MD5 MATCH (provenance excluded): $actual_md5"
     exit 0
 else
     echo "FAILED"
-    echo "MD5 MISMATCH"
+    echo "DATA MD5 MISMATCH (provenance excluded)"
     echo "  Expected: $expected_md5"
     echo "  Actual:   $actual_md5"
     exit 1
