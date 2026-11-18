@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import gzip
 import hashlib
 import io
+import json
 import math
 import os
 from pathlib import Path
@@ -31,8 +32,9 @@ CHROMOSOME_MARGIN = 10000
 # depend on the requested chatter SD (at most 5 nt).
 CONTEXT_PADDING = 64
 MAX_SITE_ATTEMPTS = 10000
+LEGACY_INTEGRASE_CORRECTION_DIST = 2
 OUTPUT_NAMES = ('R1.fastq.gz', 'R2.fastq.gz', 'I1.fastq.gz',
-                'sampleData.tsv', 'truth.tsv')
+                'sampleData.tsv', 'truth.tsv', 'generation.json')
 REPEAT_TRUTH_FIELDS = (
     'repeatGroup', 'repeatClass', 'repeatName', 'repeatStart', 'repeatEnd',
     'repeatLength', 'repeatStrand', 'repeatTableLine', 'repeatDistanceToStart',
@@ -73,13 +75,17 @@ def build_parser():
         parser.add_argument(short, long, type=kind, default=default,
                             help=f'{help_text} Default: {default}.', metavar='', **extra)
     parser.set_defaults(nSitesExplicit=False)
+    parser.add_argument('--integraseCorrectionDist', type=int, default=2,
+                        help='Reported integrase-site shift in nt: add on +, subtract on -. '
+                             'Use 0 for uncorrected one-based junctions. Does not change seeded '
+                             'random/repeat-site reads; ignored in AAV mode. Default: 2.')
     parser.add_argument('-k', '--singleSample', action='store_true',
                         help='Consolidate all sites into one sample.')
     parser.add_argument('--illuminaReadIDs', action='store_true',
                         help='Use Illumina-formatted FASTQ headers with unique seeded '
                              'cluster coordinates and the I1 barcode. Default: descriptive IDs.')
     sources = parser.add_mutually_exclusive_group()
-    sources.add_argument('--posidFile', help='Text file with one exact chr+position or chr-position per line; its row count defines nSites.')
+    sources.add_argument('--posidFile', help='Text file with one exact reported chr+position or chr-position per line, in the requested correction convention; its row count defines nSites.')
     sources.add_argument('--repeatTable', help='RepeatMasker TSV, plain or gzip: balance sites across repeat groups and sample their center thirds.')
     parser.add_argument('--repeatClasses', nargs='+', help='Selected groups, separated by spaces or commas; e.g. SINE/Alu Satellite Simple_repeat. Alu is an alias for SINE/Alu.')
     parser.add_argument('--repeatGrouping', choices=('class', 'family'), default='class',
@@ -163,6 +169,8 @@ def validate_args(args):
         raise ValueError('Repeat selection options require --repeatTable.')
     if args.mode not in ('integrase', 'AAV'):
         raise ValueError('mode must be integrase or AAV.')
+    if args.integraseCorrectionDist < 0:
+        raise ValueError('integraseCorrectionDist must be a non-negative integer.')
     for name in ('nSites', 'nFrags', 'nReadsPerFrag', 'distBetweenFragEnds',
                  'nReplicates', 'R1_length', 'R2_length', 'I1_length'):
         if getattr(args, name) < 1:
@@ -215,7 +223,9 @@ class RepeatAnnotation:
 @dataclass(frozen=True)
 class Site:
     chromosome: str
-    position: int  # Reported, one-based integration position, including mode correction.
+    # Internal placement coordinate: legacy +2/-2 for integrase, uncorrected for AAV.
+    # Keeping this fixed preserves reference slices and seeded reads across reporting settings.
+    position: int
     strand: str
     sequence: str  # Oriented 1000-nt block with CONTEXT_PADDING bases at each end.
     repeat: object = None
@@ -230,6 +240,16 @@ def block_start(position, strand, mode):
     if strand == '+':
         return position - (12 if mode == 'integrase' else 10)
     return position + (11 if mode == 'integrase' else 9) - BLOCK_LENGTH
+
+
+def reporting_shift(strand, mode, correction):
+    """Translate the stable internal placement coordinate to the requested truth convention."""
+    delta = correction - LEGACY_INTEGRASE_CORRECTION_DIST if mode == 'integrase' else 0
+    return delta if strand == '+' else -delta
+
+
+def reported_position(site, args):
+    return site.position + reporting_shift(site.strand, args.mode, args.integraseCorrectionDist)
 
 
 def reference_sequence(record):
@@ -293,7 +313,10 @@ def read_posids(args):
 
 def supplied_sites(genome, args, specifications):
     for chromosome, position, strand in specifications:
-        yield site_at_position(genome, chromosome, position, strand, args.mode)
+        # An explicit posid is the requested OUTPUT coordinate. Unlike seeded sampling,
+        # keeping that number fixed while changing correction necessarily moves the junction.
+        internal_position = position - reporting_shift(strand, args.mode, args.integraseCorrectionDist)
+        yield site_at_position(genome, chromosome, internal_position, strand, args.mode)
 
 
 def spacing_index(positions, position, minimum_gap):
@@ -305,7 +328,7 @@ def spacing_index(positions, position, minimum_gap):
 
 
 def select_sites(genome, args, max_attempts=MAX_SITE_ATTEMPTS):
-    """Sample reported coordinates uniformly over eligible genomic positions.
+    """Sample stable internal coordinates uniformly over eligible genomic positions.
 
     Both mode-specific blocks must be usable so switching modes cannot change
     placement. Reference slices stay lazy when backed by Biopython's 2bit reader.
@@ -564,9 +587,10 @@ def interval_within_repeat(site, first, stop, mode):
     return site.repeat.start <= left <= right <= site.repeat.end
 
 
-def repeat_truth(site):
+def repeat_truth(site, position=None):
     annotation = site.repeat
-    left, right = site.position - annotation.start, annotation.end - site.position
+    position = site.position if position is None else position
+    left, right = position - annotation.start, annotation.end - position
     return dict(repeatGroup=annotation.group, repeatClass=annotation.repeat_class,
         repeatName=annotation.name, repeatStart=annotation.start, repeatEnd=annotation.end,
         repeatLength=annotation.length, repeatStrand=annotation.strand, repeatTableLine=annotation.line,
@@ -774,14 +798,18 @@ def generate(args, genome):
                     sample_strata(repeat_groups, site_index, sample_site_count))
                 for _ in range(sample_site_count):
                     site = next(sites)
+                    position = reported_position(site, args)
+                    if not 1 <= position <= len(reference_sequence(genome[site.chromosome])):
+                        raise ValueError('Reported site lies outside the reference; reduce integraseCorrectionDist.')
+                    posid = f'{site.chromosome}{site.strand}{position}'
                     replicate_indices = allocation.assign(site.repeat.group if site.repeat else None)
                     leader = make_rng(args.seed, 'leader', site_index).choice(remnants)
                     umis = unique_dna(make_rng(args.seed, 'umis', site_index), 12, args.nFrags)
                     truth = dict(trial=trial, subject=subject, sample=sample,
-                        posid=site.posid, nReads=args.nFrags * args.nReadsPerFrag,
+                        posid=posid, nReads=args.nFrags * args.nReadsPerFrag,
                         nFrags=args.nFrags, nUMIs=args.nFrags, leaderSeq=leader)
                     if site.repeat is not None:
-                        truth.update(repeat_truth(site))
+                        truth.update(repeat_truth(site, position))
                     read_number = 1
                     for fragment_index, umi in enumerate(umis, 1):
                         replicate_index = replicate_indices[fragment_index - 1]
@@ -802,7 +830,7 @@ def generate(args, genome):
                                     and max(len(genomic_r1), len(genomic_r2)) <= end - start):
                                 raise ValueError('Fragment endpoint or read length falls outside reference context.')
                             if illumina_ids is None:
-                                id_r1 = id_r2 = f'{site.posid}_read{read_number}_frag{fragment_index}'
+                                id_r1 = id_r2 = f'{posid}_read{read_number}_frag{fragment_index}'
                             else:
                                 cluster = illumina_ids.next_cluster()
                                 id_r1 = f'{cluster} 1:N:0:{barcode}'
@@ -825,6 +853,17 @@ def generate(args, genome):
                             write_fastq(i1, id_r1, barcode)
                     truth_writer.writerow(truth)
                     site_index += 1
+        # Write provenance after closing truth.tsv. Original five files remain byte-for-byte
+        # compatible at the default correction; metadata makes new coordinate choices explicit.
+        effective_correction = args.integraseCorrectionDist if args.mode == 'integrase' else 0
+        metadata = dict(schema_version=1, generator='buildSynData.py', mode=args.mode,
+            coordinate_system='1-based', integraseCorrectionDist=effective_correction,
+            requestedIntegraseCorrectionDist=args.integraseCorrectionDist,
+            coordinate_rule='junction + distance on +; junction - distance on -',
+            placement_convention='legacy internal coordinates; independent of reporting distance',
+            truth_sha256=hashlib.sha256((staging / 'truth.tsv').read_bytes()).hexdigest(),
+            parameters=vars(args))
+        (staging / 'generation.json').write_text(json.dumps(metadata, indent=2, sort_keys=True) + '\n', encoding='utf-8')
         for name in OUTPUT_NAMES:
             os.replace(staging / name, output / name)
         # Discard only obsolete, generator-owned uncompressed streams, after success.
@@ -851,9 +890,12 @@ def main(argv=None):
         parser.exit(1, f'Error: Biopython is required to read the 2bit reference: {error}\n')
     except (OSError, ValueError) as error:
         parser.exit(1, f'Error: {error}\n')
-    print(f'Wrote synthetic reads, sampleData.tsv, and truth.tsv to {args.outputDir}.')
+    effective_correction = args.integraseCorrectionDist if args.mode == 'integrase' else 0
+    print(f'Truth coordinates: one-based; integrase correction = {effective_correction} nt.')
+    print(f'Wrote synthetic reads, sampleData.tsv, truth.tsv, and generation.json to {args.outputDir}.')
     return 0
 
 
 if __name__ == '__main__':
     sys.exit(main())
+

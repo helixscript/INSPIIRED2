@@ -468,6 +468,24 @@ build_multiHit_clusters <- function(frags_multPosIDs){
   if(nrow(frags_multPosIDs) == 0L)
     return(cbind(frags_multPosIDs[, .(trial, subject, sample, mode, refGenome)], empty))
   
+  # CD-HIT retains only sequences strictly longer than -l (default 10).
+  # Read the effective value so a custom clustering command is respected.
+  cdhit_tokens <- scan(text = args$multiHitclusteringParams, what = character(),
+                       quiet = TRUE, comment.char = "")
+  length_options <- which(cdhit_tokens == "-l")
+  cdhit_min_length <- 10L
+  if(length(length_options)){
+    length_index <- tail(length_options, 1L) + 1L
+    if(length_index > length(cdhit_tokens) ||
+       !grepl("^[0-9]+$", cdhit_tokens[length_index]))
+      stop("Error - CD-HIT -l in --multiHitclusteringParams must be a nonnegative integer.",
+           call. = FALSE)
+    cdhit_min_length <- suppressWarnings(as.integer(cdhit_tokens[length_index]))
+    if(is.na(cdhit_min_length))
+      stop("Error - CD-HIT -l in --multiHitclusteringParams exceeds the integer range.",
+           call. = FALSE)
+  }
+  
   if(!dir.exists(args$ramDisk)) dir.create(args$ramDisk, recursive = TRUE, showWarnings = FALSE)
   if(!dir.exists(args$ramDisk))
     stop("Error - unable to create the multi-hit clustering temporary directory.")
@@ -481,9 +499,31 @@ build_multiHit_clusters <- function(frags_multPosIDs){
       sub_sd <- .SD[readID %in% valid_reads_dt$readID]
       adrift_seqs <- as.character(sub_sd$adrift_seq)
       
-      if(anyNA(adrift_seqs) || any(nchar(adrift_seqs) < nt_len))
-        stop("Error - one or more adrift reads are shorter than ", nt_len,
-             " nt or contain missing sequences.")
+      # Short reads can be clustered against longer representatives. Keep the
+      # configured prefix length for longer reads and use all available bases
+      # for shorter reads; missing/CD-HIT-ineligible sequences remain errors.
+      if(anyNA(adrift_seqs) || any(!nzchar(adrift_seqs)))
+        stop("Error - one or more multi-hit adrift reads contain missing or empty sequences.",
+             call. = FALSE)
+      
+      adrift_lengths <- nchar(adrift_seqs)
+      segment_lengths <- pmin(adrift_lengths, nt_len)
+      if(any(segment_lengths <= cdhit_min_length))
+        stop("Error - ", uniqueN(sub_sd$readID[segment_lengths <= cdhit_min_length]),
+             " multi-hit read ID(s) would provide adrift segments of ",
+             cdhit_min_length, " nt or fewer. CD-HIT discards these with -l ",
+             cdhit_min_length, "; every retained read must receive an assignment.",
+             call. = FALSE)
+      
+      short_reads <- adrift_lengths < nt_len
+      if(any(short_reads))
+        warning("Using the full available sequence for ",
+                uniqueN(sub_sd$readID[short_reads]), " multi-hit read ID(s) shorter than ",
+                nt_len, " nt (", min(adrift_lengths[short_reads]), "-",
+                max(adrift_lengths[short_reads]), " nt) in ",
+                paste(.BY, collapse = "/"),
+                "; longer reads still use their first ", nt_len, " nt.",
+                call. = FALSE, immediate. = TRUE)
       
       # Identify sample-level connected-component networks first.
       edge_map <- unique(sub_sd[, .(readID, posid,

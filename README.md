@@ -676,6 +676,12 @@ Identical sequences are aligned once per reference genome, then their alignments
 
 BLAT runs with permissive built-in score and identity settings (-minScore=0 and -minIdentity=0); INSPIIRED2 then applies its own identity, query-span coverage, and insertion filters. All of these filters must pass.
 
+To enable BLAT's optional `-fine` refinement for both anchor and adrift reads, add `--blatFine`. This can change alignment endpoints and may increase runtime. It is disabled by default. The setting is recorded in the module's YAML parameters and output provenance, and the BLAT command is logged for each alignment chunk.
+
+```bash
+inspiired2 alignReads --outputDir out --inputData out/prepReads.rds --blatFine
+```
+
 **All command-line options**
 
 | Option | Value type | Default | Explanation |
@@ -690,6 +696,7 @@ BLAT runs with permissive built-in score and identity settings (-minScore=0 and 
 | `--blatStepSize` | integer | `5` | Spacing, in bases, between BLAT seed tiles; passed as BLAT stepSize. A smaller spacing uses more seeds. Must be at least 1. |
 | `--blatTileSize` | integer | `11` | Length, in bases, of BLAT seed tiles; passed as BLAT tileSize. Controls the exact-match seed length used to initiate alignments. Must be at least 1. |
 | `--blatRepMatch` | integer | `3000` | Repeat-frequency threshold passed as BLAT repMatch, controlling suppression of overly frequent seed tiles. Must be at least 1. |
+| `--blatFine` | flag | `FALSE` | Pass BLAT's `-fine` option for both anchor and adrift alignments. May improve alignment-end placement and increase runtime; evaluate the effect on the intended data. |
 | `--blatMaxtNumInsert` | integer | `1` | Maximum accepted PSL tNumInsert: the number of target-side insertion/gap events. A non-negative post-alignment filter. |
 | `--blatMaxqNumInsert` | integer | `1` | Maximum accepted PSL qNumInsert: the number of query-side insertion/gap events. A non-negative post-alignment filter. |
 | `--blatMaxtBaseInsert` | integer | `1` | Maximum accepted PSL tBaseInsert: the total number of target-side bases in insertion/gap events. A non-negative post-alignment filter. |

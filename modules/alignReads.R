@@ -13,6 +13,7 @@ parser$add_argument("--minAlignmentCoverage",    type = "double",        default
 parser$add_argument("--blatStepSize",            type = "integer",       default = 5,              help = "BLAT step size.")
 parser$add_argument("--blatTileSize",            type = "integer",       default = 11,             help = "BLAT tile size.")
 parser$add_argument("--blatRepMatch",            type = "integer",       default = 3000,           help = "BLAT repMatch value.")
+parser$add_argument("--blatFine",                action = "store_true",  default = FALSE,          help = "Enable BLAT -fine for anchor and adrift alignments; may increase runtime.")
 parser$add_argument("--blatMaxtNumInsert",       type = "integer",       default = 1,              help = "BLAT max number of target inserts.")
 parser$add_argument("--blatMaxqNumInsert",       type = "integer",       default = 1,              help = "BLAT max number of query inserts.")
 parser$add_argument("--blatMaxtBaseInsert",      type = "integer",       default = 1,              help = "BLAT max number of target insert NTs.")
@@ -175,6 +176,8 @@ runModule <- function(){
                   paste0('-stepSize=', args$blatStepSize),
                   paste0('-repMatch=', args$blatRepMatch),
                   '-out=psl', '-t=dna', '-q=dna', '-minScore=0', '-minIdentity=0', '-noHead', '-noTrimA')
+
+    if(isTRUE(args$blatFine)) blatArgs <- c(blatArgs, '-fine')
     
     updateLog(paste0('<data chunk #', chunk$chunk_num, '>\t', shQuote(blatExecutable), ' ', paste(blatArgs, collapse = ' ')), logFile = logFile)
     

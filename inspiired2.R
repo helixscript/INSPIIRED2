@@ -124,11 +124,12 @@ alr_parser$add_argument("--minAlignmentCoverage",    type = "double",        def
 alr_parser$add_argument("--blatStepSize",            type = "integer",       default = 5,              help = "BLAT step size.")
 alr_parser$add_argument("--blatTileSize",            type = "integer",       default = 11,             help = "BLAT tile size.")
 alr_parser$add_argument("--blatRepMatch",            type = "integer",       default = 3000,           help = "BLAT repMatch value.")
+alr_parser$add_argument("--blatFine",                action = "store_true",  default = FALSE,          help = "Enable BLAT -fine for anchor and adrift alignments; may increase runtime.")
 alr_parser$add_argument("--blatMaxtNumInsert",       type = "integer",       default = 1,              help = "BLAT max number of target inserts.")
 alr_parser$add_argument("--blatMaxqNumInsert",       type = "integer",       default = 1,              help = "BLAT max number of query inserts.")
 alr_parser$add_argument("--blatMaxtBaseInsert",      type = "integer",       default = 1,              help = "BLAT max number of target insert NTs.")
 alr_parser$add_argument("--blatMaxqBaseInsert",      type = "integer",       default = 1,              help = "BLAT max number of target insert NTs.")
-alr_parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 2500,           help = "Numbers of data rows to process per alignment worker.")
+alr_parser$add_argument("--dataRowChunkSize",        type = "integer",       default = 5000,           help = "Numbers of data rows to process per alignment worker.")
 
 bdf_parser <- subparsers$add_parser("buildFragments", help = "Build genomic fragments from alignment data.")
 bdf_parser$add_argument("--outputDir",               type = "character",     required = TRUE,            help = "Directory for output files.")
